@@ -187,7 +187,7 @@ export const Login: React.FC = () => {
           </div>
           <div style={{ marginBottom: '1.5rem' }}>
             <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
-              ID
+              ID(メールアドレス)
             </label>
             <input
               type="text"

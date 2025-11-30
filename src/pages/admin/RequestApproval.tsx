@@ -16,34 +16,64 @@ import { fontSizes } from '../../config/fontSizes';
 import { getRequestStatuses, getRequestTypes, getRequestStatusStyle } from '../../config/masterData';
 import { dummyLeaveRequests, dummyAttendanceCorrectionRequests, type LeaveRequest, type AttendanceCorrectionRequest } from '../../data/dummyData';
 
+/**
+ * 統合された申請情報を表すインターフェース。
+ * 休暇申請と打刻修正申請の両方に対応します。
+ */
 interface UnifiedRequest {
+  /** 申請ID。 */
   id: string;
+  /** 申請種別。 */
   type: '休暇申請' | '打刻修正申請';
+  /** 従業員ID。 */
   employeeId: string;
+  /** 従業員名。 */
   employeeName: string;
+  /** 申請ステータス。 */
   status: '申請中' | '承認' | '却下' | '削除済み';
+  /** 申請日時。 */
   requestedAt: string;
-  // 休暇申請のフィールド
+  /** 休暇申請のフィールド（休暇申請の場合に存在）。 */
   leaveData?: {
+    /** 開始日。 */
     startDate: string;
+    /** 終了日。 */
     endDate: string;
+    /** 日数。 */
     days: number;
+    /** 休暇種別。 */
     leaveType: '有給' | '特別休暇' | '病気休暇' | '欠勤' | 'その他';
+    /** 理由。 */
     reason: string;
+    /** 半休かどうか。 */
     isHalfDay?: boolean;
   };
-  // 打刻修正申請のフィールド
+  /** 打刻修正申請のフィールド（打刻修正申請の場合に存在）。 */
   attendanceData?: {
+    /** 日付。 */
     date: string;
+    /** 元の出勤時刻。 */
     originalClockIn: string | null;
+    /** 元の退勤時刻。 */
     originalClockOut: string | null;
+    /** 申請された出勤時刻。 */
     requestedClockIn: string;
+    /** 申請された退勤時刻。 */
     requestedClockOut: string | null;
+    /** 申請された休憩時間の配列。 */
     requestedBreaks: Array<{ start: string; end: string | null }>;
+    /** 理由。 */
     reason: string;
   };
 }
 
+/**
+ * 申請一覧画面コンポーネント。
+ * 打刻の修正申請や有給申請を承認する画面（管理者用）です。
+ * すべての申請を一覧表示し、承認・却下機能を提供します。
+ *
+ * @returns {JSX.Element} 申請一覧画面コンポーネント。
+ */
 export const RequestApproval: React.FC = () => {
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const requestStatuses = getRequestStatuses();

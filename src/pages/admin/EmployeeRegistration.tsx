@@ -14,25 +14,48 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Snackbar } from '../../components/Snackbar';
+import { Button, CancelButton } from '../../components/Button';
 import { fontSizes } from '../../config/fontSizes';
 import { getEmploymentTypes } from '../../config/masterData';
 
+/**
+ * 手当を表すインターフェース。
+ */
 interface Allowance {
+  /** 手当ID。 */
   id: string;
+  /** 手当名。 */
   name: string;
+  /** 手当の表示色（16進数カラーコード）。 */
   color: string;
 }
 
+/**
+ * 従業員を表すインターフェース。
+ */
 interface Employee {
+  /** 従業員ID。 */
   id: string;
+  /** 従業員名。 */
   name: string;
+  /** 雇用形態。 */
   employmentType: '正社員' | 'パート';
+  /** メールアドレス。 */
   email: string;
+  /** 入社日。 */
   joinDate: string;
+  /** 退社日。nullの場合は在籍中。 */
   leaveDate: string | null;
-  allowances: string[]; // 手当IDの配列
+  /** 手当IDの配列。 */
+  allowances: string[];
 }
 
+/**
+ * 従業員登録・編集画面コンポーネント。
+ * 従業員の新規登録および既存従業員の情報編集を行います。
+ *
+ * @returns {JSX.Element} 従業員登録・編集画面コンポーネント。
+ */
 export const EmployeeRegistration: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -352,37 +375,18 @@ export const EmployeeRegistration: React.FC = () => {
           </div>
 
           <div style={{ display: 'flex', gap: '1rem', flexDirection: isMobile ? 'column' : 'row' }}>
-            <button
+            <Button
+              variant="primary"
+              fullWidth
               type="submit"
-              style={{
-                flex: 1,
-                padding: '0.75rem',
-                backgroundColor: '#2563eb',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                fontWeight: 'bold',
-                cursor: 'pointer'
-              }}
             >
               {isEditing ? '更新' : '登録'}
-            </button>
-            <button
+            </Button>
+            <CancelButton
+              fullWidth
               type="button"
               onClick={() => navigate('/admin/employees')}
-              style={{
-                flex: 1,
-                padding: '0.75rem',
-                backgroundColor: '#6b7280',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                fontWeight: 'bold',
-                cursor: 'pointer'
-              }}
-            >
-              キャンセル
-            </button>
+            />
           </div>
         </form>
       </div>

@@ -13,32 +13,59 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Snackbar } from '../../components/Snackbar';
-import { EditIcon } from '../../components/Icons';
+import { Button, ViewButton, NewRegisterButton, CancelButton, RegisterButton, UpdateButton } from '../../components/Button';
 import { formatDate, formatCurrency } from '../../utils/formatters';
 import { fontSizes } from '../../config/fontSizes';
 import { getEmploymentTypes } from '../../config/masterData';
 import { dummyEmployees, dummyAllowances } from '../../data/dummyData';
+import { useSort } from '../../hooks/useSort';
 
+/**
+ * 手当を表すインターフェース。
+ */
 interface Allowance {
+  /** 手当ID。 */
   id: string;
+  /** 手当名。 */
   name: string;
+  /** 手当の表示色（16進数カラーコード）。 */
   color: string;
 }
 
+/**
+ * 従業員を表すインターフェース。
+ */
 interface Employee {
+  /** 従業員ID。 */
   id: string;
+  /** 従業員名。 */
   name: string;
+  /** 雇用形態。 */
   employmentType: '正社員' | 'パート';
+  /** メールアドレス。 */
   email: string;
+  /** 入社日。 */
   joinDate: string;
+  /** 退社日。nullの場合は在籍中。 */
   leaveDate: string | null;
-  allowances: string[]; // 手当IDの配列
-  isAdmin: boolean; // 管理者フラグ
-  baseSalary: number; // 基本給（時給）
-  paidLeaveDays: number; // 有給日数
-  updatedAt?: string; // 更新日時
+  /** 手当IDの配列。 */
+  allowances: string[];
+  /** 管理者フラグ。 */
+  isAdmin: boolean;
+  /** 基本給（時給）。 */
+  baseSalary: number;
+  /** 有給日数。 */
+  paidLeaveDays: number;
+  /** 更新日時。 */
+  updatedAt?: string;
 }
 
+/**
+ * 従業員一覧画面コンポーネント。
+ * 従業員の一覧表示、検索、編集、給与明細へのアクセスを提供します。
+ *
+ * @returns {JSX.Element} 従業員一覧画面コンポーネント。
+ */
 export const EmployeeList: React.FC = () => {
   const navigate = useNavigate();
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
@@ -55,8 +82,6 @@ export const EmployeeList: React.FC = () => {
   const [showModal, setShowModal] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
   const [snackbar, setSnackbar] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
-  const [sortKey, setSortKey] = useState<string | null>(null);
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [formData, setFormData] = useState<Employee>({
     id: '',
     name: '',
@@ -90,53 +115,10 @@ export const EmployeeList: React.FC = () => {
     return matchType && matchActive;
   });
 
-  // ソート処理
-  const handleSort = (key: string) => {
-    if (sortKey === key) {
-      // 同じキーをクリックした場合は昇順→降順→昇順と循環
-      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
-    } else {
-      // 新しいキーをクリックした場合は昇順から開始
-      setSortKey(key);
-      setSortOrder('asc');
-    }
-  };
-
-  const sortedEmployees = [...filteredEmployees].sort((a, b) => {
-    if (!sortKey) return 0;
-    
-    let aValue: any = a[sortKey as keyof Employee];
-    let bValue: any = b[sortKey as keyof Employee];
-    
-    // 日付の場合は文字列として比較
-    if (sortKey === 'joinDate' || sortKey === 'leaveDate' || sortKey === 'updatedAt') {
-      aValue = aValue || '';
-      bValue = bValue || '';
-      return sortOrder === 'asc' 
-        ? aValue.localeCompare(bValue)
-        : bValue.localeCompare(aValue);
-    }
-    
-    // 数値の場合は数値として比較
-    if (sortKey === 'baseSalary' || sortKey === 'paidLeaveDays') {
-      aValue = aValue || 0;
-      bValue = bValue || 0;
-      return sortOrder === 'asc' ? aValue - bValue : bValue - aValue;
-    }
-    
-    // 文字列の場合は文字列として比較
-    aValue = String(aValue || '');
-    bValue = String(bValue || '');
-    return sortOrder === 'asc' 
-      ? aValue.localeCompare(bValue, 'ja')
-      : bValue.localeCompare(aValue, 'ja');
-  });
-
-  // ソートアイコンを取得
-  const getSortIcon = (key: string) => {
-    if (sortKey !== key) return null;
-    return sortOrder === 'asc' ? '↑' : '↓';
-  };
+  // ソート機能を共通フックから取得
+  const { handleSort, getSortIcon, sortedData: sortedEmployees } = useSort<Employee>(
+    filteredEmployees
+  );
 
   // 従業員IDの自動採番関数
   const generateEmployeeId = (): string => {
@@ -241,24 +223,9 @@ export const EmployeeList: React.FC = () => {
         <h2 style={{ margin: 0, fontSize: isMobile ? '1.25rem' : '1.05rem' }}>
           従業員一覧
         </h2>
-        <button
+        <NewRegisterButton
           onClick={handleNewEmployee}
-          style={{
-            padding: isMobile ? '0.75rem 1rem' : '0.75rem 1.5rem',
-            backgroundColor: '#2563eb',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            fontWeight: 'bold',
-            cursor: 'pointer',
-            whiteSpace: 'nowrap',
-            boxShadow: 'none',
-            minHeight: 'auto',
-            minWidth: 'auto'
-          }}
-        >
-          + 新規登録
-        </button>
+        />
       </div>
 
       {/* 検索・フィルター */}
@@ -411,59 +378,15 @@ export const EmployeeList: React.FC = () => {
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                    <button
+                    <ViewButton
                       onClick={() => navigate(`/admin/employees/${emp.id}/payroll`)}
-                      style={{
-                        padding: '0.5rem 1rem',
-                        backgroundColor: '#2563eb',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '4px',
-                        fontWeight: 'bold',
-                        cursor: 'pointer',
-                        whiteSpace: 'nowrap',
-                        boxShadow: 'none',
-                        minHeight: 'auto',
-                        minWidth: 'auto'
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.backgroundColor = '#1d4ed8';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.backgroundColor = '#2563eb';
-                      }}
                       title="給与明細を閲覧"
-                    >
-                      閲覧
-                    </button>
-                    <button
+                    />
+                    <Button
+                      variant="icon-edit"
                       onClick={() => handleEdit(emp)}
-                      style={{
-                        padding: '0.5rem',
-                        background: 'transparent',
-                        backgroundColor: 'transparent',
-                        border: 'none',
-                        borderRadius: '4px',
-                        cursor: 'pointer',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        color: '#2563eb',
-                        transition: 'background-color 0.2s',
-                        boxShadow: 'none',
-                        minHeight: 'auto',
-                        minWidth: 'auto'
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.backgroundColor = '#eff6ff';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.backgroundColor = 'transparent';
-                      }}
                       title="編集"
-                    >
-                      <EditIcon size={28} color="#2563eb" />
-                    </button>
+                    />
                   </div>
                 </div>
                 <div style={{ 
@@ -494,7 +417,7 @@ export const EmployeeList: React.FC = () => {
                   </div>
                   <div>
                     <span style={{ color: '#6b7280' }}>基本給:</span>{' '}
-                    <span style={{ fontWeight: 'bold' }}>{formatCurrency(emp.baseSalary)}/時</span>
+                    <span style={{ fontWeight: 'bold' }}>{formatCurrency(emp.baseSalary)}{emp.employmentType === '正社員' ? '/月' : '/時'}</span>
                   </div>
                   <div>
                     <span style={{ color: '#6b7280' }}>入社日:</span>{' '}
@@ -657,7 +580,7 @@ export const EmployeeList: React.FC = () => {
                       </span>
                     </td>
                     <td style={{ padding: '0.75rem', fontWeight: 'bold' }}>
-                      {formatCurrency(emp.baseSalary)}/時
+                      {formatCurrency(emp.baseSalary)}{emp.employmentType === '正社員' ? '/月' : '/時'}
                     </td>
                     <td style={{ padding: '0.75rem' }}>{emp.email}</td>
                     <td style={{ padding: '0.75rem' }}>
@@ -704,62 +627,17 @@ export const EmployeeList: React.FC = () => {
                       }) : '-'}
                     </td>
                     <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                      <button
+                      <ViewButton
                         onClick={() => navigate(`/admin/employees/${emp.id}/payroll`)}
-                        style={{
-                          padding: '0.5rem 1rem',
-                          backgroundColor: '#2563eb',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '4px',
-                          fontSize: fontSizes.input,
-                          fontWeight: 'bold',
-                          cursor: 'pointer',
-                          whiteSpace: 'nowrap',
-                          boxShadow: 'none',
-                          minHeight: 'auto',
-                          minWidth: 'auto'
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.backgroundColor = '#1d4ed8';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.backgroundColor = '#2563eb';
-                        }}
                         title="給与明細を閲覧"
-                      >
-                        閲覧
-                      </button>
+                      />
                     </td>
                     <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                      <button
+                      <Button
+                        variant="icon-edit"
                         onClick={() => handleEdit(emp)}
-                        style={{
-                          padding: '0.75rem',
-                          background: 'transparent',
-                          backgroundColor: 'transparent',
-                          border: 'none',
-                          borderRadius: '4px',
-                          cursor: 'pointer',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          color: '#2563eb',
-                          transition: 'background-color 0.2s',
-                          boxShadow: 'none',
-                          minHeight: 'auto',
-                          minWidth: 'auto'
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.backgroundColor = '#eff6ff';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.backgroundColor = 'transparent';
-                        }}
                         title="編集"
-                      >
-                        <EditIcon size={28} color="#2563eb" />
-                      </button>
+                      />
                     </td>
                   </tr>
                 ))}
@@ -876,7 +754,7 @@ export const EmployeeList: React.FC = () => {
 
               <div style={{ marginBottom: '1rem' }}>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
-                  基本給（時給） *
+                  基本給{formData.employmentType === '正社員' ? '（月給）' : '（時給）'} *
                 </label>
                 <input
                   type="number"
@@ -895,7 +773,7 @@ export const EmployeeList: React.FC = () => {
                   required
                 />
                 <div style={{ fontSize: fontSizes.medium, color: '#6b7280', marginTop: '0.25rem' }}>
-                  現在の値: {formatCurrency(formData.baseSalary)}/時
+                  現在の値: {formatCurrency(formData.baseSalary)}{formData.employmentType === '正社員' ? '/月' : '/時'}
                 </div>
               </div>
 
@@ -1054,43 +932,22 @@ export const EmployeeList: React.FC = () => {
               </div>
 
               <div style={{ display: 'flex', gap: '1rem', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'flex-end' }}>
-                <button
+                <CancelButton
+                  fullWidth
                   type="button"
                   onClick={handleCancel}
-                  style={{
-                    flex: 1,
-                    padding: '0.75rem',
-                    backgroundColor: '#6b7280',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '4px',
-                    fontWeight: 'bold',
-                    cursor: 'pointer',
-                    boxShadow: 'none',
-                    minHeight: 'auto',
-                    minWidth: 'auto'
-                  }}
-                >
-                  キャンセル
-                </button>
-                <button
-                  type="submit"
-                  style={{
-                    flex: 1,
-                    padding: '0.75rem',
-                    backgroundColor: '#2563eb',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '4px',
-                    fontWeight: 'bold',
-                    cursor: 'pointer',
-                    boxShadow: 'none',
-                    minHeight: 'auto',
-                    minWidth: 'auto'
-                  }}
-                >
-                  {editingEmployee ? '更新' : '登録'}
-                </button>
+                />
+                {editingEmployee ? (
+                  <UpdateButton
+                    fullWidth
+                    type="submit"
+                  />
+                ) : (
+                  <RegisterButton
+                    fullWidth
+                    type="submit"
+                  />
+                )}
               </div>
             </form>
           </div>

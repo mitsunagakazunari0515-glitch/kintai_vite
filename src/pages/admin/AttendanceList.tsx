@@ -13,27 +13,52 @@
 import { useState, useEffect } from 'react';
 import { formatTime, formatDate } from '../../utils/formatters';
 import { fontSizes } from '../../config/fontSizes';
-import { EditIcon } from '../../components/Icons';
+import { Button, RegisterButton, CancelButton } from '../../components/Button';
 import { Snackbar } from '../../components/Snackbar';
 import { dummyAttendanceLogs } from '../../data/dummyData';
+import { useSort } from '../../hooks/useSort';
 
+/**
+ * 休憩時間を表すインターフェース。
+ */
 interface Break {
+  /** 休憩開始時刻。 */
   start: string;
+  /** 休憩終了時刻。nullの場合は休憩中。 */
   end: string | null;
 }
 
+/**
+ * 勤怠ログを表すインターフェース。
+ */
 interface AttendanceLog {
+  /** 勤怠ログID。 */
   id: string;
+  /** 従業員ID。 */
   employeeId?: string;
+  /** 従業員名。 */
   employeeName?: string;
+  /** 出勤日。 */
   date: string;
+  /** 出勤時刻。nullの場合は未出勤。 */
   clockIn: string | null;
+  /** 退勤時刻。nullの場合は未退勤。 */
   clockOut: string | null;
+  /** 休憩時間の配列。 */
   breaks: Break[];
+  /** 勤怠ステータス。 */
   status: '未出勤' | '出勤中' | '休憩中' | '退勤済み';
+  /** メモ。 */
   memo?: string | null;
 }
 
+/**
+ * 勤怠情報一覧画面コンポーネント。
+ * 管理者が全従業員の勤怠情報を一覧表示します。
+ * 日付範囲でのフィルタリング、ソート、メモ編集機能を提供します。
+ *
+ * @returns {JSX.Element} 勤怠情報一覧画面コンポーネント。
+ */
 export const AttendanceList: React.FC = () => {
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const [snackbar, setSnackbar] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -65,8 +90,6 @@ export const AttendanceList: React.FC = () => {
   const thisWeek = getThisWeekDates();
   const [startDate, setStartDate] = useState(thisWeek.start);
   const [endDate, setEndDate] = useState(thisWeek.end);
-  const [sortKey, setSortKey] = useState<string | null>(null);
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [showModal, setShowModal] = useState(false);
   const [editingLog, setEditingLog] = useState<AttendanceLog | null>(null);
   const [memo, setMemo] = useState('');
@@ -85,44 +108,10 @@ export const AttendanceList: React.FC = () => {
     return matchesStartDate && matchesEndDate;
   });
 
-  // ソート処理
-  const handleSort = (key: string) => {
-    if (sortKey === key) {
-      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortKey(key);
-      setSortOrder('asc');
-    }
-  };
-
-  const sortedLogs = [...filteredLogs].sort((a, b) => {
-    if (!sortKey) return 0;
-    
-    let aValue: any = a[sortKey as keyof AttendanceLog];
-    let bValue: any = b[sortKey as keyof AttendanceLog];
-    
-    // 日付の場合は文字列として比較
-    if (sortKey === 'date') {
-      aValue = aValue || '';
-      bValue = bValue || '';
-      return sortOrder === 'asc' 
-        ? aValue.localeCompare(bValue)
-        : bValue.localeCompare(aValue);
-    }
-    
-    // 文字列の場合は文字列として比較
-    aValue = String(aValue || '');
-    bValue = String(bValue || '');
-    return sortOrder === 'asc' 
-      ? aValue.localeCompare(bValue, 'ja')
-      : bValue.localeCompare(aValue, 'ja');
-  });
-
-  // ソートアイコンを取得
-  const getSortIcon = (key: string) => {
-    if (sortKey !== key) return null;
-    return sortOrder === 'asc' ? '↑' : '↓';
-  };
+  // ソート機能を共通フックから取得
+  const { handleSort, getSortIcon, sortedData: sortedLogs } = useSort<AttendanceLog>(
+    filteredLogs
+  );
 
   // 労働時間、残業時間、深夜時間、休憩時間を計算
   const calculateWorkTimes = (log: AttendanceLog) => {
@@ -241,7 +230,7 @@ export const AttendanceList: React.FC = () => {
           alignItems: isMobile ? 'stretch' : 'flex-end',
           flexWrap: 'wrap'
         }}>
-          <div style={{ flex: isMobile ? '1' : '1', minWidth: isMobile ? '100%' : '150px' }}>
+          <div style={{ flex: isMobile ? '1' : '0 0 auto', minWidth: isMobile ? '100%' : '170px' }}>
             <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 'bold', fontSize: fontSizes.label }}>
               開始日
             </label>
@@ -250,7 +239,7 @@ export const AttendanceList: React.FC = () => {
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
               style={{
-                width: '100%',
+                width: isMobile ? '100%' : '170px',
                 padding: '0.5rem 0.75rem',
                 border: '1px solid #d1d5db',
                 borderRadius: '4px',
@@ -260,7 +249,7 @@ export const AttendanceList: React.FC = () => {
               }}
             />
           </div>
-          <div style={{ flex: isMobile ? '1' : '1', minWidth: isMobile ? '100%' : '150px' }}>
+          <div style={{ flex: isMobile ? '1' : '0 0 auto', minWidth: isMobile ? '100%' : '170px' }}>
             <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 'bold', fontSize: fontSizes.label }}>
               終了日
             </label>
@@ -270,7 +259,7 @@ export const AttendanceList: React.FC = () => {
               onChange={(e) => setEndDate(e.target.value)}
               min={startDate}
               style={{
-                width: '100%',
+                width: isMobile ? '100%' : '170px',
                 padding: '0.5rem 0.75rem',
                 border: '1px solid #d1d5db',
                 borderRadius: '4px',
@@ -426,34 +415,11 @@ export const AttendanceList: React.FC = () => {
                         </div>
                       </td>
                       <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                        <button
+                        <Button
+                          variant="icon-edit"
                           onClick={() => handleEdit(log)}
-                          style={{
-                            padding: '0.75rem',
-                            background: 'transparent',
-                            backgroundColor: 'transparent',
-                            border: 'none',
-                            borderRadius: '4px',
-                            cursor: 'pointer',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            color: '#2563eb',
-                            transition: 'background-color 0.2s',
-                            boxShadow: 'none',
-                            minHeight: 'auto',
-                            minWidth: 'auto'
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.backgroundColor = '#eff6ff';
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.backgroundColor = 'transparent';
-                          }}
                           title="編集"
-                        >
-                          <EditIcon size={28} color="#2563eb" />
-                        </button>
+                        />
                       </td>
                     </tr>
                   );
@@ -527,64 +493,16 @@ export const AttendanceList: React.FC = () => {
               />
             </div>
             <div style={{ display: 'flex', gap: '1rem', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'flex-end' }}>
-              <button
+              <CancelButton
+                fullWidth
                 type="button"
                 onClick={handleCancel}
-                style={{
-                  flex: 1,
-                  padding: '0.75rem',
-                  backgroundColor: '#6b7280',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  fontWeight: 'bold',
-                  cursor: 'pointer',
-                  boxShadow: 'none',
-                  minHeight: 'auto',
-                  minWidth: 'auto'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = '#4b5563';
-                  e.currentTarget.style.transform = 'scale(1.02)';
-                  e.currentTarget.style.cursor = 'pointer';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = '#6b7280';
-                  e.currentTarget.style.transform = 'scale(1)';
-                  e.currentTarget.style.cursor = 'pointer';
-                }}
-              >
-                キャンセル
-              </button>
-              <button
+              />
+              <RegisterButton
+                fullWidth
                 type="button"
                 onClick={handleSave}
-                style={{
-                  flex: 1,
-                  padding: '0.75rem',
-                  backgroundColor: '#2563eb',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  fontWeight: 'bold',
-                  cursor: 'pointer',
-                  boxShadow: 'none',
-                  minHeight: 'auto',
-                  minWidth: 'auto'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = '#1d4ed8';
-                  e.currentTarget.style.transform = 'scale(1.02)';
-                  e.currentTarget.style.cursor = 'pointer';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = '#2563eb';
-                  e.currentTarget.style.transform = 'scale(1)';
-                  e.currentTarget.style.cursor = 'pointer';
-                }}
-              >
-                保存
-              </button>
+              />
             </div>
           </div>
         </div>

@@ -12,28 +12,52 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { DeleteIcon } from '../../components/Icons';
+import { Button, CancelButton, RegisterButton, DeleteButton } from '../../components/Button';
 import { Snackbar } from '../../components/Snackbar';
 import { formatDate, formatTime } from '../../utils/formatters';
 import { fontSizes } from '../../config/fontSizes';
 import { dummyEmployeeAttendanceLogs } from '../../data/dummyData';
+import { PlusIcon } from '../../components/Icons';
 
+/**
+ * 休憩時間を表すインターフェース。
+ */
 interface Break {
+  /** 休憩開始時刻。 */
   start: string;
+  /** 休憩終了時刻。nullの場合は休憩中。 */
   end: string | null;
 }
 
+/**
+ * 勤怠ログを表すインターフェース。
+ */
 interface AttendanceLog {
+  /** 勤怠ログID。 */
   id: string;
+  /** 出勤日。 */
   date: string;
+  /** 出勤時刻。nullの場合は未出勤。 */
   clockIn: string | null;
+  /** 退勤時刻。nullの場合は未退勤。 */
   clockOut: string | null;
-  breaks: Break[]; // 休憩を複数回取れるように配列に変更
+  /** 休憩時間の配列（複数回の休憩に対応）。 */
+  breaks: Break[];
+  /** 勤怠ステータス。 */
   status: '未出勤' | '出勤中' | '休憩中' | '退勤済み';
 }
 
+/**
+ * 表示モードを表す型。
+ */
 type ViewMode = 'stamp' | 'edit' | 'list';
 
+/**
+ * 勤怠画面コンポーネント。
+ * 従業員の出勤・退勤打刻、打刻修正、打刻履歴確認を行います。
+ *
+ * @returns {JSX.Element} 勤怠画面コンポーネント。
+ */
 export const Attendance: React.FC = () => {
   const { userId } = useAuth();
   // 昨日の日付を取得（退勤時刻未登録エラーのテスト用）
@@ -565,17 +589,18 @@ export const Attendance: React.FC = () => {
       }}>
         <button
           onClick={() => setViewMode('stamp')}
+          disabled={viewMode === 'edit'}
           style={{
             padding: isMobile ? '0.75rem 1rem' : '0.75rem 1.5rem',
-            backgroundColor: viewMode === 'stamp' ? '#2563eb' : 'transparent',
+            backgroundColor: viewMode === 'stamp' ? '#92400e' : 'rgba(146, 64, 14, 0.4)',
             color: '#ffffff',
             border: 'none',
             borderBottom: viewMode === 'stamp' ? '3px solid #ffffff' : '3px solid transparent',
             borderRadius: '4px 4px 0 0',
-            cursor: 'pointer',
+            cursor: viewMode === 'edit' ? 'not-allowed' : 'pointer',
             fontWeight: viewMode === 'stamp' ? 'bold' : 'normal',
             whiteSpace: 'nowrap',
-            opacity: viewMode === 'stamp' ? 1 : 0.7,
+            opacity: viewMode === 'edit' ? 0.5 : (viewMode === 'stamp' ? 1 : 0.8),
             textShadow: viewMode === 'stamp'
               ? '0 1px 3px rgba(0,0,0,0.35)'
               : '0 1px 2px rgba(0,0,0,0.25)',
@@ -606,17 +631,18 @@ export const Attendance: React.FC = () => {
         </button>
         <button
           onClick={() => setViewMode('list')}
+          disabled={viewMode === 'edit'}
           style={{
             padding: isMobile ? '0.75rem 1rem' : '0.75rem 1.5rem',
-            backgroundColor: viewMode === 'list' ? '#2563eb' : 'transparent',
+            backgroundColor: viewMode === 'list' ? '#92400e' : 'rgba(146, 64, 14, 0.4)',
             color: '#ffffff',
             border: 'none',
             borderBottom: viewMode === 'list' ? '3px solid #ffffff' : '3px solid transparent',
             borderRadius: '4px 4px 0 0',
-            cursor: 'pointer',
+            cursor: viewMode === 'edit' ? 'not-allowed' : 'pointer',
             fontWeight: viewMode === 'list' ? 'bold' : 'normal',
             whiteSpace: 'nowrap',
-            opacity: viewMode === 'list' ? 1 : 0.7,
+            opacity: viewMode === 'edit' ? 0.5 : (viewMode === 'list' ? 1 : 0.8),
             textShadow: viewMode === 'list'
               ? '0 1px 3px rgba(0,0,0,0.35)'
               : '0 1px 2px rgba(0,0,0,0.25)'
@@ -708,7 +734,7 @@ export const Attendance: React.FC = () => {
             color: getStatusTextColor(currentStatus),
             textAlign: 'center',
             fontWeight: 'bold',
-            fontSize: fontSizes.medium,
+            fontSize: isMobile ? fontSizes.h3.mobile : fontSizes.h3.desktop,
             marginBottom: isMobile ? '1rem' : '1rem',
             borderRadius: '8px',
             boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
@@ -716,8 +742,15 @@ export const Attendance: React.FC = () => {
             {getStatusMessage(currentStatus)}
           </div>
           <div style={{ marginBottom: isMobile ? '0.75rem' : '0.5rem' }}>
-            <p style={{ fontSize: fontSizes.medium, fontWeight: 'bold', color: '#2563eb' }}>
-              {formatDate(now.toISOString().split('T')[0])}
+            <p style={{ fontSize: isMobile ? '1.5rem' : '2rem', fontWeight: 'bold', color: '#2563eb' }}>
+              {(() => {
+                const dateStr = now.toISOString().split('T')[0];
+                const formattedDate = formatDate(dateStr);
+                const date = new Date(dateStr);
+                const dayNames = ['日', '月', '火', '水', '木', '金', '土'];
+                const dayName = dayNames[date.getDay()];
+                return `${formattedDate}(${dayName})`;
+              })()}
             </p>
             <p style={{ fontSize: isMobile ? '3rem' : '4.5rem', fontWeight: 'bold', marginTop: '0.5rem', letterSpacing: '0.1em' }}>
               {now.toLocaleTimeString('ja-JP', { 
@@ -1163,33 +1196,20 @@ export const Attendance: React.FC = () => {
               <label style={{ fontWeight: 'bold' }}>
                 休憩
               </label>
-              <button
-                type="button"
+              <Button
+                variant="primary"
                 onClick={() => setEditBreaks([...editBreaks, { start: '', end: null }])}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = '#059669';
-                  e.currentTarget.style.transform = 'scale(1.05)';
-                  e.currentTarget.style.cursor = 'pointer';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = '#10b981';
-                  e.currentTarget.style.transform = 'scale(1)';
-                  e.currentTarget.style.cursor = 'pointer';
-                }}
                 style={{
-                  padding: '0.5rem 1rem',
-                  backgroundColor: '#10b981',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  fontSize: fontSizes.badge,
-                  fontWeight: 'bold',
-                  cursor: 'pointer',
-                  transition: 'background-color 0.2s, transform 0.2s'
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.05rem',
+                  minWidth: '100px',
+                  fontSize: fontSizes.button
                 }}
               >
-                休憩を追加
-              </button>
+                <PlusIcon size={18} color="#2563eb" />
+                追加
+              </Button>
             </div>
             {editBreaks.length === 0 ? (
               <p style={{ color: '#6b7280', fontSize: fontSizes.medium }}>休憩がありません</p>
@@ -1204,35 +1224,12 @@ export const Attendance: React.FC = () => {
                   }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
                       <span style={{ fontWeight: 'bold', fontSize: fontSizes.medium }}>休憩 {index + 1}</span>
-                      <button
-                        type="button"
-                        onClick={() => setEditBreaks(editBreaks.filter((_, i) => i !== index))}
-                        style={{
-                          padding: '0.5rem',
-                          background: 'transparent',
-                          backgroundColor: 'transparent',
-                          border: 'none',
-                          borderRadius: '4px',
-                          cursor: 'pointer',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          color: '#dc2626',
-                          transition: 'background-color 0.2s',
-                          boxShadow: 'none',
-                          minHeight: 'auto',
-                          minWidth: 'auto'
+                      <DeleteButton
+                        onClick={() => {
+                          const updated = editBreaks.filter((_, i) => i !== index);
+                          setEditBreaks(updated);
                         }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.backgroundColor = '#fee2e2';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.backgroundColor = 'transparent';
-                        }}
-                        title="削除"
-                      >
-                        <DeleteIcon size={20} color="#dc2626" />
-                      </button>
+                      />
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
                       <div>
@@ -1286,58 +1283,14 @@ export const Attendance: React.FC = () => {
             )}
           </div>
           <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', flexDirection: isMobile ? 'column' : 'row' }}>
-            <button
+            <CancelButton
+              fullWidth
               onClick={handleCancelEdit}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = '#4b5563';
-                e.currentTarget.style.transform = 'scale(1.02)';
-                e.currentTarget.style.cursor = 'pointer';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = '#6b7280';
-                e.currentTarget.style.transform = 'scale(1)';
-                e.currentTarget.style.cursor = 'pointer';
-              }}
-              style={{
-                flex: 1,
-                padding: '0.75rem',
-                backgroundColor: '#6b7280',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                fontWeight: 'bold',
-                cursor: 'pointer',
-                transition: 'background-color 0.2s, transform 0.2s'
-              }}
-            >
-              キャンセル
-            </button>
-            <button
+            />
+            <RegisterButton
+              fullWidth
               onClick={handleSaveEdit}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = '#1d4ed8';
-                e.currentTarget.style.transform = 'scale(1.02)';
-                e.currentTarget.style.cursor = 'pointer';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = '#2563eb';
-                e.currentTarget.style.transform = 'scale(1)';
-                e.currentTarget.style.cursor = 'pointer';
-              }}
-              style={{
-                flex: 1,
-                padding: '0.75rem',
-                backgroundColor: '#2563eb',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                fontWeight: 'bold',
-                cursor: 'pointer',
-                transition: 'background-color 0.2s, transform 0.2s'
-              }}
-            >
-              +登録
-            </button>
+            />
           </div>
         </div>
       )}
@@ -1345,24 +1298,7 @@ export const Attendance: React.FC = () => {
       {/* 出勤簿画面 */}
       {viewMode === 'list' && (
         <div>
-          <div style={{
-            backgroundColor: '#f9fafb',
-            padding: isMobile ? '1rem' : '1.5rem',
-            borderRadius: '8px',
-            marginBottom: '1.5rem'
-          }}>
-            <div style={{ 
-              display: 'flex', 
-              justifyContent: 'space-between', 
-              alignItems: 'center',
-              marginBottom: '1rem',
-              flexWrap: 'wrap',
-              gap: '0.5rem'
-            }}>
-              <h3 style={{ fontSize: isMobile ? '1.125rem' : '0.875rem', margin: 0 }}>
-                出勤簿
-              </h3>
-              <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
                 <button
                   onClick={() => {
                     if (selectedMonth === 1) {
@@ -1473,8 +1409,6 @@ export const Attendance: React.FC = () => {
                   →
                 </button>
               </div>
-            </div>
-          </div>
 
           {/* サマリー情報表示切り替えリボン */}
           <div style={{

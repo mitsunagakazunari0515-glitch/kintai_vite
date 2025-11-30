@@ -12,30 +12,53 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { Snackbar } from '../../components/Snackbar';
-import { getCurrentFiscalYear } from '../../utils/fiscalYear';
+import { Button, ApplyButton } from '../../components/Button';
+import { getCurrentFiscalYear, isInFiscalYear } from '../../utils/fiscalYear';
 import { fontSizes } from '../../config/fontSizes';
 import { getLeaveTypes, getRequestStatusStyle } from '../../config/masterData';
 import { dummyEmployeeLeaveRequests } from '../../data/dummyData';
+import { formatDate } from '../../utils/formatters';
 
+/**
+ * 休暇申請を表すインターフェース。
+ */
 interface LeaveRequest {
+  /** 申請ID。 */
   id: string;
+  /** 従業員ID。 */
   employeeId: string;
+  /** 開始日。 */
   startDate: string;
+  /** 終了日。 */
   endDate: string;
+  /** 日数。 */
   days: number;
+  /** 休暇種別。 */
   type: '有給' | '特別休暇' | '病気休暇' | '欠勤' | 'その他';
+  /** 理由。 */
   reason: string;
+  /** 申請ステータス。 */
   status: '申請中' | '承認' | '削除済み';
-  isHalfDay?: boolean; // 半休かどうか
+  /** 半休かどうか。 */
+  isHalfDay?: boolean;
 }
 
+/**
+ * 表示モードを表す型。
+ */
 type ViewMode = 'apply' | 'history';
 
+/**
+ * 有給申請画面コンポーネント。
+ * 従業員の有給申請、有給残日数確認、過去の取得履歴確認を行います。
+ *
+ * @returns {JSX.Element} 有給申請画面コンポーネント。
+ */
 export const LeaveRequest: React.FC = () => {
   const { userId } = useAuth();
   const [requests, setRequests] = useState<LeaveRequest[]>(
     dummyEmployeeLeaveRequests
-      .filter(req => req.employeeId === userId)
+      .filter(req => !userId || req.employeeId === userId)
       .map(req => ({
         ...req,
         type: req.type as '有給' | '特別休暇' | '病気休暇' | '欠勤' | 'その他',
@@ -101,13 +124,7 @@ export const LeaveRequest: React.FC = () => {
 
   // 申請履歴を年度でフィルタリング
   const filteredRequests = requests.filter(req => {
-    const requestDate = new Date(req.startDate);
-    const requestYear = requestDate.getFullYear();
-    const requestMonth = requestDate.getMonth() + 1;
-    // 年度の範囲をチェック: searchFiscalYear年度 = searchFiscalYear年4月 〜 searchFiscalYear+1年3月
-    if (requestYear === searchFiscalYear && requestMonth >= 4) return true;
-    if (requestYear === searchFiscalYear + 1 && requestMonth <= 3) return true;
-    return false;
+    return isInFiscalYear(req.startDate, searchFiscalYear);
   });
 
 
@@ -189,7 +206,7 @@ export const LeaveRequest: React.FC = () => {
           onClick={() => setViewMode('apply')}
           style={{
             padding: isMobile ? '0.75rem 1rem' : '0.75rem 1.5rem',
-            backgroundColor: viewMode === 'apply' ? '#2563eb' : 'transparent',
+            backgroundColor: viewMode === 'apply' ? '#92400e' : 'rgba(146, 64, 14, 0.4)',
             color: '#ffffff',
             border: 'none',
             borderBottom: viewMode === 'apply' ? '3px solid #ffffff' : '3px solid transparent',
@@ -197,7 +214,7 @@ export const LeaveRequest: React.FC = () => {
             cursor: 'pointer',
             fontWeight: viewMode === 'apply' ? 'bold' : 'normal',
             whiteSpace: 'nowrap',
-            opacity: viewMode === 'apply' ? 1 : 0.7,
+            opacity: viewMode === 'apply' ? 1 : 0.8,
             textShadow: viewMode === 'apply'
               ? '0 1px 3px rgba(0,0,0,0.35)'
               : '0 1px 2px rgba(0,0,0,0.25)'
@@ -209,7 +226,7 @@ export const LeaveRequest: React.FC = () => {
           onClick={() => setViewMode('history')}
           style={{
             padding: isMobile ? '0.75rem 1rem' : '0.75rem 1.5rem',
-            backgroundColor: viewMode === 'history' ? '#2563eb' : 'transparent',
+            backgroundColor: viewMode === 'history' ? '#92400e' : 'rgba(146, 64, 14, 0.4)',
             color: '#ffffff',
             border: 'none',
             borderBottom: viewMode === 'history' ? '3px solid #ffffff' : '3px solid transparent',
@@ -217,7 +234,7 @@ export const LeaveRequest: React.FC = () => {
             cursor: 'pointer',
             fontWeight: viewMode === 'history' ? 'bold' : 'normal',
             whiteSpace: 'nowrap',
-            opacity: viewMode === 'history' ? 1 : 0.7,
+            opacity: viewMode === 'history' ? 1 : 0.8,
             textShadow: viewMode === 'history'
               ? '0 1px 3px rgba(0,0,0,0.35)'
               : '0 1px 2px rgba(0,0,0,0.25)'
@@ -391,21 +408,10 @@ export const LeaveRequest: React.FC = () => {
                 required
               />
             </div>
-            <button
+            <ApplyButton
               type="submit"
-              style={{
-                width: '100%',
-                padding: '0.75rem',
-                backgroundColor: '#2563eb',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                fontWeight: 'bold',
-                cursor: 'pointer'
-              }}
-            >
-              申請する
-            </button>
+              fullWidth
+            />
           </form>
         </div>
       )}
@@ -434,7 +440,7 @@ export const LeaveRequest: React.FC = () => {
             <span style={{ fontSize: fontSizes.medium, color: '#6b7280' }}>
               ({searchFiscalYear}年4月 〜 {searchFiscalYear + 1}年3月)
             </span>
-            <button
+            <Button
               type="button"
               onClick={() => setSearchFiscalYear(getCurrentFiscalYear())}
               style={{
@@ -442,16 +448,11 @@ export const LeaveRequest: React.FC = () => {
                 backgroundColor: '#6b7280',
                 color: 'white',
                 border: 'none',
-                borderRadius: '4px',
-                fontSize: fontSizes.button,
-                cursor: 'pointer',
-                boxShadow: 'none',
-                minHeight: 'auto',
-                minWidth: 'auto'
+                fontSize: fontSizes.button
               }}
             >
               今年度に戻す
-            </button>
+            </Button>
           </div>
           <div style={{
             backgroundColor: '#f9fafb',
@@ -493,24 +494,17 @@ export const LeaveRequest: React.FC = () => {
                           {request.status}
                         </span>
                         {request.status === '申請中' && (
-                          <button
+                          <Button
                             type="button"
+                            variant="danger"
                             onClick={() => handleCancelRequest(request.id)}
+                            size="small"
                             style={{
-                              padding: '0.25rem 0.75rem',
-                              backgroundColor: '#dc2626',
-                              color: 'white',
-                              border: 'none',
-                              borderRadius: '4px',
-                              fontWeight: 'bold',
-                              cursor: 'pointer',
-                              boxShadow: 'none',
-                              minHeight: 'auto',
-                              minWidth: 'auto'
+                              padding: '0.25rem 0.75rem'
                             }}
                           >
                             取消
-                          </button>
+                          </Button>
                         )}
                       </div>
                     </div>
@@ -519,7 +513,7 @@ export const LeaveRequest: React.FC = () => {
                       color: request.status === '削除済み' ? '#9ca3af' : '#6b7280', 
                       marginBottom: '0.5rem' 
                     }}>
-                      {request.startDate} {request.startDate !== request.endDate ? `～ ${request.endDate}` : ''} 
+                      {formatDate(request.startDate)} {request.startDate !== request.endDate ? `～ ${formatDate(request.endDate)}` : ''} 
                       ({request.days}日{request.isHalfDay ? '（半休）' : ''})
                     </div>
                     <div style={{ 

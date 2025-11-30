@@ -12,16 +12,25 @@
 import { useState, useEffect } from 'react';
 import { Snackbar } from '../../components/Snackbar';
 import { ConfirmModal } from '../../components/ConfirmModal';
-import { EditIcon, DeleteIcon } from '../../components/Icons';
+import { RegisterButton, UpdateButton, CancelButton, EditButton, DeleteButton } from '../../components/Button';
 import { fontSizes } from '../../config/fontSizes';
 import { dummyAllowances } from '../../data/dummyData';
 
+/**
+ * 手当を表すインターフェース。
+ */
 interface Allowance {
+  /** 手当ID。 */
   id: string;
+  /** 手当名。 */
   name: string;
+  /** 手当の表示色（16進数カラーコード）。 */
   color: string;
 }
 
+/**
+ * デフォルトの手当カラー一覧。
+ */
 const defaultColors = [
   '#3b82f6', // 青
   '#10b981', // 緑
@@ -33,6 +42,13 @@ const defaultColors = [
   '#84cc16', // ライム
 ];
 
+/**
+ * 手当マスタ画面コンポーネント。
+ * 従業員に付与する手当のマスタデータを管理します。
+ * 手当の新規登録、編集、削除機能を提供します。
+ *
+ * @returns {JSX.Element} 手当マスタ画面コンポーネント。
+ */
 export const AllowanceMaster: React.FC = () => {
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const [allowances, setAllowances] = useState<Allowance[]>(dummyAllowances);
@@ -234,44 +250,26 @@ export const AllowanceMaster: React.FC = () => {
             </div>
             <div style={{ display: 'flex', gap: '0.4rem', flexDirection: isMobile ? 'column' : 'row' }}>
               {editingId && (
-                <button
+                <CancelButton
+                  size="small"
+                  fullWidth
                   type="button"
                   onClick={handleCancel}
-                  style={{
-                    flex: 1,
-                    padding: '0.4rem',
-                    backgroundColor: '#6b7280',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '4px',
-                    fontWeight: 'bold',
-                    cursor: 'pointer',
-                    boxShadow: 'none',
-                    minHeight: 'auto',
-                    minWidth: 'auto'
-                  }}
-                >
-                  キャンセル
-                </button>
+                />
               )}
-              <button
-                type="submit"
-                style={{
-                  flex: 1,
-                  padding: '0.4rem',
-                  backgroundColor: '#2563eb',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  fontWeight: 'bold',
-                  cursor: 'pointer',
-                  boxShadow: 'none',
-                  minHeight: 'auto',
-                  minWidth: 'auto'
-                }}
-              >
-                {editingId ? '更新' : '登録'}
-              </button>
+              {editingId ? (
+                <UpdateButton
+                  size="small"
+                  fullWidth
+                  type="submit"
+                />
+              ) : (
+                <RegisterButton
+                  size="small"
+                  fullWidth
+                  type="submit"
+                />
+              )}
             </div>
           </form>
         </div>
@@ -321,62 +319,12 @@ export const AllowanceMaster: React.FC = () => {
                       </div>
                     </div>
                     <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                      <button
+                      <EditButton
                         onClick={() => handleEdit(allowance)}
-                        style={{
-                          padding: '0.5rem',
-                          background: 'transparent',
-                          backgroundColor: 'transparent',
-                          border: 'none',
-                          borderRadius: '4px',
-                          cursor: 'pointer',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          color: '#2563eb',
-                          transition: 'background-color 0.2s',
-                          boxShadow: 'none',
-                          minHeight: 'auto',
-                          minWidth: 'auto'
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.backgroundColor = '#eff6ff';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.backgroundColor = 'transparent';
-                        }}
-                        title="編集"
-                      >
-                        <EditIcon size={28} color="#2563eb" />
-                      </button>
-                      <button
+                      />
+                      <DeleteButton
                         onClick={() => handleDelete(allowance.id)}
-                        style={{
-                          padding: '0.75rem',
-                          background: 'transparent',
-                          backgroundColor: 'transparent',
-                          border: 'none',
-                          borderRadius: '4px',
-                          cursor: 'pointer',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          color: '#dc2626',
-                          transition: 'background-color 0.2s',
-                          boxShadow: 'none',
-                          minHeight: 'auto',
-                          minWidth: 'auto'
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.backgroundColor = '#fee2e2';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.backgroundColor = 'transparent';
-                        }}
-                        title="削除"
-                      >
-                        <DeleteIcon size={28} color="#dc2626" />
-                      </button>
+                      />
                     </div>
                   </div>
                 ))}

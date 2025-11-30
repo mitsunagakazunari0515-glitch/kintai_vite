@@ -12,15 +12,27 @@
 import { useState, useEffect } from 'react';
 import { Snackbar } from '../../components/Snackbar';
 import { ConfirmModal } from '../../components/ConfirmModal';
-import { EditIcon, DeleteIcon } from '../../components/Icons';
+import { RegisterButton, UpdateButton, CancelButton, EditButton, DeleteButton } from '../../components/Button';
 import { fontSizes } from '../../config/fontSizes';
 import { dummyDeductions } from '../../data/dummyData';
 
+/**
+ * 控除を表すインターフェース。
+ */
 interface Deduction {
+  /** 控除ID。 */
   id: string;
+  /** 控除名。 */
   name: string;
 }
 
+/**
+ * 控除マスタ画面コンポーネント。
+ * 給与明細で使用する控除項目のマスタデータを管理します。
+ * 控除項目の新規登録、編集、削除機能を提供します。
+ *
+ * @returns {JSX.Element} 控除マスタ画面コンポーネント。
+ */
 export const DeductionMaster: React.FC = () => {
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const [deductions, setDeductions] = useState<Deduction[]>(dummyDeductions);
@@ -157,45 +169,23 @@ export const DeductionMaster: React.FC = () => {
             </div>
             <div style={{ display: 'flex', gap: '1rem', flexDirection: isMobile ? 'column' : 'row' }}>
               {editingId && (
-                <button
+                <CancelButton
+                  fullWidth
                   type="button"
                   onClick={handleCancel}
-                  style={{
-                    flex: 1,
-                    padding: '0.75rem',
-                    backgroundColor: '#6b7280',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '4px',
-                    fontSize: fontSizes.button,
-                    fontWeight: 'bold',
-                    cursor: 'pointer',
-                    boxShadow: 'none',
-                    minHeight: 'auto',
-                    minWidth: 'auto'
-                  }}
-                >
-                  キャンセル
-                </button>
+                />
               )}
-              <button
-                type="submit"
-                style={{
-                  flex: 1,
-                  padding: '0.75rem',
-                  backgroundColor: '#2563eb',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  fontWeight: 'bold',
-                  cursor: 'pointer',
-                  boxShadow: 'none',
-                  minHeight: 'auto',
-                  minWidth: 'auto'
-                }}
-              >
-                {editingId ? '更新' : '登録'}
-              </button>
+              {editingId ? (
+                <UpdateButton
+                  fullWidth
+                  type="submit"
+                />
+              ) : (
+                <RegisterButton
+                  fullWidth
+                  type="submit"
+                />
+              )}
             </div>
           </form>
         </div>
@@ -233,62 +223,12 @@ export const DeductionMaster: React.FC = () => {
                       </div>
                     </div>
                     <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                      <button
+                      <EditButton
                         onClick={() => handleEdit(deduction)}
-                        style={{
-                          padding: '0.5rem',
-                          background: 'transparent',
-                          backgroundColor: 'transparent',
-                          border: 'none',
-                          borderRadius: '4px',
-                          cursor: 'pointer',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          color: '#2563eb',
-                          transition: 'background-color 0.2s',
-                          boxShadow: 'none',
-                          minHeight: 'auto',
-                          minWidth: 'auto'
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.backgroundColor = '#eff6ff';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.backgroundColor = 'transparent';
-                        }}
-                        title="編集"
-                      >
-                        <EditIcon size={28} color="#2563eb" />
-                      </button>
-                      <button
+                      />
+                      <DeleteButton
                         onClick={() => handleDelete(deduction.id)}
-                        style={{
-                          padding: '0.75rem',
-                          background: 'transparent',
-                          backgroundColor: 'transparent',
-                          border: 'none',
-                          borderRadius: '4px',
-                          cursor: 'pointer',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          color: '#dc2626',
-                          transition: 'background-color 0.2s',
-                          boxShadow: 'none',
-                          minHeight: 'auto',
-                          minWidth: 'auto'
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.backgroundColor = '#fee2e2';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.backgroundColor = 'transparent';
-                        }}
-                        title="削除"
-                      >
-                        <DeleteIcon size={28} color="#dc2626" />
-                      </button>
+                      />
                     </div>
                   </div>
                 ))}

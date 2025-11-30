@@ -13,6 +13,13 @@ import { useNavigate, Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { fontSizes } from '../config/fontSizes';
 
+/**
+ * ログイン画面コンポーネント。
+ * 管理者と従業員のログイン機能を提供します。
+ * ID・パスワード入力、ログインタイプ切り替え、認証処理を行います。
+ *
+ * @returns {JSX.Element | null} ログイン画面コンポーネント。認証状態の復元中はnullを返します。
+ */
 export const Login: React.FC = () => {
   const [id, setId] = useState('');
   const [password, setPassword] = useState('');

@@ -14,6 +14,12 @@ import { AttendanceList } from './pages/admin/AttendanceList';
 import { Attendance } from './pages/employee/Attendance';
 import { LeaveRequest } from './pages/employee/LeaveRequest';
 
+/**
+ * 管理者用ルートコンポーネント。
+ * 管理者向けの画面ルーティングを定義します。
+ *
+ * @returns {JSX.Element} 管理者用ルートコンポーネント。
+ */
 const AdminRoutes = () => (
   <Layout>
     <Routes>
@@ -31,6 +37,12 @@ const AdminRoutes = () => (
   </Layout>
 );
 
+/**
+ * 従業員用ルートコンポーネント。
+ * 従業員向けの画面ルーティングを定義します。
+ *
+ * @returns {JSX.Element} 従業員用ルートコンポーネント。
+ */
 const EmployeeRoutes = () => (
   <Layout>
     <Routes>
@@ -41,6 +53,12 @@ const EmployeeRoutes = () => (
   </Layout>
 );
 
+/**
+ * アプリケーションルートコンポーネント。
+ * 認証状態に応じたルーティングを管理します。
+ *
+ * @returns {JSX.Element | null} アプリケーションルートコンポーネント。認証状態の復元中はnullを返します。
+ */
 const AppRoutes = () => {
   const { isLoading } = useAuth();
 
@@ -74,6 +92,12 @@ const AppRoutes = () => {
   );
 };
 
+/**
+ * アプリケーションのルートコンポーネント。
+ * 認証プロバイダーとルーティングを設定します。
+ *
+ * @returns {JSX.Element} アプリケーションコンポーネント。
+ */
 function App() {
   return (
     <AuthProvider>

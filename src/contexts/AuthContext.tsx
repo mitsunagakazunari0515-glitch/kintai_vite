@@ -1,18 +1,38 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 
+/**
+ * ユーザーのロールを表す型。
+ */
 type UserRole = 'admin' | 'employee' | null;
 
+/**
+ * 認証コンテキストの型を表すインターフェース。
+ */
 interface AuthContextType {
+  /** 認証済みかどうか。 */
   isAuthenticated: boolean;
+  /** ユーザーのロール。 */
   userRole: UserRole;
+  /** ユーザーID。 */
   userId: string | null;
-  isLoading: boolean; // 認証状態の復元中かどうか
+  /** 認証状態の復元中かどうか。 */
+  isLoading: boolean;
+  /** ログイン処理を行う関数。 */
   login: (id: string, password: string, role: UserRole) => boolean;
+  /** ログアウト処理を行う関数。 */
   logout: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+/**
+ * 認証プロバイダーコンポーネント。
+ * アプリケーション全体で認証状態を管理します。
+ *
+ * @param {Object} props - コンポーネントのプロパティ。
+ * @param {ReactNode} props.children - 子要素。
+ * @returns {JSX.Element} 認証プロバイダーコンポーネント。
+ */
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [userRole, setUserRole] = useState<UserRole>(null);
@@ -63,6 +83,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   );
 };
 
+/**
+ * 認証コンテキストを使用するカスタムフック。
+ * AuthProviderの外で使用するとエラーが発生します。
+ *
+ * @returns {AuthContextType} 認証コンテキストの値。
+ * @throws {Error} AuthProviderの外で使用された場合にエラーをスローします。
+ * @example
+ * ```typescript
+ * const { isAuthenticated, userRole, login, logout } = useAuth();
+ * ```
+ */
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {

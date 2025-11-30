@@ -17,53 +17,104 @@ import { useParams, useNavigate } from 'react-router-dom';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { EditIcon } from '../../components/Icons';
+import { NewRegisterButton, ViewButton, PdfExportButton, CancelButton, RegisterButton, UpdateButton } from '../../components/Button';
 import { formatCurrency } from '../../utils/formatters';
 import { fontSizes } from '../../config/fontSizes';
 import { getCurrentFiscalYear } from '../../utils/fiscalYear';
 import { dummyAllowances, dummyDeductions, getPayrollRecordsByEmployeeId } from '../../data/dummyData';
 
+/**
+ * 手当を表すインターフェース。
+ */
 interface Allowance {
+  /** 手当ID。 */
   id: string;
+  /** 手当名。 */
   name: string;
+  /** 手当の表示色（16進数カラーコード）。 */
   color: string;
 }
 
+/**
+ * 控除を表すインターフェース。
+ */
 interface Deduction {
+  /** 控除ID。 */
   id: string;
+  /** 控除名。 */
   name: string;
 }
 
+/**
+ * 給与明細の詳細情報を表すインターフェース。
+ */
 interface PayrollDetail {
+  /** 出勤日数。 */
   workingDays: number;
+  /** 休日出勤日数。 */
   holidayWork: number;
+  /** 有給休暇日数。 */
   paidLeave: number;
+  /** 有給残日数。 */
   paidLeaveRemaining: number;
+  /** 有給残の時点（日付文字列）。 */
   paidLeaveRemainingDate: string;
+  /** 普通残業時間。 */
   normalOvertime: number;
+  /** 深夜残業時間。 */
   lateNightOvertime: number;
+  /** 基本給。 */
   baseSalary: number;
+  /** 時間外手当。 */
   overtimeAllowance: number;
+  /** 深夜手当。 */
   lateNightAllowance: number;
+  /** 食事手当。 */
   mealAllowance: number;
-  allowances: { [key: string]: number }; // 手当IDをキーとした金額のマップ
+  /** 手当IDをキーとした金額のマップ。 */
+  allowances: { [key: string]: number };
+  /** 総支給額。 */
   totalEarnings: number;
-  deductions: { [key: string]: number }; // 控除IDをキーとした金額のマップ
+  /** 控除IDをキーとした金額のマップ。 */
+  deductions: { [key: string]: number };
+  /** 控除合計。 */
   totalDeductions: number;
+  /** 差引支給額。 */
   netPay: number;
 }
 
+/**
+ * 給与明細レコードを表すインターフェース。
+ */
 interface PayrollRecord {
+  /** レコードID。 */
   id: string;
+  /** 従業員ID。 */
   employeeId: string;
+  /** 従業員名。 */
   employeeName: string;
+  /** 会社名。 */
   companyName: string;
+  /** 給与期間。 */
   period: string;
+  /** 給与明細の詳細情報。 */
   detail: PayrollDetail;
-  updatedAt?: string; // 更新日時
+  /** 更新日時。 */
+  updatedAt?: string;
 }
 
+/**
+ * 表示モードを表す型。
+ */
 type ViewMode = 'list' | 'preview' | 'edit' | 'new';
 
+/**
+ * 従業員給与明細画面コンポーネント。
+ * 特定の従業員の給与明細を表示・編集します。
+ * 給与明細のプレビュー表示、編集、PDF出力、年月での検索機能を提供します。
+ *
+ * @returns {JSX.Element} 従業員給与明細画面コンポーネント。
+ */
 export const EmployeePayroll: React.FC = () => {
   const { employeeId } = useParams<{ employeeId: string }>();
   const navigate = useNavigate();
@@ -577,13 +628,24 @@ export const EmployeePayroll: React.FC = () => {
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
+        marginTop: isMobile ? '1rem' : '1.5rem',
         marginBottom: isMobile ? '1rem' : '1.4rem',
         flexWrap: 'wrap',
         gap: '1rem'
       }}>
         <h2 style={{ margin: 0, fontSize: isMobile ? '1.25rem' : '1.05rem' }}>
-          {payrollRecords[0]?.employeeName || '従業員'} - 給与明細書
+          {payrollRecords[0]?.employeeName || '従業員'} - {
+            viewMode === 'preview' ? '給与明細書' :
+            viewMode === 'new' ? '給与明細登録' :
+            viewMode === 'edit' ? '給与明細編集' :
+            '給与明細一覧'
+          }
         </h2>
+        {viewMode === 'list' && (
+          <NewRegisterButton
+            onClick={handleNew}
+          />
+        )}
         {viewMode === 'preview' && currentRecord && previewYearMonth && (
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
             <label style={{ fontSize: isMobile ? '0.875rem' : '0.7rem', fontWeight: 'bold', whiteSpace: 'nowrap' }}>
@@ -638,19 +700,18 @@ export const EmployeePayroll: React.FC = () => {
           {/* 検索条件 */}
           <div style={{
             backgroundColor: '#f9fafb',
-            padding: isMobile ? '1rem' : '1.5rem',
+            padding: isMobile ? '1rem' : '0.75rem',
             borderRadius: '8px',
-            marginBottom: '1.5rem'
+            marginBottom: '0.5rem'
           }}>
-            <h3 style={{ marginBottom: '0.7rem', fontSize: isMobile ? '1.125rem' : '0.875rem' }}>検索条件</h3>
             <div style={{
               display: 'flex',
               gap: '1rem',
               alignItems: 'flex-start',
-              marginBottom: '1.5rem'
+              flexWrap: 'wrap'
             }}>
               <div style={{ flex: 1, maxWidth: '200px' }}>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold', fontSize: isMobile ? '0.875rem' : '0.7rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 'bold', fontSize: isMobile ? '0.875rem' : '0.7rem' }}>
                   年度
                 </label>
                 <input
@@ -661,20 +722,19 @@ export const EmployeePayroll: React.FC = () => {
                   max="2100"
                   style={{
                     width: '100%',
-                    padding: '0.75rem',
+                    padding: '0.5rem',
                     border: '1px solid #d1d5db',
                     borderRadius: '4px',
                     fontSize: fontSizes.input,
-                    boxSizing: 'border-box',
-                    height: 'calc(0.75rem * 2 + 16px + 2px)'
+                    boxSizing: 'border-box'
                   }}
                 />
-                <div style={{ fontSize: fontSizes.medium, color: '#6b7280', marginTop: '0.25rem' }}>
+                <div style={{ fontSize: fontSizes.small, color: '#6b7280', marginTop: '0.1rem', whiteSpace: 'nowrap' }}>
                   {searchFiscalYear}年度（{searchFiscalYear}年4月 〜 {searchFiscalYear + 1}年3月）
                 </div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold', fontSize: isMobile ? '0.875rem' : '0.7rem', opacity: 0, height: '1.25rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 'bold', fontSize: isMobile ? '0.875rem' : '0.7rem', opacity: 0, height: '1.25rem' }}>
                   年度
                 </label>
                 <button
@@ -682,7 +742,7 @@ export const EmployeePayroll: React.FC = () => {
                     setSearchFiscalYear(getCurrentFiscalYear());
                   }}
                   style={{
-                    padding: '0.75rem 1.5rem',
+                    padding: '0.5rem 1rem',
                     backgroundColor: '#6b7280',
                     color: 'white',
                     border: 'none',
@@ -691,7 +751,6 @@ export const EmployeePayroll: React.FC = () => {
                     cursor: 'pointer',
                     whiteSpace: 'nowrap',
                     boxSizing: 'border-box',
-                    height: 'calc(0.75rem * 2 + 16px + 2px)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -703,6 +762,16 @@ export const EmployeePayroll: React.FC = () => {
                   今年度に戻す
                 </button>
               </div>
+              <div style={{ 
+                fontSize: fontSizes.badge,
+                color: '#6b7280',
+                flex: isMobile ? '1' : '0 0 auto',
+                alignSelf: isMobile ? 'flex-start' : 'flex-end',
+                paddingBottom: isMobile ? '0' : '0.25rem',
+                minWidth: isMobile ? '100%' : 'auto'
+              }}>
+                検索結果: {sortedRecords.length}件
+              </div>
             </div>
           </div>
 
@@ -711,35 +780,6 @@ export const EmployeePayroll: React.FC = () => {
             backgroundColor: '#f9fafb',
             borderRadius: '8px'
           }}>
-            <div style={{ 
-              display: 'flex', 
-              justifyContent: 'space-between', 
-              alignItems: 'center',
-              marginBottom: '1.5rem',
-              padding: isMobile ? '1rem 1rem 0 1rem' : '1.5rem 1.5rem 0 1.5rem'
-            }}>
-              <h3 style={{ margin: 0, fontSize: isMobile ? '1.125rem' : '0.875rem' }}>
-                給与明細一覧 ({sortedRecords.length}件)
-              </h3>
-              <button
-                onClick={handleNew}
-                style={{
-                  padding: '0.75rem 1.5rem',
-                  backgroundColor: '#2563eb',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  fontWeight: 'bold',
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap',
-                  boxShadow: 'none',
-                  minHeight: 'auto',
-                  minWidth: 'auto'
-                }}
-              >
-                + 新規登録
-              </button>
-            </div>
             {sortedRecords.length === 0 ? (
               <p style={{ color: '#6b7280', textAlign: 'center', padding: '2rem' }}>
                 給与明細が見つかりません
@@ -780,32 +820,10 @@ export const EmployeePayroll: React.FC = () => {
                         </div>
                       </div>
                       <div style={{ display: 'flex', gap: '0.5rem', flexDirection: 'column' }}>
-                        <button
+                        <ViewButton
                           onClick={() => handleView(record)}
-                          style={{
-                            padding: '0.5rem 1rem',
-                            backgroundColor: '#2563eb',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '4px',
-                            fontSize: fontSizes.button,
-                            fontWeight: 'bold',
-                            cursor: 'pointer',
-                            whiteSpace: 'nowrap',
-                            boxShadow: 'none',
-                            minHeight: 'auto',
-                            minWidth: 'auto'
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.backgroundColor = '#1d4ed8';
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.backgroundColor = '#2563eb';
-                          }}
                           title="給与明細を閲覧"
-                        >
-                          閲覧
-                        </button>
+                        />
                         <button
                           onClick={() => handleEdit(record)}
                           style={{
@@ -844,7 +862,8 @@ export const EmployeePayroll: React.FC = () => {
                 overflowX: 'auto',
                 maxHeight: isMobile ? '400px' : 'calc(100vh - 400px)',
                 overflowY: 'auto',
-                flex: 1
+                flex: 1,
+                padding: isMobile ? '1rem' : '0'
               }}>
                 <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, minWidth: '600px', border: '2px solid #e5e7eb' }}>
                   <thead>
@@ -913,32 +932,10 @@ export const EmployeePayroll: React.FC = () => {
                           }) : '-'}
                         </td>
                         <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                          <button
+                          <ViewButton
                             onClick={() => handleView(record)}
-                            style={{
-                              padding: '0.5rem 1rem',
-                              backgroundColor: '#2563eb',
-                              color: 'white',
-                              border: 'none',
-                              borderRadius: '4px',
-                              fontSize: fontSizes.tableCell,
-                              fontWeight: 'bold',
-                              cursor: 'pointer',
-                              whiteSpace: 'nowrap',
-                              boxShadow: 'none',
-                              minHeight: 'auto',
-                              minWidth: 'auto'
-                            }}
-                            onMouseEnter={(e) => {
-                              e.currentTarget.style.backgroundColor = '#1d4ed8';
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.style.backgroundColor = '#2563eb';
-                            }}
                             title="給与明細を閲覧"
-                          >
-                            閲覧
-                          </button>
+                          />
                         </td>
                         <td style={{ padding: '0.75rem', textAlign: 'center' }}>
                           <button
@@ -993,25 +990,12 @@ export const EmployeePayroll: React.FC = () => {
             alignItems: 'center',
             zIndex: 1000
           }}>
-            <button
+            <CancelButton
               onClick={() => navigate('/admin/employees')}
-              style={{
-                padding: '0.75rem 1.5rem',
-                backgroundColor: '#6b7280',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                fontSize: isMobile ? '0.875rem' : '1rem',
-                fontWeight: 'bold',
-                cursor: 'pointer',
-                whiteSpace: 'nowrap',
-                boxShadow: 'none',
-                minHeight: 'auto',
-                minWidth: 'auto'
-              }}
+              style={{ whiteSpace: 'nowrap' }}
             >
               ←戻る
-            </button>
+            </CancelButton>
           </div>
         </div>
       )}
@@ -1079,38 +1063,6 @@ export const EmployeePayroll: React.FC = () => {
               </div>
             </div>
           )}
-          {/* 基本情報（編集不可） */}
-          <div style={{
-            backgroundColor: '#f9fafb',
-            padding: isMobile ? '1rem' : '1.5rem',
-            borderRadius: '8px',
-            marginBottom: '1.5rem'
-          }}>
-            <h3 style={{ marginBottom: '0.7rem', fontSize: isMobile ? '1.125rem' : '0.875rem' }}>基本情報</h3>
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr',
-              gap: '1rem'
-            }}>
-              <div>
-                <div style={{ fontSize: fontSizes.medium, color: '#6b7280', marginBottom: '0.25rem' }}>従業員ID</div>
-                <div style={{ fontWeight: 'bold' }}>{currentRecord.employeeId}</div>
-              </div>
-              <div>
-                <div style={{ fontSize: fontSizes.medium, color: '#6b7280', marginBottom: '0.25rem' }}>氏名</div>
-                <div style={{ fontWeight: 'bold' }}>{currentRecord.employeeName}</div>
-              </div>
-              <div>
-                <div style={{ fontSize: fontSizes.medium, color: '#6b7280', marginBottom: '0.25rem' }}>会社名</div>
-                <div style={{ fontWeight: 'bold' }}>{currentRecord.companyName}</div>
-              </div>
-              <div>
-                <div style={{ fontSize: fontSizes.medium, color: '#6b7280', marginBottom: '0.25rem' }}>期間</div>
-                <div style={{ fontWeight: 'bold' }}>{currentRecord.period}</div>
-              </div>
-            </div>
-          </div>
-
           {/* プレビュー画面 */}
           {viewMode === 'preview' && (
             <div ref={payslipRef} style={{
@@ -1174,66 +1126,69 @@ export const EmployeePayroll: React.FC = () => {
                 </div>
               </div>
 
-              {/* 支給セクション */}
-              <div style={{ marginBottom: '2rem', border: '1px solid #e5e7eb', borderRadius: '4px', overflow: 'hidden' }}>
-                <div style={{ backgroundColor: '#f3f4f6', padding: '0.75rem', fontWeight: 'bold', borderBottom: '1px solid #e5e7eb' }}>
-                  支給
+              {/* 支給・控除セクション（横並び） */}
+              <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem', flexDirection: isMobile ? 'column' : 'row' }}>
+                {/* 支給セクション */}
+                <div style={{ flex: 1, border: '1px solid #e5e7eb', borderRadius: '4px', overflow: 'hidden' }}>
+                  <div style={{ backgroundColor: '#f3f4f6', padding: '0.75rem', fontWeight: 'bold', borderBottom: '1px solid #e5e7eb' }}>
+                    支給
+                  </div>
+                  <div style={{ padding: '1rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid #e5e7eb' }}>
+                      <div>基本給</div>
+                      <div style={{ fontWeight: 'bold' }}>{formatCurrency(currentRecord.detail.baseSalary)}</div>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid #e5e7eb' }}>
+                      <div>時間外手当</div>
+                      <div style={{ fontWeight: 'bold' }}>{formatCurrency(currentRecord.detail.overtimeAllowance)}</div>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid #e5e7eb' }}>
+                      <div>深夜手当</div>
+                      <div style={{ fontWeight: 'bold' }}>{formatCurrency(currentRecord.detail.lateNightAllowance)}</div>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid #e5e7eb' }}>
+                      <div>食事手当</div>
+                      <div style={{ fontWeight: 'bold' }}>{formatCurrency(currentRecord.detail.mealAllowance)}</div>
+                    </div>
+                    {/* 手当マスタから動的に表示 */}
+                    {allowances.map(allowance => {
+                      const amount = currentRecord.detail.allowances[allowance.id] || 0;
+                      if (amount === 0) return null;
+                      return (
+                        <div key={allowance.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid #e5e7eb' }}>
+                          <div>{allowance.name}</div>
+                          <div style={{ fontWeight: 'bold' }}>{formatCurrency(amount)}</div>
+                        </div>
+                      );
+                    })}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.75rem 0', marginTop: '0.5rem', borderTop: '2px solid #1f2937' }}>
+                      <div style={{ fontWeight: 'bold', fontSize: '1.125rem' }}>総支給額</div>
+                      <div style={{ fontWeight: 'bold', fontSize: '1.125rem' }}>{formatCurrency(currentRecord.detail.totalEarnings)}</div>
+                    </div>
+                  </div>
                 </div>
-                <div style={{ padding: '1rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid #e5e7eb' }}>
-                    <div>基本給</div>
-                    <div style={{ fontWeight: 'bold' }}>{formatCurrency(currentRecord.detail.baseSalary)}</div>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid #e5e7eb' }}>
-                    <div>時間外手当</div>
-                    <div style={{ fontWeight: 'bold' }}>{formatCurrency(currentRecord.detail.overtimeAllowance)}</div>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid #e5e7eb' }}>
-                    <div>深夜手当</div>
-                    <div style={{ fontWeight: 'bold' }}>{formatCurrency(currentRecord.detail.lateNightAllowance)}</div>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid #e5e7eb' }}>
-                    <div>食事手当</div>
-                    <div style={{ fontWeight: 'bold' }}>{formatCurrency(currentRecord.detail.mealAllowance)}</div>
-                  </div>
-                  {/* 手当マスタから動的に表示 */}
-                  {allowances.map(allowance => {
-                    const amount = currentRecord.detail.allowances[allowance.id] || 0;
-                    if (amount === 0) return null;
-                    return (
-                      <div key={allowance.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid #e5e7eb' }}>
-                        <div>{allowance.name}</div>
-                        <div style={{ fontWeight: 'bold' }}>{formatCurrency(amount)}</div>
-                      </div>
-                    );
-                  })}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.75rem 0', marginTop: '0.5rem', borderTop: '2px solid #1f2937' }}>
-                    <div style={{ fontWeight: 'bold', fontSize: '1.125rem' }}>総支給額</div>
-                    <div style={{ fontWeight: 'bold', fontSize: '1.125rem' }}>{formatCurrency(currentRecord.detail.totalEarnings)}</div>
-                  </div>
-                </div>
-              </div>
 
-              {/* 控除セクション */}
-              <div style={{ marginBottom: '2rem', border: '1px solid #e5e7eb', borderRadius: '4px', overflow: 'hidden' }}>
-                <div style={{ backgroundColor: '#f3f4f6', padding: '0.75rem', fontWeight: 'bold', borderBottom: '1px solid #e5e7eb' }}>
-                  控除
-                </div>
-                <div style={{ padding: '1rem' }}>
-                  {/* 控除マスタから動的に表示 */}
-                  {deductions.map(deduction => {
-                    const amount = currentRecord.detail.deductions[deduction.id] || 0;
-                    if (amount === 0) return null;
-                    return (
-                      <div key={deduction.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid #e5e7eb' }}>
-                        <div>{deduction.name}</div>
-                        <div style={{ fontWeight: 'bold' }}>{formatCurrency(amount)}</div>
-                      </div>
-                    );
-                  })}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.75rem 0', marginTop: '0.5rem', borderTop: '2px solid #1f2937' }}>
-                    <div style={{ fontWeight: 'bold', fontSize: '1.125rem' }}>控除合計</div>
-                    <div style={{ fontWeight: 'bold', fontSize: '1.125rem' }}>{formatCurrency(currentRecord.detail.totalDeductions)}</div>
+                {/* 控除セクション */}
+                <div style={{ flex: 1, border: '1px solid #e5e7eb', borderRadius: '4px', overflow: 'hidden' }}>
+                  <div style={{ backgroundColor: '#f3f4f6', padding: '0.75rem', fontWeight: 'bold', borderBottom: '1px solid #e5e7eb' }}>
+                    控除
+                  </div>
+                  <div style={{ padding: '1rem' }}>
+                    {/* 控除マスタから動的に表示 */}
+                    {deductions.map(deduction => {
+                      const amount = currentRecord.detail.deductions[deduction.id] || 0;
+                      if (amount === 0) return null;
+                      return (
+                        <div key={deduction.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid #e5e7eb' }}>
+                          <div>{deduction.name}</div>
+                          <div style={{ fontWeight: 'bold' }}>{formatCurrency(amount)}</div>
+                        </div>
+                      );
+                    })}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.75rem 0', marginTop: '0.5rem', borderTop: '2px solid #1f2937' }}>
+                      <div style={{ fontWeight: 'bold', fontSize: '1.125rem' }}>控除合計</div>
+                      <div style={{ fontWeight: 'bold', fontSize: '1.125rem' }}>{formatCurrency(currentRecord.detail.totalDeductions)}</div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1271,109 +1226,31 @@ export const EmployeePayroll: React.FC = () => {
               gap: '1rem',
               zIndex: 1000
             }}>
-              <button
+              <CancelButton
                 onClick={() => {
                   setViewMode('list');
                   window.history.pushState({ viewMode: 'list' }, '', window.location.pathname);
                 }}
-                style={{
-                  padding: '0.75rem 1.5rem',
-                  backgroundColor: '#6b7280',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  fontSize: isMobile ? '0.875rem' : '0.7rem',
-                  fontWeight: 'bold',
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap',
-                  boxShadow: 'none',
-                  minHeight: 'auto',
-                  minWidth: 'auto'
-                }}
+                style={{ whiteSpace: 'nowrap' }}
               >
                 ← 戻る
-              </button>
+              </CancelButton>
               <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                <button
+                <PdfExportButton
                   onClick={handleExportPDF}
-                  style={{
-                    padding: '0.75rem 1.5rem',
-                    background: 'transparent',
-                    backgroundColor: 'transparent',
-                    border: 'none',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '0.5rem',
-                    color: '#dc2626',
-                    transition: 'background-color 0.2s',
-                    whiteSpace: 'nowrap',
-                    boxShadow: 'none',
-                    minHeight: 'auto',
-                    minWidth: 'auto'
+                  iconSize={isMobile ? 20 : 24}
+                  style={{ 
+                    fontSize: isMobile ? '0.875rem' : '0.7rem',
+                    whiteSpace: 'nowrap'
                   }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = '#fee2e2';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = 'transparent';
-                  }}
-                  title="PDF出力"
-                >
-                  <svg
-                    width="24"
-                    height="24"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    xmlns="http://www.w3.org/2000/svg"
-                  >
-                    <path
-                      d="M14 2H6C5.46957 2 4.96086 2.21071 4.58579 2.58579C4.21071 2.96086 4 3.46957 4 4V20C4 20.5304 4.21071 21.0391 4.58579 21.4142C4.96086 21.7893 5.46957 22 6 22H18C18.5304 22 19.0391 21.7893 19.4142 21.4142C19.7893 21.0391 20 20.5304 20 20V8L14 2Z"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                    <path
-                      d="M14 2V8H20"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                    <path
-                      d="M16 13H8"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                    <path
-                      d="M16 17H8"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                    <path
-                      d="M10 9H9H8"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                  <span style={{ fontSize: isMobile ? '0.875rem' : '0.7rem', fontWeight: 'bold' }}>PDF出力</span>
-                </button>
+                />
                 <button
                   onClick={() => handleEdit(currentRecord)}
                   style={{
                     padding: '0.75rem 1.5rem',
-                    background: 'transparent',
-                    backgroundColor: 'transparent',
-                    border: 'none',
+                    background: 'white',
+                    backgroundColor: 'white',
+                    border: '1px solid #2563eb',
                     borderRadius: '4px',
                     cursor: 'pointer',
                     display: 'inline-flex',
@@ -1381,22 +1258,26 @@ export const EmployeePayroll: React.FC = () => {
                     justifyContent: 'center',
                     gap: '0.5rem',
                     color: '#2563eb',
-                    transition: 'background-color 0.2s',
+                    transition: 'background-color 0.2s, border-color 0.2s',
                     whiteSpace: 'nowrap',
                     boxShadow: 'none',
                     minHeight: 'auto',
-                    minWidth: 'auto'
+                    minWidth: 'auto',
+                    fontSize: isMobile ? '0.875rem' : '0.7rem',
+                    fontWeight: 'bold'
                   }}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.backgroundColor = '#eff6ff';
+                    e.currentTarget.style.borderColor = '#1d4ed8';
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = 'transparent';
+                    e.currentTarget.style.backgroundColor = 'white';
+                    e.currentTarget.style.borderColor = '#2563eb';
                   }}
                   title="編集"
                 >
-                  <EditIcon size={28} color="#2563eb" />
-                  <span style={{ fontSize: isMobile ? '0.875rem' : '0.7rem', fontWeight: 'bold' }}>編集</span>
+                  <EditIcon size={isMobile ? 20 : 24} color="#2563eb" />
+                  編集
                 </button>
               </div>
             </div>
@@ -1409,7 +1290,9 @@ export const EmployeePayroll: React.FC = () => {
               padding: isMobile ? '1rem' : '1.5rem',
               borderRadius: '8px'
             }}>
-              <h3 style={{ marginBottom: '1.05rem', fontSize: isMobile ? '1.125rem' : '0.875rem' }}>給与明細編集</h3>
+              <h3 style={{ marginBottom: '1.05rem', fontSize: isMobile ? '1.125rem' : '0.875rem' }}>
+                {viewMode === 'new' ? '給与明細登録' : '給与明細編集'}
+              </h3>
 
               {/* 勤務情報 */}
               <div style={{ marginBottom: '1.5rem', padding: '1rem', backgroundColor: 'white', borderRadius: '4px' }}>
@@ -1536,90 +1419,82 @@ export const EmployeePayroll: React.FC = () => {
                 </div>
               </div>
 
-              {/* 支給 */}
-              <div style={{ marginBottom: '1.5rem', padding: '1rem', backgroundColor: 'white', borderRadius: '4px' }}>
-                <h4 style={{ marginBottom: '1rem', fontSize: isMobile ? fontSizes.h4.mobile : fontSizes.h4.desktop, fontWeight: 'bold' }}>支給</h4>
-                <div style={{ 
-                  display: 'grid', 
-                  gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', 
-                  gap: '1rem',
-                  marginBottom: '1.5rem'
-                }}>
-                  <div>
-                    <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: fontSizes.label }}>基本給</label>
-                    <input
-                      type="number"
-                      value={formData.baseSalary}
-                      onChange={(e) => setFormData({ ...formData, baseSalary: Number(e.target.value) })}
-                      style={{
-                        width: '100%',
-                        padding: '0.5rem',
-                        border: '1px solid #d1d5db',
-                        borderRadius: '4px',
-                        fontSize: fontSizes.input,
-                        boxSizing: 'border-box'
-                      }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: fontSizes.label }}>時間外手当</label>
-                    <input
-                      type="number"
-                      value={formData.overtimeAllowance}
-                      onChange={(e) => setFormData({ ...formData, overtimeAllowance: Number(e.target.value) })}
-                      style={{
-                        width: '100%',
-                        padding: '0.5rem',
-                        border: '1px solid #d1d5db',
-                        borderRadius: '4px',
-                        fontSize: fontSizes.input,
-                        boxSizing: 'border-box'
-                      }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: fontSizes.label }}>深夜手当</label>
-                    <input
-                      type="number"
-                      value={formData.lateNightAllowance}
-                      onChange={(e) => setFormData({ ...formData, lateNightAllowance: Number(e.target.value) })}
-                      style={{
-                        width: '100%',
-                        padding: '0.5rem',
-                        border: '1px solid #d1d5db',
-                        borderRadius: '4px',
-                        fontSize: fontSizes.input,
-                        boxSizing: 'border-box'
-                      }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: fontSizes.label }}>食事手当</label>
-                    <input
-                      type="number"
-                      value={formData.mealAllowance}
-                      onChange={(e) => setFormData({ ...formData, mealAllowance: Number(e.target.value) })}
-                      style={{
-                        width: '100%',
-                        padding: '0.5rem',
-                        border: '1px solid #d1d5db',
-                        borderRadius: '4px',
-                        fontSize: fontSizes.input,
-                        boxSizing: 'border-box'
-                      }}
-                    />
-                  </div>
-                </div>
-                {/* 手当マスタから動的に入力フィールドを生成 */}
-                <div style={{ marginBottom: '1rem' }}>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: fontSizes.label, fontWeight: 'bold' }}>
-                    手当（手当マスタから）
-                  </label>
-                  <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
-                    gap: '1rem'
+              {/* 支給・控除セクション（横並び） */}
+              <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', flexDirection: isMobile ? 'column' : 'row' }}>
+                {/* 支給 */}
+                <div style={{ flex: 1, padding: '1rem', backgroundColor: 'white', borderRadius: '4px' }}>
+                  <h4 style={{ marginBottom: '1rem', fontSize: isMobile ? fontSizes.h4.mobile : fontSizes.h4.desktop, fontWeight: 'bold' }}>支給</h4>
+                  <div style={{ 
+                    display: 'grid', 
+                    gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', 
+                    gap: '1rem',
+                    marginBottom: '1.5rem'
                   }}>
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: fontSizes.label }}>基本給</label>
+                      <input
+                        type="number"
+                        value={formData.baseSalary}
+                        onChange={(e) => setFormData({ ...formData, baseSalary: Number(e.target.value) })}
+                        style={{
+                          width: '100%',
+                          padding: '0.5rem',
+                          border: '1px solid #d1d5db',
+                          borderRadius: '4px',
+                          fontSize: fontSizes.input,
+                          boxSizing: 'border-box'
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: fontSizes.label }}>時間外手当</label>
+                      <input
+                        type="number"
+                        value={formData.overtimeAllowance}
+                        onChange={(e) => setFormData({ ...formData, overtimeAllowance: Number(e.target.value) })}
+                        style={{
+                          width: '100%',
+                          padding: '0.5rem',
+                          border: '1px solid #d1d5db',
+                          borderRadius: '4px',
+                          fontSize: fontSizes.input,
+                          boxSizing: 'border-box'
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: fontSizes.label }}>深夜手当</label>
+                      <input
+                        type="number"
+                        value={formData.lateNightAllowance}
+                        onChange={(e) => setFormData({ ...formData, lateNightAllowance: Number(e.target.value) })}
+                        style={{
+                          width: '100%',
+                          padding: '0.5rem',
+                          border: '1px solid #d1d5db',
+                          borderRadius: '4px',
+                          fontSize: fontSizes.input,
+                          boxSizing: 'border-box'
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: fontSizes.label }}>食事手当</label>
+                      <input
+                        type="number"
+                        value={formData.mealAllowance}
+                        onChange={(e) => setFormData({ ...formData, mealAllowance: Number(e.target.value) })}
+                        style={{
+                          width: '100%',
+                          padding: '0.5rem',
+                          border: '1px solid #d1d5db',
+                          borderRadius: '4px',
+                          fontSize: fontSizes.input,
+                          boxSizing: 'border-box'
+                        }}
+                      />
+                    </div>
+                    {/* 手当マスタから動的に入力フィールドを生成 */}
                     {allowances.map(allowance => (
                       <div key={allowance.id}>
                         <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: fontSizes.label }}>
@@ -1647,49 +1522,49 @@ export const EmployeePayroll: React.FC = () => {
                       </div>
                     ))}
                   </div>
+                  <div style={{ marginTop: '1rem', padding: '0.75rem', backgroundColor: '#dbeafe', borderRadius: '4px', textAlign: 'right' }}>
+                    <strong>総支給額: {formatCurrency(formData.totalEarnings)}</strong>
+                  </div>
                 </div>
-                <div style={{ marginTop: '1rem', padding: '0.75rem', backgroundColor: '#dbeafe', borderRadius: '4px', textAlign: 'right' }}>
-                  <strong>総支給額: {formatCurrency(formData.totalEarnings)}</strong>
-                </div>
-              </div>
 
-              {/* 控除 */}
-              <div style={{ marginBottom: '1.5rem', padding: '1rem', backgroundColor: 'white', borderRadius: '4px' }}>
-                <h4 style={{ marginBottom: '1rem', fontSize: isMobile ? fontSizes.h4.mobile : fontSizes.h4.desktop, fontWeight: 'bold' }}>控除（控除マスタから）</h4>
-                <div style={{ 
-                  display: 'grid', 
-                  gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', 
-                  gap: '1rem'
-                }}>
-                  {deductions.map(deduction => (
-                    <div key={deduction.id}>
-                      <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: fontSizes.label }}>
-                        {deduction.name}
-                      </label>
-                      <input
-                        type="number"
-                        value={formData.deductions[deduction.id] || 0}
-                        onChange={(e) => setFormData({
-                          ...formData,
-                          deductions: {
-                            ...formData.deductions,
-                            [deduction.id]: Number(e.target.value)
-                          }
-                        })}
-                        style={{
-                          width: '100%',
-                          padding: '0.5rem',
-                          border: '1px solid #d1d5db',
-                          borderRadius: '4px',
-                          fontSize: fontSizes.input,
-                          boxSizing: 'border-box'
-                        }}
-                      />
-                    </div>
-                  ))}
-                </div>
-                <div style={{ marginTop: '1rem', padding: '0.75rem', backgroundColor: '#fee2e2', borderRadius: '4px', textAlign: 'right' }}>
-                  <strong>控除合計: {formatCurrency(formData.totalDeductions)}</strong>
+                {/* 控除 */}
+                <div style={{ flex: 1, padding: '1rem', backgroundColor: 'white', borderRadius: '4px' }}>
+                  <h4 style={{ marginBottom: '1rem', fontSize: isMobile ? fontSizes.h4.mobile : fontSizes.h4.desktop, fontWeight: 'bold' }}>控除</h4>
+                  <div style={{ 
+                    display: 'grid', 
+                    gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', 
+                    gap: '1rem'
+                  }}>
+                    {deductions.map(deduction => (
+                      <div key={deduction.id}>
+                        <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: fontSizes.label }}>
+                          {deduction.name}
+                        </label>
+                        <input
+                          type="number"
+                          value={formData.deductions[deduction.id] || 0}
+                          onChange={(e) => setFormData({
+                            ...formData,
+                            deductions: {
+                              ...formData.deductions,
+                              [deduction.id]: Number(e.target.value)
+                            }
+                          })}
+                          style={{
+                            width: '100%',
+                            padding: '0.5rem',
+                            border: '1px solid #d1d5db',
+                            borderRadius: '4px',
+                            fontSize: fontSizes.input,
+                            boxSizing: 'border-box'
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ marginTop: '1rem', padding: '0.75rem', backgroundColor: '#fee2e2', borderRadius: '4px', textAlign: 'right' }}>
+                    <strong>控除合計: {formatCurrency(formData.totalDeductions)}</strong>
+                  </div>
                 </div>
               </div>
 
@@ -1717,43 +1592,24 @@ export const EmployeePayroll: React.FC = () => {
               gap: '0.5rem',
               zIndex: 1000
             }}>
-              <button
+              <CancelButton
                 onClick={handleCancel}
-                style={{
-                  padding: '0.75rem 1.5rem',
-                  backgroundColor: '#6b7280',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  fontWeight: 'bold',
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap',
-                  boxShadow: 'none',
-                  minHeight: 'auto',
-                  minWidth: 'auto'
-                }}
+                style={{ whiteSpace: 'nowrap' }}
               >
                 ← 戻る
-              </button>
+              </CancelButton>
               <div style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
-                <button
-                  onClick={handleSave}
-                  style={{
-                    padding: '0.75rem 1.5rem',
-                    backgroundColor: '#2563eb',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '4px',
-                    fontWeight: 'bold',
-                    cursor: 'pointer',
-                    whiteSpace: 'nowrap',
-                    boxShadow: 'none',
-                    minHeight: 'auto',
-                    minWidth: 'auto'
-                  }}
-                >
-                  {viewMode === 'new' ? '+ 登録' : '+ 更新'}
-                </button>
+                {viewMode === 'new' ? (
+                  <RegisterButton
+                    onClick={handleSave}
+                    style={{ whiteSpace: 'nowrap' }}
+                  />
+                ) : (
+                  <UpdateButton
+                    onClick={handleSave}
+                    style={{ whiteSpace: 'nowrap' }}
+                  />
+                )}
               </div>
               <div style={{ width: '120px' }}></div>
             </div>

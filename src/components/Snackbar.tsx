@@ -1,11 +1,33 @@
 import React, { useEffect } from 'react';
 
+/**
+ * スナックバーコンポーネントのプロパティを表すインターフェース。
+ */
 interface SnackbarProps {
+  /** 表示するメッセージ。 */
   message: string;
+  /** メッセージの種類（成功またはエラー）。 */
   type: 'success' | 'error';
+  /** 閉じる処理を行う関数。 */
   onClose: () => void;
 }
 
+/**
+ * スナックバーコンポーネント。
+ * 成功またはエラーメッセージを画面上部に一時的に表示します。
+ * 3秒後に自動的に閉じます。
+ *
+ * @param {SnackbarProps} props - スナックバーのプロパティ。
+ * @returns {JSX.Element} スナックバーコンポーネント。
+ * @example
+ * ```typescript
+ * <Snackbar
+ *   message="保存しました"
+ *   type="success"
+ *   onClose={() => setSnackbar(null)}
+ * />
+ * ```
+ */
 export const Snackbar: React.FC<SnackbarProps> = ({ message, type, onClose }) => {
   useEffect(() => {
     const timer = setTimeout(() => {

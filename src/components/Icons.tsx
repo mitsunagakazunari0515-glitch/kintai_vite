@@ -1,10 +1,22 @@
 import React from 'react';
 
+/**
+ * アイコンコンポーネントのプロパティを表すインターフェース。
+ */
 interface IconProps {
+  /** アイコンのサイズ（ピクセル）。デフォルトは20。 */
   size?: number;
+  /** アイコンの色。デフォルトは'#6b7280'。 */
   color?: string;
 }
 
+/**
+ * 編集アイコンコンポーネント。
+ * 編集操作を表すアイコンを表示します。
+ *
+ * @param {IconProps} props - アイコンのプロパティ。
+ * @returns {JSX.Element} 編集アイコンコンポーネント。
+ */
 export const EditIcon: React.FC<IconProps> = ({ size = 20, color = '#6b7280' }) => {
   return (
     <svg
@@ -33,6 +45,13 @@ export const EditIcon: React.FC<IconProps> = ({ size = 20, color = '#6b7280' }) 
   );
 };
 
+/**
+ * 削除アイコンコンポーネント。
+ * 削除操作を表すアイコンを表示します。
+ *
+ * @param {IconProps} props - アイコンのプロパティ。
+ * @returns {JSX.Element} 削除アイコンコンポーネント。
+ */
 export const DeleteIcon: React.FC<IconProps> = ({ size = 20, color = '#ef4444' }) => {
   return (
     <svg
@@ -66,6 +85,369 @@ export const DeleteIcon: React.FC<IconProps> = ({ size = 20, color = '#ef4444' }
       />
       <path
         d="M14 11v6"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+};
+
+/**
+ * プラスアイコンコンポーネント。
+ * 登録操作を表すアイコンを表示します。
+ *
+ * @param {IconProps} props - アイコンのプロパティ。
+ * @returns {JSX.Element} プラスアイコンコンポーネント。
+ */
+export const PlusIcon: React.FC<IconProps> = ({ size = 20, color = '#6b7280' }) => {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      style={{ display: 'block' }}
+    >
+      <path
+        d="M12 5v14M5 12h14"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+};
+
+/**
+ * リフレッシュアイコンコンポーネント。
+ * 更新操作を表すアイコンを表示します。
+ *
+ * @param {IconProps} props - アイコンのプロパティ。
+ * @returns {JSX.Element} リフレッシュアイコンコンポーネント。
+ */
+export const RefreshIcon: React.FC<IconProps> = ({ size = 20, color = '#6b7280' }) => {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      style={{ display: 'block' }}
+    >
+      <path
+        d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M21 3v5h-5"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M3 21v-5h5"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+};
+
+/**
+ * 保存アイコンコンポーネント。
+ * 保存操作を表すアイコンを表示します。
+ *
+ * @param {IconProps} props - アイコンのプロパティ。
+ * @returns {JSX.Element} 保存アイコンコンポーネント。
+ */
+export const SaveIcon: React.FC<IconProps> = ({ size = 20, color = '#6b7280' }) => {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      style={{ display: 'block' }}
+    >
+      <path
+        d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M17 21v-8H7v8"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M7 3v5h8"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+};
+
+/**
+ * キャンセルアイコンコンポーネント。
+ * キャンセル操作を表すアイコンを表示します。
+ *
+ * @param {IconProps} props - アイコンのプロパティ。
+ * @returns {JSX.Element} キャンセルアイコンコンポーネント。
+ */
+export const CancelIcon: React.FC<IconProps> = ({ size = 20, color = '#6b7280' }) => {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      style={{ display: 'block' }}
+    >
+      <path
+        d="M18 6L6 18M6 6l12 12"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+};
+
+/**
+ * アップロードアイコンコンポーネント。
+ * 申請・アップロード操作を表すアイコンを表示します。
+ *
+ * @param {IconProps} props - アイコンのプロパティ。
+ * @returns {JSX.Element} アップロードアイコンコンポーネント。
+ */
+export const UploadIcon: React.FC<IconProps> = ({ size = 20, color = '#6b7280' }) => {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      style={{ display: 'block' }}
+    >
+      <path
+        d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M17 8l-5-5-5 5M12 3v12"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+};
+
+/**
+ * 検索アイコンコンポーネント。
+ * 閲覧・検索操作を表すアイコンを表示します。
+ *
+ * @param {IconProps} props - アイコンのプロパティ。
+ * @returns {JSX.Element} 検索アイコンコンポーネント。
+ */
+export const SearchIcon: React.FC<IconProps> = ({ size = 20, color = '#6b7280' }) => {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      style={{ display: 'block' }}
+    >
+      <circle
+        cx="11"
+        cy="11"
+        r="8"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="m21 21-4.35-4.35"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+};
+
+/**
+ * 新規ファイルアイコンコンポーネント。
+ * 新規登録操作を表すアイコンを表示します。
+ *
+ * @param {IconProps} props - アイコンのプロパティ。
+ * @returns {JSX.Element} 新規ファイルアイコンコンポーネント。
+ */
+export const NewFileIcon: React.FC<IconProps> = ({ size = 20, color = '#6b7280' }) => {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      style={{ display: 'block' }}
+    >
+      {/* ドキュメント本体 */}
+      <path
+        d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      {/* 角が折れた部分 */}
+      <path
+        d="M14 2v6h6"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      {/* 左上の折り返し部分 */}
+      <path
+        d="M6 2v4"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M6 2h4"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      {/* 左上の小さなプラス記号 */}
+      <path
+        d="M7 4h2M8 3v2"
+        stroke={color}
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+};
+
+/**
+ * PDFアイコンコンポーネント。
+ * PDF出力操作を表すアイコンを表示します。
+ *
+ * @param {IconProps} props - アイコンのプロパティ。
+ * @returns {JSX.Element} PDFアイコンコンポーネント。
+ */
+export const PdfIcon: React.FC<IconProps> = ({ size = 20, color = '#6b7280' }) => {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      style={{ display: 'block' }}
+    >
+      <path
+        d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M14 2v6h6"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M16 13H8"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M16 17H8"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M10 9H9H8"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+};
+
+/**
+ * チェックアイコンコンポーネント。
+ * 確認・完了操作を表すアイコンを表示します。
+ *
+ * @param {IconProps} props - アイコンのプロパティ。
+ * @returns {JSX.Element} チェックアイコンコンポーネント。
+ */
+export const CheckIcon: React.FC<IconProps> = ({ size = 20, color = '#6b7280' }) => {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      style={{ display: 'block' }}
+    >
+      <path
+        d="M20 6L9 17l-5-5"
         stroke={color}
         strokeWidth="2"
         strokeLinecap="round"

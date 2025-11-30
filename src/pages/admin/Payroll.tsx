@@ -17,46 +17,78 @@ import { formatCurrency } from '../../utils/formatters';
 import { fontSizes } from '../../config/fontSizes';
 import { Snackbar } from '../../components/Snackbar';
 
+/**
+ * 給与明細の詳細情報を表すインターフェース。
+ */
 interface PayrollDetail {
-  // 勤務情報
-  workingDays: number; // 出勤日数
-  holidayWork: number; // 休日出勤
-  paidLeave: number; // 有給休暇
-  paidLeaveRemaining: number; // 有給残
-  paidLeaveRemainingDate: string; // 有給残の時点
-  normalOvertime: number; // 普通残業（時間）
-  lateNightOvertime: number; // 深夜残業（時間）
-  
-  // 支給
-  baseSalary: number; // 基本給
-  overtimeAllowance: number; // 時間外手当
-  lateNightAllowance: number; // 深夜手当
-  mealAllowance: number; // 食事手当
-  commutingAllowance: number; // 交通費
-  housingAllowance: number; // 住宅手当
-  totalEarnings: number; // 総支給額
-  
-  // 控除
-  socialInsurance: number; // 社会保険
-  employeePension: number; // 厚生年金
-  employmentInsurance: number; // 雇用保険
-  municipalTax: number; // 市県民税
-  incomeTax: number; // 所得税
-  totalDeductions: number; // 控除合計
-  
-  // 差引支給額
-  netPay: number; // 差引支給額
+  /** 出勤日数。 */
+  workingDays: number;
+  /** 休日出勤日数。 */
+  holidayWork: number;
+  /** 有給休暇日数。 */
+  paidLeave: number;
+  /** 有給残日数。 */
+  paidLeaveRemaining: number;
+  /** 有給残の時点（日付文字列）。 */
+  paidLeaveRemainingDate: string;
+  /** 普通残業時間。 */
+  normalOvertime: number;
+  /** 深夜残業時間。 */
+  lateNightOvertime: number;
+  /** 基本給。 */
+  baseSalary: number;
+  /** 時間外手当。 */
+  overtimeAllowance: number;
+  /** 深夜手当。 */
+  lateNightAllowance: number;
+  /** 食事手当。 */
+  mealAllowance: number;
+  /** 交通費。 */
+  commutingAllowance: number;
+  /** 住宅手当。 */
+  housingAllowance: number;
+  /** 総支給額。 */
+  totalEarnings: number;
+  /** 社会保険料。 */
+  socialInsurance: number;
+  /** 厚生年金保険料。 */
+  employeePension: number;
+  /** 雇用保険料。 */
+  employmentInsurance: number;
+  /** 市県民税。 */
+  municipalTax: number;
+  /** 所得税。 */
+  incomeTax: number;
+  /** 控除合計。 */
+  totalDeductions: number;
+  /** 差引支給額。 */
+  netPay: number;
 }
 
+/**
+ * 給与明細レコードを表すインターフェース。
+ */
 interface PayrollRecord {
+  /** レコードID。 */
   id: string;
+  /** 従業員ID。 */
   employeeId: string;
+  /** 従業員名。 */
   employeeName: string;
+  /** 会社名。 */
   companyName: string;
-  period: string; // 2025年 10月
+  /** 給与期間（例: "2025年 10月"）。 */
+  period: string;
+  /** 給与明細の詳細情報。 */
   detail: PayrollDetail;
 }
 
+/**
+ * 給与明細書入力・出力画面コンポーネント。
+ * 給与明細の新規登録、一覧表示、PDF出力を提供します。
+ *
+ * @returns {JSX.Element} 給与明細書入力・出力画面コンポーネント。
+ */
 export const Payroll: React.FC = () => {
   const [records, setRecords] = useState<PayrollRecord[]>([]);
   const [selectedRecord, setSelectedRecord] = useState<PayrollRecord | null>(null);

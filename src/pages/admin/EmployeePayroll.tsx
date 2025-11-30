@@ -20,6 +20,7 @@ import { EditIcon } from '../../components/Icons';
 import { formatCurrency } from '../../utils/formatters';
 import { fontSizes } from '../../config/fontSizes';
 import { getCurrentFiscalYear } from '../../utils/fiscalYear';
+import { dummyAllowances, dummyDeductions, getPayrollRecordsByEmployeeId } from '../../data/dummyData';
 
 interface Allowance {
   id: string;
@@ -82,131 +83,23 @@ export const EmployeePayroll: React.FC = () => {
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
 
   // 手当マスタ（実際の実装では共有状態管理やAPIから取得）
-  const [allowances] = useState<Allowance[]>([
-    { id: 'allowance1', name: '交通費', color: '#3b82f6' },
-    { id: 'allowance2', name: '住宅手当', color: '#10b981' },
-    { id: 'allowance3', name: '家族手当', color: '#f59e0b' },
-    { id: 'allowance4', name: '食事手当', color: '#8b5cf6' }
-  ]);
+  const [allowances] = useState<Allowance[]>(dummyAllowances);
 
   // 控除マスタ（実際の実装では共有状態管理やAPIから取得）
-  const [deductions] = useState<Deduction[]>([
-    { id: 'deduction1', name: '社会保険' },
-    { id: 'deduction2', name: '厚生年金' },
-    { id: 'deduction3', name: '雇用保険' },
-    { id: 'deduction4', name: '市県民税' },
-    { id: 'deduction5', name: '所得税' }
-  ]);
+  const [deductions] = useState<Deduction[]>(dummyDeductions);
 
   // ダミーデータ（実際の実装ではAPIから取得）
-  const currentFiscalYear = getCurrentFiscalYear();
-  const [payrollRecords, setPayrollRecords] = useState<PayrollRecord[]>([
-    {
-      id: '1',
-      employeeId: employeeId || '',
-      employeeName: '山田太郎',
-      companyName: '株式会社A・1インテリア',
-      period: `${currentFiscalYear}年 10月`,
-      updatedAt: '2024-12-15T10:30:00',
+  const [payrollRecords, setPayrollRecords] = useState<PayrollRecord[]>(
+    getPayrollRecordsByEmployeeId(employeeId || '').map(record => ({
+      ...record,
+      updatedAt: record.updatedAt || record.createdAt,
       detail: {
-        workingDays: 22,
-        holidayWork: 2,
-        paidLeave: 1,
-        paidLeaveRemaining: 8.5,
-        paidLeaveRemainingDate: '2026.7',
-        normalOvertime: 20,
-        lateNightOvertime: 3,
-        baseSalary: 213000,
-        overtimeAllowance: 33320,
-        lateNightAllowance: 5997,
-        mealAllowance: 0,
-        allowances: {
-          'allowance1': 10000, // 交通費
-          'allowance2': 20000  // 住宅手当
-        },
-        totalEarnings: 282317,
-        deductions: {
-          'deduction1': 12036, // 社会保険
-          'deduction2': 21960, // 厚生年金
-          'deduction3': 1553,  // 雇用保険
-          'deduction4': 4900,  // 市県民税
-          'deduction5': 7390   // 所得税
-        },
-        totalDeductions: 47839,
-        netPay: 234478
+        ...record.detail,
+        allowances: record.detail.allowances || {},
+        deductions: record.detail.deductions || {}
       }
-    },
-    {
-      id: '2',
-      employeeId: employeeId || '',
-      employeeName: '山田太郎',
-      companyName: '株式会社A・1インテリア',
-      period: `${currentFiscalYear}年 9月`,
-      updatedAt: '2024-12-10T14:20:00',
-      detail: {
-        workingDays: 21,
-        holidayWork: 1,
-        paidLeave: 0,
-        paidLeaveRemaining: 9.5,
-        paidLeaveRemainingDate: '2026.7',
-        normalOvertime: 15,
-        lateNightOvertime: 2,
-        baseSalary: 213000,
-        overtimeAllowance: 24990,
-        lateNightAllowance: 3998,
-        mealAllowance: 0,
-        allowances: {
-          'allowance1': 10000,
-          'allowance2': 20000
-        },
-        totalEarnings: 271988,
-        deductions: {
-          'deduction1': 12000,
-          'deduction2': 21900,
-          'deduction3': 1500,
-          'deduction4': 4800,
-          'deduction5': 7300
-        },
-        totalDeductions: 47500,
-        netPay: 224488
-      }
-    },
-    {
-      id: '3',
-      employeeId: employeeId || '',
-      employeeName: '山田太郎',
-      companyName: '株式会社A・1インテリア',
-      period: `${currentFiscalYear}年 8月`,
-      updatedAt: '2024-12-05T09:15:00',
-      detail: {
-        workingDays: 20,
-        holidayWork: 0,
-        paidLeave: 0,
-        paidLeaveRemaining: 10,
-        paidLeaveRemainingDate: '2026.7',
-        normalOvertime: 10,
-        lateNightOvertime: 1,
-        baseSalary: 213000,
-        overtimeAllowance: 16660,
-        lateNightAllowance: 1999,
-        mealAllowance: 0,
-        allowances: {
-          'allowance1': 10000,
-          'allowance2': 20000
-        },
-        totalEarnings: 259659,
-        deductions: {
-          'deduction1': 11800,
-          'deduction2': 21800,
-          'deduction3': 1450,
-          'deduction4': 4700,
-          'deduction5': 7200
-        },
-        totalDeductions: 46950,
-        netPay: 212709
-      }
-    }
-  ]);
+    }))
+  );
 
   const [formData, setFormData] = useState<PayrollDetail>(payrollRecords[0]?.detail || {
     workingDays: 0,

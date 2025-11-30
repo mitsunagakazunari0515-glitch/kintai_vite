@@ -16,6 +16,7 @@ import { DeleteIcon } from '../../components/Icons';
 import { Snackbar } from '../../components/Snackbar';
 import { formatDate, formatTime } from '../../utils/formatters';
 import { fontSizes } from '../../config/fontSizes';
+import { dummyEmployeeAttendanceLogs } from '../../data/dummyData';
 
 interface Break {
   start: string;
@@ -49,332 +50,32 @@ export const Attendance: React.FC = () => {
     return dayBeforeYesterday.toISOString().split('T')[0];
   };
 
-  const [logs, setLogs] = useState<AttendanceLog[]>([
-    // 退勤時刻未登録のテスト用ダミーデータ（昨日の日付で出勤打刻のみ）
-    {
-      id: 'test-missing-clockout-yesterday',
-      date: getYesterdayDate(),
-      clockIn: '09:00',
-      clockOut: null,
-      breaks: [{ start: '12:00', end: '13:00' }],
-      status: '出勤中'
-    },
-    // 退勤時刻未登録のテスト用ダミーデータ（一昨日の日付で出勤打刻のみ）
-    {
-      id: 'test-missing-clockout-day-before-yesterday',
-      date: getDayBeforeYesterdayDate(),
-      clockIn: '09:15',
-      clockOut: null,
-      breaks: [{ start: '12:15', end: '13:15' }],
-      status: '出勤中'
-    },
-    {
-      id: '1',
-      date: '2024-01-15',
-      clockIn: '09:00',
-      clockOut: '18:00',
-      breaks: [{ start: '12:00', end: '13:00' }],
-      status: '退勤済み'
-    },
-    {
-      id: '2',
-      date: '2024-01-16',
-      clockIn: '09:15',
-      clockOut: '18:30',
-      breaks: [{ start: '12:15', end: '13:15' }],
-      status: '退勤済み'
-    },
-    // 2025年11月のダミーデータ
-    {
-      id: '3',
-      date: '2025-11-01',
-      clockIn: '09:00',
-      clockOut: '18:00',
-      breaks: [{ start: '12:00', end: '13:00' }],
-      status: '退勤済み'
-    },
-    {
-      id: '4',
-      date: '2025-11-04',
-      clockIn: '09:10',
-      clockOut: '18:15',
-      breaks: [{ start: '12:10', end: '13:10' }],
-      status: '退勤済み'
-    },
-    {
-      id: '5',
-      date: '2025-11-05',
-      clockIn: '09:05',
-      clockOut: '18:20',
-      breaks: [{ start: '12:00', end: '13:00' }, { start: '15:00', end: '15:15' }],
-      status: '退勤済み'
-    },
-    {
-      id: '6',
-      date: '2025-11-06',
-      clockIn: '08:55',
-      clockOut: '17:45',
-      breaks: [{ start: '12:00', end: '13:00' }],
-      status: '退勤済み'
-    },
-    {
-      id: '7',
-      date: '2025-11-07',
-      clockIn: '09:20',
-      clockOut: '18:30',
-      breaks: [{ start: '12:20', end: '13:20' }],
-      status: '退勤済み'
-    },
-    {
-      id: '8',
-      date: '2025-11-11',
-      clockIn: '09:00',
-      clockOut: '18:00',
-      breaks: [{ start: '12:00', end: '13:00' }],
-      status: '退勤済み'
-    },
-    {
-      id: '9',
-      date: '2025-11-12',
-      clockIn: '09:15',
-      clockOut: '18:10',
-      breaks: [{ start: '12:15', end: '13:15' }],
-      status: '退勤済み'
-    },
-    {
-      id: '10',
-      date: '2025-11-13',
-      clockIn: '08:50',
-      clockOut: '18:00',
-      breaks: [{ start: '12:00', end: '13:00' }],
-      status: '退勤済み'
-    },
-    {
-      id: '11',
-      date: '2025-11-14',
-      clockIn: '09:05',
-      clockOut: '18:25',
-      breaks: [{ start: '12:05', end: '13:05' }, { start: '15:30', end: '15:45' }],
-      status: '退勤済み'
-    },
-    {
-      id: '12',
-      date: '2025-11-18',
-      clockIn: '09:00',
-      clockOut: '18:00',
-      breaks: [{ start: '12:00', end: '13:00' }],
-      status: '退勤済み'
-    },
-    {
-      id: '13',
-      date: '2025-11-19',
-      clockIn: '09:10',
-      clockOut: '18:15',
-      breaks: [{ start: '12:10', end: '13:10' }],
-      status: '退勤済み'
-    },
-    {
-      id: '14',
-      date: '2025-11-20',
-      clockIn: '09:20',
-      clockOut: '18:30',
-      breaks: [{ start: '12:20', end: '13:20' }],
-      status: '退勤済み'
-    },
-    {
-      id: '15',
-      date: '2025-11-21',
-      clockIn: '08:55',
-      clockOut: '17:50',
-      breaks: [{ start: '12:00', end: '13:00' }],
-      status: '退勤済み'
-    },
-    {
-      id: '16',
-      date: '2025-11-25',
-      clockIn: '09:00',
-      clockOut: '18:00',
-      breaks: [{ start: '12:00', end: '13:00' }],
-      status: '退勤済み'
-    },
-    {
-      id: '17',
-      date: '2025-11-26',
-      clockIn: '09:15',
-      clockOut: '18:20',
-      breaks: [{ start: '12:15', end: '13:15' }],
-      status: '退勤済み'
-    },
-    {
-      id: '18',
-      date: '2025-11-27',
-      clockIn: '09:05',
-      clockOut: '18:10',
-      breaks: [{ start: '12:05', end: '13:05' }],
-      status: '退勤済み'
-    },
-    {
-      id: '19',
-      date: '2025-11-28',
-      clockIn: '08:50',
-      clockOut: '17:45',
-      breaks: [{ start: '12:00', end: '13:00' }],
-      status: '退勤済み'
-    },
-    // 2025年12月のダミーデータ
-    {
-      id: '20',
-      date: '2025-12-02',
-      clockIn: '09:00',
-      clockOut: '18:00',
-      breaks: [{ start: '12:00', end: '13:00' }],
-      status: '退勤済み'
-    },
-    {
-      id: '21',
-      date: '2025-12-03',
-      clockIn: '09:10',
-      clockOut: '18:15',
-      breaks: [{ start: '12:10', end: '13:10' }],
-      status: '退勤済み'
-    },
-    {
-      id: '22',
-      date: '2025-12-04',
-      clockIn: '09:05',
-      clockOut: '18:20',
-      breaks: [{ start: '12:00', end: '13:00' }, { start: '15:00', end: '15:15' }],
-      status: '退勤済み'
-    },
-    {
-      id: '23',
-      date: '2025-12-05',
-      clockIn: '08:55',
-      clockOut: '17:50',
-      breaks: [{ start: '12:00', end: '13:00' }],
-      status: '退勤済み'
-    },
-    {
-      id: '24',
-      date: '2025-12-06',
-      clockIn: '09:20',
-      clockOut: '18:30',
-      breaks: [{ start: '12:20', end: '13:20' }],
-      status: '退勤済み'
-    },
-    {
-      id: '25',
-      date: '2025-12-09',
-      clockIn: '09:00',
-      clockOut: '18:00',
-      breaks: [{ start: '12:00', end: '13:00' }],
-      status: '退勤済み'
-    },
-    {
-      id: '26',
-      date: '2025-12-10',
-      clockIn: '09:15',
-      clockOut: '18:10',
-      breaks: [{ start: '12:15', end: '13:15' }],
-      status: '退勤済み'
-    },
-    {
-      id: '27',
-      date: '2025-12-11',
-      clockIn: '08:50',
-      clockOut: '18:00',
-      breaks: [{ start: '12:00', end: '13:00' }],
-      status: '退勤済み'
-    },
-    {
-      id: '28',
-      date: '2025-12-12',
-      clockIn: '09:05',
-      clockOut: '18:25',
-      breaks: [{ start: '12:05', end: '13:05' }, { start: '15:30', end: '15:45' }],
-      status: '退勤済み'
-    },
-    {
-      id: '29',
-      date: '2025-12-16',
-      clockIn: '09:00',
-      clockOut: '18:00',
-      breaks: [{ start: '12:00', end: '13:00' }],
-      status: '退勤済み'
-    },
-    {
-      id: '30',
-      date: '2025-12-17',
-      clockIn: '09:10',
-      clockOut: '18:15',
-      breaks: [{ start: '12:10', end: '13:10' }],
-      status: '退勤済み'
-    },
-    {
-      id: '31',
-      date: '2025-12-18',
-      clockIn: '09:20',
-      clockOut: '18:30',
-      breaks: [{ start: '12:20', end: '13:20' }],
-      status: '退勤済み'
-    },
-    {
-      id: '32',
-      date: '2025-12-19',
-      clockIn: '08:55',
-      clockOut: '17:50',
-      breaks: [{ start: '12:00', end: '13:00' }],
-      status: '退勤済み'
-    },
-    {
-      id: '33',
-      date: '2025-12-20',
-      clockIn: '09:00',
-      clockOut: '18:00',
-      breaks: [{ start: '12:00', end: '13:00' }],
-      status: '退勤済み'
-    },
-    {
-      id: '34',
-      date: '2025-12-23',
-      clockIn: '09:15',
-      clockOut: '18:20',
-      breaks: [{ start: '12:15', end: '13:15' }],
-      status: '退勤済み'
-    },
-    {
-      id: '35',
-      date: '2025-12-24',
-      clockIn: '09:05',
-      clockOut: '18:10',
-      breaks: [{ start: '12:05', end: '13:05' }],
-      status: '退勤済み'
-    },
-    {
-      id: '36',
-      date: '2025-12-26',
-      clockIn: '08:50',
-      clockOut: '17:45',
-      breaks: [{ start: '12:00', end: '13:00' }],
-      status: '退勤済み'
-    },
-    {
-      id: '37',
-      date: '2025-12-27',
-      clockIn: '09:00',
-      clockOut: '18:00',
-      breaks: [{ start: '12:00', end: '13:00' }],
-      status: '退勤済み'
-    },
-    {
-      id: '38',
-      date: '2025-12-30',
-      clockIn: '09:10',
-      clockOut: '18:15',
-      breaks: [{ start: '12:10', end: '13:10' }],
-      status: '退勤済み'
-    }
-  ]);
+  const [logs, setLogs] = useState<AttendanceLog[]>(
+    [
+      // 退勤時刻未登録のテスト用ダミーデータ（昨日の日付で出勤打刻のみ）
+      {
+        id: 'test-missing-clockout-yesterday',
+        date: getYesterdayDate(),
+        clockIn: '09:00',
+        clockOut: null,
+        breaks: [{ start: '12:00', end: '13:00' }],
+        status: '出勤中'
+      },
+      // 退勤時刻未登録のテスト用ダミーデータ（一昨日の日付で出勤打刻のみ）
+      {
+        id: 'test-missing-clockout-day-before-yesterday',
+        date: getDayBeforeYesterdayDate(),
+        clockIn: '09:15',
+        clockOut: null,
+        breaks: [{ start: '12:15', end: '13:15' }],
+        status: '出勤中'
+      },
+      ...dummyEmployeeAttendanceLogs.map(log => ({
+        ...log,
+        status: log.status as '未出勤' | '出勤中' | '休憩中' | '退勤済み'
+      }))
+    ]
+  );
   const [todayLog, setTodayLog] = useState<AttendanceLog | null>(null);
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const [viewMode, setViewMode] = useState<ViewMode>('stamp');

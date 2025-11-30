@@ -1,0 +1,114 @@
+{
+  "attendanceCorrectionRequests": [
+    {
+      "id": "attendance-1",
+      "employeeId": "EMP001",
+      "employeeName": "山田太郎",
+      "date": "2025-12-10",
+      "originalClockIn": "09:00",
+      "originalClockOut": "18:00",
+      "requestedClockIn": "09:15",
+      "requestedClockOut": "18:15",
+      "requestedBreaks": [
+        {
+          "start": "12:00",
+          "end": "13:00"
+        }
+      ],
+      "reason": "出勤時刻を間違えて打刻してしまいました",
+      "status": "申請中",
+      "requestedAt": "2025-12-11T10:00:00.000Z",
+      "createdAt": "2025-12-11T10:00:00.000Z",
+      "updatedAt": "2025-12-11T10:00:00.000Z"
+    },
+    {
+      "id": "attendance-2",
+      "employeeId": "EMP002",
+      "employeeName": "佐藤花子",
+      "date": "2025-12-12",
+      "originalClockIn": "09:10",
+      "originalClockOut": null,
+      "requestedClockIn": "09:10",
+      "requestedClockOut": "18:10",
+      "requestedBreaks": [
+        {
+          "start": "12:10",
+          "end": "13:10"
+        }
+      ],
+      "reason": "退勤時刻を打刻し忘れました",
+      "status": "申請中",
+      "requestedAt": "2025-12-13T09:00:00.000Z",
+      "createdAt": "2025-12-13T09:00:00.000Z",
+      "updatedAt": "2025-12-13T09:00:00.000Z"
+    },
+    {
+      "id": "attendance-3",
+      "employeeId": "EMP003",
+      "employeeName": "鈴木一郎",
+      "date": "2025-12-14",
+      "originalClockIn": "09:05",
+      "originalClockOut": "18:05",
+      "requestedClockIn": "09:05",
+      "requestedClockOut": "18:20",
+      "requestedBreaks": [
+        {
+          "start": "12:00",
+          "end": "13:00"
+        },
+        {
+          "start": "15:00",
+          "end": "15:15"
+        }
+      ],
+      "reason": "休憩時間を追加したいです",
+      "status": "申請中",
+      "requestedAt": "2025-12-15T11:30:00.000Z",
+      "createdAt": "2025-12-15T11:30:00.000Z",
+      "updatedAt": "2025-12-15T11:30:00.000Z"
+    },
+    {
+      "id": "attendance-4",
+      "employeeId": "EMP001",
+      "employeeName": "山田太郎",
+      "date": "2025-12-05",
+      "originalClockIn": "09:00",
+      "originalClockOut": "18:00",
+      "requestedClockIn": "09:10",
+      "requestedClockOut": "18:10",
+      "requestedBreaks": [
+        {
+          "start": "12:00",
+          "end": "13:00"
+        }
+      ],
+      "reason": "出勤時刻を修正したいです",
+      "status": "承認",
+      "requestedAt": "2025-12-06T10:00:00.000Z",
+      "createdAt": "2025-12-06T10:00:00.000Z",
+      "updatedAt": "2025-12-07T14:00:00.000Z"
+    },
+    {
+      "id": "attendance-5",
+      "employeeId": "EMP002",
+      "employeeName": "佐藤花子",
+      "date": "2025-12-03",
+      "originalClockIn": "09:10",
+      "originalClockOut": "18:10",
+      "requestedClockIn": "09:00",
+      "requestedClockOut": "18:00",
+      "requestedBreaks": [
+        {
+          "start": "12:10",
+          "end": "13:10"
+        }
+      ],
+      "reason": "打刻時刻を修正したいです",
+      "status": "却下",
+      "requestedAt": "2025-12-04T09:00:00.000Z",
+      "createdAt": "2025-12-04T09:00:00.000Z",
+      "updatedAt": "2025-12-05T10:00:00.000Z"
+    }
+  ]
+}
+

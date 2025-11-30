@@ -15,6 +15,7 @@ import { formatTime, formatDate } from '../../utils/formatters';
 import { fontSizes } from '../../config/fontSizes';
 import { EditIcon } from '../../components/Icons';
 import { Snackbar } from '../../components/Snackbar';
+import { dummyAttendanceLogs } from '../../data/dummyData';
 
 interface Break {
   start: string;
@@ -23,106 +24,28 @@ interface Break {
 
 interface AttendanceLog {
   id: string;
-  employeeId: string;
-  employeeName: string;
+  employeeId?: string;
+  employeeName?: string;
   date: string;
   clockIn: string | null;
   clockOut: string | null;
   breaks: Break[];
   status: '未出勤' | '出勤中' | '休憩中' | '退勤済み';
-  memo?: string;
+  memo?: string | null;
 }
 
 export const AttendanceList: React.FC = () => {
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const [snackbar, setSnackbar] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
-  const [attendanceLogs, setAttendanceLogs] = useState<AttendanceLog[]>([
-    {
-      id: '1',
-      employeeId: 'EMP001',
-      employeeName: '山田太郎',
-      date: '2025-11-30',
-      clockIn: '09:00',
-      clockOut: '18:00',
-      breaks: [{ start: '12:00', end: '13:00' }],
-      status: '退勤済み',
-      memo: ''
-    },
-    {
-      id: '2',
-      employeeId: 'EMP002',
-      employeeName: '佐藤花子',
-      date: '2025-11-30',
-      clockIn: '10:00',
-      clockOut: '17:00',
-      breaks: [{ start: '12:30', end: '13:30' }],
-      status: '退勤済み',
-      memo: ''
-    },
-    {
-      id: '3',
-      employeeId: 'EMP001',
-      employeeName: '山田太郎',
-      date: '2025-11-29',
-      clockIn: '09:15',
-      clockOut: '18:15',
-      breaks: [{ start: '12:15', end: '13:15' }],
-      status: '退勤済み'
-    },
-    {
-      id: '4',
-      employeeId: 'EMP003',
-      employeeName: '鈴木一郎',
-      date: '2025-11-30',
-      clockIn: '09:05',
-      clockOut: null,
-      breaks: [{ start: '12:00', end: '13:00' }],
-      status: '出勤中',
-      memo: ''
-    },
-    {
-      id: '5',
-      employeeId: 'EMP002',
-      employeeName: '佐藤花子',
-      date: '2025-11-29',
-      clockIn: '10:15',
-      clockOut: '17:30',
-      breaks: [{ start: '12:30', end: '13:30' }],
-      status: '退勤済み',
-      memo: ''
-    },
-    {
-      id: '6',
-      employeeId: 'EMP001',
-      employeeName: '山田太郎',
-      date: '2025-11-28',
-      clockIn: '09:00',
-      clockOut: '18:00',
-      breaks: [{ start: '12:00', end: '13:00' }],
-      status: '退勤済み'
-    },
-    {
-      id: '7',
-      employeeId: 'EMP003',
-      employeeName: '鈴木一郎',
-      date: '2025-11-29',
-      clockIn: '09:10',
-      clockOut: '18:20',
-      breaks: [{ start: '12:10', end: '13:10' }],
-      status: '退勤済み'
-    },
-    {
-      id: '8',
-      employeeId: 'EMP002',
-      employeeName: '佐藤花子',
-      date: '2025-11-28',
-      clockIn: null,
-      clockOut: null,
-      breaks: [],
-      status: '未出勤',
-      memo: ''
-    }
-  ]);
+  const [attendanceLogs, setAttendanceLogs] = useState<AttendanceLog[]>(
+    dummyAttendanceLogs.map(log => ({
+      ...log,
+      employeeId: log.employeeId || '',
+      employeeName: log.employeeName || '',
+      status: log.status as '未出勤' | '出勤中' | '休憩中' | '退勤済み',
+      memo: log.memo || ''
+    }))
+  );
   // 今週の開始日（月曜日）と終了日（日曜日）を計算
   const getThisWeekDates = () => {
     const today = new Date();

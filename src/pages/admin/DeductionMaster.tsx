@@ -14,6 +14,7 @@ import { Snackbar } from '../../components/Snackbar';
 import { ConfirmModal } from '../../components/ConfirmModal';
 import { EditIcon, DeleteIcon } from '../../components/Icons';
 import { fontSizes } from '../../config/fontSizes';
+import { dummyDeductions } from '../../data/dummyData';
 
 interface Deduction {
   id: string;
@@ -22,13 +23,7 @@ interface Deduction {
 
 export const DeductionMaster: React.FC = () => {
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
-  const [deductions, setDeductions] = useState<Deduction[]>([
-    { id: 'deduction1', name: '社会保険' },
-    { id: 'deduction2', name: '厚生年金' },
-    { id: 'deduction3', name: '雇用保険' },
-    { id: 'deduction4', name: '市県民税' },
-    { id: 'deduction5', name: '所得税' }
-  ]);
+  const [deductions, setDeductions] = useState<Deduction[]>(dummyDeductions);
   const [formData, setFormData] = useState<Omit<Deduction, 'id'>>({
     name: ''
   });

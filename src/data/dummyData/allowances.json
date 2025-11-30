@@ -1,0 +1,33 @@
+{
+  "allowances": [
+    {
+      "id": "allowance1",
+      "name": "交通費",
+      "color": "#3b82f6",
+      "createdAt": "2020-01-01T00:00:00.000Z",
+      "updatedAt": "2020-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "allowance2",
+      "name": "住宅手当",
+      "color": "#10b981",
+      "createdAt": "2020-01-01T00:00:00.000Z",
+      "updatedAt": "2020-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "allowance3",
+      "name": "家族手当",
+      "color": "#f59e0b",
+      "createdAt": "2020-01-01T00:00:00.000Z",
+      "updatedAt": "2020-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "allowance4",
+      "name": "食事手当",
+      "color": "#8b5cf6",
+      "createdAt": "2020-01-01T00:00:00.000Z",
+      "updatedAt": "2020-01-01T00:00:00.000Z"
+    }
+  ]
+}
+

@@ -16,6 +16,8 @@ import { Snackbar } from '../../components/Snackbar';
 import { EditIcon } from '../../components/Icons';
 import { formatDate, formatCurrency } from '../../utils/formatters';
 import { fontSizes } from '../../config/fontSizes';
+import { getEmploymentTypes } from '../../config/masterData';
+import { dummyEmployees, dummyAllowances } from '../../data/dummyData';
 
 interface Allowance {
   id: string;
@@ -40,40 +42,15 @@ interface Employee {
 export const EmployeeList: React.FC = () => {
   const navigate = useNavigate();
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
-  const [employees, setEmployees] = useState<Employee[]>([
-    {
-      id: 'EMP001',
-      name: '山田太郎',
-      employmentType: '正社員',
-      email: 'yamada@example.com',
-      joinDate: '2020-04-01',
-      leaveDate: null,
-      allowances: ['allowance1', 'allowance2'],
-      isAdmin: true,
-      baseSalary: 2500,
-      paidLeaveDays: 10,
-      updatedAt: '2024-12-15T10:30:00'
-    },
-    {
-      id: 'EMP002',
-      name: '佐藤花子',
-      employmentType: 'パート',
-      email: 'sato@example.com',
-      joinDate: '2021-06-15',
-      leaveDate: null,
-      allowances: ['allowance1'],
-      isAdmin: false,
-      baseSalary: 1200,
-      paidLeaveDays: 5,
-      updatedAt: '2024-12-14T14:20:00'
-    }
-  ]);
-  const [allowances] = useState<Allowance[]>([
-    { id: 'allowance1', name: '交通費', color: '#3b82f6' },
-    { id: 'allowance2', name: '住宅手当', color: '#10b981' },
-    { id: 'allowance3', name: '家族手当', color: '#f59e0b' }
-  ]);
-  const [filterEmploymentTypes, setFilterEmploymentTypes] = useState<string[]>(['正社員', 'パート']);
+  const employmentTypes = getEmploymentTypes();
+  const [employees, setEmployees] = useState<Employee[]>(
+    dummyEmployees.map(emp => ({
+      ...emp,
+      employmentType: emp.employmentType as '正社員' | 'パート'
+    }))
+  );
+  const [allowances] = useState<Allowance[]>(dummyAllowances);
+  const [filterEmploymentTypes, setFilterEmploymentTypes] = useState<string[]>(employmentTypes.map(t => t.code));
   const [showActiveOnly, setShowActiveOnly] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
@@ -83,7 +60,7 @@ export const EmployeeList: React.FC = () => {
   const [formData, setFormData] = useState<Employee>({
     id: '',
     name: '',
-    employmentType: '正社員',
+    employmentType: (employmentTypes[0]?.code || '正社員') as '正社員' | 'パート',
     email: '',
     joinDate: '',
     leaveDate: null,
@@ -180,7 +157,7 @@ export const EmployeeList: React.FC = () => {
     setFormData({
       id: generateEmployeeId(),
       name: '',
-      employmentType: '正社員',
+      employmentType: (employmentTypes[0]?.code || '正社員') as '正社員' | 'パート',
       email: '',
       joinDate: '',
       leaveDate: null,
@@ -309,56 +286,33 @@ export const EmployeeList: React.FC = () => {
               雇用形態
             </label>
             <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-              <label style={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                cursor: 'pointer',
-                gap: '0.5rem'
-              }}>
-                <input
-                  type="checkbox"
-                  checked={filterEmploymentTypes.includes('正社員')}
-                  onChange={(e) => {
-                    if (e.target.checked) {
-                      setFilterEmploymentTypes([...filterEmploymentTypes, '正社員']);
-                    } else {
-                      setFilterEmploymentTypes(filterEmploymentTypes.filter(t => t !== '正社員'));
-                    }
-                  }}
-                  style={{
-                    width: '18px',
-                    height: '18px',
-                    cursor: 'pointer',
-                    flexShrink: 0
-                  }}
-                />
-                <span style={{ fontSize: fontSizes.medium, whiteSpace: 'nowrap' }}>正社員</span>
-              </label>
-              <label style={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                cursor: 'pointer',
-                gap: '0.5rem'
-              }}>
-                <input
-                  type="checkbox"
-                  checked={filterEmploymentTypes.includes('パート')}
-                  onChange={(e) => {
-                    if (e.target.checked) {
-                      setFilterEmploymentTypes([...filterEmploymentTypes, 'パート']);
-                    } else {
-                      setFilterEmploymentTypes(filterEmploymentTypes.filter(t => t !== 'パート'));
-                    }
-                  }}
-                  style={{
-                    width: '18px',
-                    height: '18px',
-                    cursor: 'pointer',
-                    flexShrink: 0
-                  }}
-                />
-                <span style={{ fontSize: fontSizes.medium, whiteSpace: 'nowrap' }}>パート</span>
-              </label>
+              {employmentTypes.map((type) => (
+                <label key={type.code} style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  cursor: 'pointer',
+                  gap: '0.5rem'
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={filterEmploymentTypes.includes(type.code)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setFilterEmploymentTypes([...filterEmploymentTypes, type.code]);
+                      } else {
+                        setFilterEmploymentTypes(filterEmploymentTypes.filter(t => t !== type.code));
+                      }
+                    }}
+                    style={{
+                      width: '18px',
+                      height: '18px',
+                      cursor: 'pointer',
+                      flexShrink: 0
+                    }}
+                  />
+                  <span style={{ fontSize: fontSizes.medium, whiteSpace: 'nowrap' }}>{type.label}</span>
+                </label>
+              ))}
             </div>
           </div>
           <div style={{ 
@@ -694,8 +648,8 @@ export const EmployeeList: React.FC = () => {
                       <span style={{
                         padding: '0.25rem 0.5rem',
                         borderRadius: '4px',
-                        backgroundColor: emp.employmentType === '正社員' ? '#dbeafe' : '#fef3c7',
-                        color: emp.employmentType === '正社員' ? '#1e40af' : '#92400e',
+                        backgroundColor: emp.employmentType === employmentTypes[0].code ? '#dbeafe' : '#fef3c7',
+                        color: emp.employmentType === employmentTypes[0].code ? '#1e40af' : '#92400e',
                         fontSize: fontSizes.input,
                         fontWeight: 'bold'
                       }}>
@@ -897,42 +851,26 @@ export const EmployeeList: React.FC = () => {
                   雇用形態 *
                 </label>
                 <div style={{ display: 'flex', gap: '1rem' }}>
-                  <label style={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    cursor: 'pointer',
-                    padding: '0.75rem',
-                    borderRadius: '4px',
-                    backgroundColor: formData.employmentType === '正社員' ? '#dbeafe' : 'transparent',
-                    border: `2px solid ${formData.employmentType === '正社員' ? '#2563eb' : '#d1d5db'}`,
-                    flex: 1
-                  }}>
-                    <input
-                      type="radio"
-                      checked={formData.employmentType === '正社員'}
-                      onChange={() => setFormData({ ...formData, employmentType: '正社員' })}
-                      style={{ marginRight: '0.5rem' }}
-                    />
-                    正社員
-                  </label>
-                  <label style={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    cursor: 'pointer',
-                    padding: '0.75rem',
-                    borderRadius: '4px',
-                    backgroundColor: formData.employmentType === 'パート' ? '#dbeafe' : 'transparent',
-                    border: `2px solid ${formData.employmentType === 'パート' ? '#2563eb' : '#d1d5db'}`,
-                    flex: 1
-                  }}>
-                    <input
-                      type="radio"
-                      checked={formData.employmentType === 'パート'}
-                      onChange={() => setFormData({ ...formData, employmentType: 'パート' })}
-                      style={{ marginRight: '0.5rem' }}
-                    />
-                    パート
-                  </label>
+                  {employmentTypes.map((type) => (
+                    <label key={type.code} style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      cursor: 'pointer',
+                      padding: '0.75rem',
+                      borderRadius: '4px',
+                      backgroundColor: formData.employmentType === type.code ? '#dbeafe' : 'transparent',
+                      border: `2px solid ${formData.employmentType === type.code ? '#2563eb' : '#d1d5db'}`,
+                      flex: 1
+                    }}>
+                      <input
+                        type="radio"
+                        checked={formData.employmentType === type.code}
+                        onChange={() => setFormData({ ...formData, employmentType: type.code as '正社員' | 'パート' })}
+                        style={{ marginRight: '0.5rem' }}
+                      />
+                      {type.label}
+                    </label>
+                  ))}
                 </div>
               </div>
 

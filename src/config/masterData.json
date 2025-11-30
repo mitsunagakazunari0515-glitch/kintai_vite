@@ -1,0 +1,97 @@
+{
+  "employmentTypes": [
+    {
+      "code": "正社員",
+      "label": "正社員"
+    },
+    {
+      "code": "パート",
+      "label": "パート"
+    }
+  ],
+  "requestStatuses": [
+    {
+      "code": "申請中",
+      "label": "申請中",
+      "backgroundColor": "#fef3c7",
+      "color": "#92400e"
+    },
+    {
+      "code": "承認",
+      "label": "承認",
+      "backgroundColor": "#d1fae5",
+      "color": "#065f46"
+    },
+    {
+      "code": "却下",
+      "label": "却下",
+      "backgroundColor": "#fee2e2",
+      "color": "#991b1b"
+    },
+    {
+      "code": "削除済み",
+      "label": "削除済み",
+      "backgroundColor": "#e5e7eb",
+      "color": "#6b7280"
+    }
+  ],
+  "leaveTypes": [
+    {
+      "code": "有給",
+      "label": "有給"
+    },
+    {
+      "code": "特別休暇",
+      "label": "特別休暇"
+    },
+    {
+      "code": "病気休暇",
+      "label": "病気休暇"
+    },
+    {
+      "code": "欠勤",
+      "label": "欠勤"
+    },
+    {
+      "code": "その他",
+      "label": "その他"
+    }
+  ],
+  "requestTypes": [
+    {
+      "code": "休暇申請",
+      "label": "休暇申請"
+    },
+    {
+      "code": "打刻修正申請",
+      "label": "打刻修正申請"
+    }
+  ],
+  "attendanceStatuses": [
+    {
+      "code": "未出勤",
+      "label": "未出勤",
+      "backgroundColor": "#e5e7eb",
+      "color": "#374151"
+    },
+    {
+      "code": "出勤中",
+      "label": "出勤中",
+      "backgroundColor": "#dbeafe",
+      "color": "#1e40af"
+    },
+    {
+      "code": "休憩中",
+      "label": "休憩中",
+      "backgroundColor": "#fef3c7",
+      "color": "#92400e"
+    },
+    {
+      "code": "退勤済み",
+      "label": "退勤済み",
+      "backgroundColor": "#d1fae5",
+      "color": "#065f46"
+    }
+  ]
+}
+

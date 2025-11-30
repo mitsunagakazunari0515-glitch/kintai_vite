@@ -1,0 +1,77 @@
+{
+  "payrollRecords": [
+    {
+      "id": "payroll-1",
+      "employeeId": "EMP001",
+      "employeeName": "山田太郎",
+      "companyName": "株式会社A・1インテリア",
+      "period": "2025年 10月",
+      "detail": {
+        "workingDays": 22,
+        "holidayWork": 2,
+        "paidLeave": 1,
+        "paidLeaveRemaining": 8.5,
+        "paidLeaveRemainingDate": "2026.7",
+        "normalOvertime": 20,
+        "lateNightOvertime": 3,
+        "baseSalary": 213000,
+        "overtimeAllowance": 33320,
+        "lateNightAllowance": 5997,
+        "mealAllowance": 0,
+        "allowances": {
+          "allowance1": 10000,
+          "allowance2": 20000
+        },
+        "totalEarnings": 282317,
+        "deductions": {
+          "deduction1": 12036,
+          "deduction2": 21960,
+          "deduction3": 1553,
+          "deduction4": 4900,
+          "deduction5": 7390
+        },
+        "totalDeductions": 47839,
+        "netPay": 234478
+      },
+      "createdAt": "2025-10-31T23:59:59.000Z",
+      "updatedAt": "2024-12-15T10:30:00.000Z"
+    },
+    {
+      "id": "payroll-2",
+      "employeeId": "EMP001",
+      "employeeName": "山田太郎",
+      "companyName": "株式会社A・1インテリア",
+      "period": "2025年 9月",
+      "detail": {
+        "workingDays": 21,
+        "holidayWork": 1,
+        "paidLeave": 0,
+        "paidLeaveRemaining": 9.5,
+        "paidLeaveRemainingDate": "2026.7",
+        "normalOvertime": 15,
+        "lateNightOvertime": 2,
+        "baseSalary": 213000,
+        "overtimeAllowance": 24990,
+        "lateNightAllowance": 3998,
+        "mealAllowance": 0,
+        "allowances": {
+          "allowance1": 10000,
+          "allowance2": 20000
+        },
+        "totalEarnings": 271988,
+        "deductions": {
+          "deduction1": 12036,
+          "deduction2": 21960,
+          "deduction3": 1553,
+          "deduction4": 4900,
+          "deduction5": 7390
+        },
+        "totalDeductions": 47839,
+        "netPay": 224149
+      },
+      "createdAt": "2025-09-30T23:59:59.000Z",
+      "updatedAt": "2024-12-10T14:20:00.000Z"
+    }
+  ]
+}
+

@@ -14,6 +14,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import { Snackbar } from '../../components/Snackbar';
 import { getCurrentFiscalYear } from '../../utils/fiscalYear';
 import { fontSizes } from '../../config/fontSizes';
+import { getLeaveTypes, getRequestStatusStyle } from '../../config/masterData';
+import { dummyEmployeeLeaveRequests } from '../../data/dummyData';
 
 interface LeaveRequest {
   id: string;
@@ -31,169 +33,23 @@ type ViewMode = 'apply' | 'history';
 
 export const LeaveRequest: React.FC = () => {
   const { userId } = useAuth();
-  const [requests, setRequests] = useState<LeaveRequest[]>([
-    {
-      id: '1',
-      employeeId: userId || '',
-      startDate: '2024-01-10',
-      endDate: '2024-01-10',
-      days: 1,
-      type: '有給',
-      reason: '私用のため',
-      status: '承認',
-      isHalfDay: false
-    },
-    {
-      id: '2',
-      employeeId: userId || '',
-      startDate: '2024-01-15',
-      endDate: '2024-01-15',
-      days: 0.5,
-      type: '有給',
-      reason: '午前中のみ',
-      status: '承認',
-      isHalfDay: true
-    },
-    // 2025年度のダミーデータ
-    {
-      id: '3',
-      employeeId: userId || '',
-      startDate: '2025-04-15',
-      endDate: '2025-04-15',
-      days: 1,
-      type: '有給',
-      reason: '私用のため',
-      status: '承認',
-      isHalfDay: false
-    },
-    {
-      id: '4',
-      employeeId: userId || '',
-      startDate: '2025-05-20',
-      endDate: '2025-05-20',
-      days: 0.5,
-      type: '有給',
-      reason: '午前中のみ',
-      status: '承認',
-      isHalfDay: true
-    },
-    {
-      id: '5',
-      employeeId: userId || '',
-      startDate: '2025-06-10',
-      endDate: '2025-06-12',
-      days: 3,
-      type: '有給',
-      reason: '旅行のため',
-      status: '承認',
-      isHalfDay: false
-    },
-    {
-      id: '6',
-      employeeId: userId || '',
-      startDate: '2025-07-05',
-      endDate: '2025-07-05',
-      days: 1,
-      type: '特別休暇',
-      reason: '慶弔のため',
-      status: '承認',
-      isHalfDay: false
-    },
-    {
-      id: '7',
-      employeeId: userId || '',
-      startDate: '2025-08-15',
-      endDate: '2025-08-15',
-      days: 1,
-      type: '欠勤',
-      reason: '体調不良のため',
-      status: '申請中',
-      isHalfDay: false
-    },
-    {
-      id: '8',
-      employeeId: userId || '',
-      startDate: '2025-09-20',
-      endDate: '2025-09-20',
-      days: 1,
-      type: '病気休暇',
-      reason: '病院受診のため',
-      status: '承認',
-      isHalfDay: false
-    },
-    {
-      id: '9',
-      employeeId: userId || '',
-      startDate: '2025-10-10',
-      endDate: '2025-10-10',
-      days: 0.5,
-      type: '有給',
-      reason: '午後のみ',
-      status: '承認',
-      isHalfDay: true
-    },
-    {
-      id: '10',
-      employeeId: userId || '',
-      startDate: '2025-11-15',
-      endDate: '2025-11-15',
-      days: 1,
-      type: '欠勤',
-      reason: '私用のため',
-      status: '削除済み',
-      isHalfDay: false
-    },
-    {
-      id: '11',
-      employeeId: userId || '',
-      startDate: '2025-12-25',
-      endDate: '2025-12-25',
-      days: 1,
-      type: '有給',
-      reason: 'クリスマスのため',
-      status: '承認',
-      isHalfDay: false
-    },
-    {
-      id: '12',
-      employeeId: userId || '',
-      startDate: '2026-01-10',
-      endDate: '2026-01-10',
-      days: 1,
-      type: '有給',
-      reason: '私用のため',
-      status: '承認',
-      isHalfDay: false
-    },
-    {
-      id: '13',
-      employeeId: userId || '',
-      startDate: '2026-02-20',
-      endDate: '2026-02-20',
-      days: 0.5,
-      type: '有給',
-      reason: '午前中のみ',
-      status: '申請中',
-      isHalfDay: true
-    },
-    {
-      id: '14',
-      employeeId: userId || '',
-      startDate: '2026-03-15',
-      endDate: '2026-03-15',
-      days: 1,
-      type: '特別休暇',
-      reason: '慶弔のため',
-      status: '承認',
-      isHalfDay: false
-    }
-  ]);
+  const [requests, setRequests] = useState<LeaveRequest[]>(
+    dummyEmployeeLeaveRequests
+      .filter(req => req.employeeId === userId)
+      .map(req => ({
+        ...req,
+        type: req.type as '有給' | '特別休暇' | '病気休暇' | '欠勤' | 'その他',
+        status: req.status as '申請中' | '承認' | '削除済み',
+        isHalfDay: req.isHalfDay || false
+      }))
+  );
+  const leaveTypes = getLeaveTypes();
   const [formData, setFormData] = useState<Omit<LeaveRequest, 'id' | 'status'>>({
     employeeId: userId || '',
     startDate: '',
     endDate: '',
     days: 0,
-    type: '有給',
+    type: (leaveTypes[0]?.code || '有給') as LeaveRequest['type'],
     reason: '',
     isHalfDay: false
   });
@@ -291,7 +147,7 @@ export const LeaveRequest: React.FC = () => {
       startDate: '',
       endDate: '',
       days: 0,
-      type: '有給',
+      type: (leaveTypes[0]?.code || '有給') as LeaveRequest['type'],
       reason: '',
       isHalfDay: false
     });
@@ -397,11 +253,9 @@ export const LeaveRequest: React.FC = () => {
                   fontSize: fontSizes.select
                 }}
               >
-                <option value="有給">有給</option>
-                <option value="特別休暇">特別休暇</option>
-                <option value="病気休暇">病気休暇</option>
-                <option value="欠勤">欠勤</option>
-                <option value="その他">その他</option>
+                {leaveTypes.map((type) => (
+                  <option key={type.code} value={type.code}>{type.label}</option>
+                ))}
               </select>
             </div>
             <div style={{ marginBottom: '1rem' }}>
@@ -633,10 +487,8 @@ export const LeaveRequest: React.FC = () => {
                           padding: '0.25rem 0.5rem',
                           borderRadius: '4px',
                           fontSize: fontSizes.badge,
-                          backgroundColor: request.status === '承認' ? '#d1fae5' :
-                                           request.status === '削除済み' ? '#e5e7eb' : '#fef3c7',
-                          color: request.status === '承認' ? '#065f46' :
-                                 request.status === '削除済み' ? '#6b7280' : '#92400e'
+                          ...getRequestStatusStyle(request.status),
+                          fontWeight: 'bold'
                         }}>
                           {request.status}
                         </span>

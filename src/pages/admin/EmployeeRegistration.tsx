@@ -15,6 +15,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Snackbar } from '../../components/Snackbar';
 import { fontSizes } from '../../config/fontSizes';
+import { getEmploymentTypes } from '../../config/masterData';
 
 interface Allowance {
   id: string;
@@ -37,6 +38,7 @@ export const EmployeeRegistration: React.FC = () => {
   const navigate = useNavigate();
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const [isEditing] = useState(!!id);
+  const employmentTypes = getEmploymentTypes();
   
   // 手当マスタ（実際の実装では共有状態管理やAPIから取得）
   const [allowances] = useState<Allowance[]>([
@@ -48,7 +50,7 @@ export const EmployeeRegistration: React.FC = () => {
   const [formData, setFormData] = useState<Employee>({
     id: '',
     name: '',
-    employmentType: '正社員',
+    employmentType: (employmentTypes[0]?.code || '正社員') as '正社員' | 'パート',
     email: '',
     joinDate: '',
     leaveDate: null,
@@ -90,7 +92,7 @@ export const EmployeeRegistration: React.FC = () => {
       const existingEmployee: Employee = {
         id: id,
         name: '山田太郎',
-        employmentType: '正社員',
+        employmentType: (employmentTypes[0]?.code || '正社員') as '正社員' | 'パート',
         email: 'yamada@example.com',
         joinDate: '2020-04-01',
         leaveDate: null,
@@ -203,42 +205,26 @@ export const EmployeeRegistration: React.FC = () => {
               雇用形態 *
             </label>
             <div style={{ display: 'flex', gap: '1rem' }}>
-              <label style={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                cursor: 'pointer',
-                padding: '0.75rem',
-                borderRadius: '4px',
-                backgroundColor: formData.employmentType === '正社員' ? '#dbeafe' : 'transparent',
-                border: `2px solid ${formData.employmentType === '正社員' ? '#2563eb' : '#d1d5db'}`,
-                flex: 1
-              }}>
-                <input
-                  type="radio"
-                  checked={formData.employmentType === '正社員'}
-                  onChange={() => setFormData({ ...formData, employmentType: '正社員' })}
-                  style={{ marginRight: '0.5rem' }}
-                />
-                正社員
-              </label>
-              <label style={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                cursor: 'pointer',
-                padding: '0.75rem',
-                borderRadius: '4px',
-                backgroundColor: formData.employmentType === 'パート' ? '#dbeafe' : 'transparent',
-                border: `2px solid ${formData.employmentType === 'パート' ? '#2563eb' : '#d1d5db'}`,
-                flex: 1
-              }}>
-                <input
-                  type="radio"
-                  checked={formData.employmentType === 'パート'}
-                  onChange={() => setFormData({ ...formData, employmentType: 'パート' })}
-                  style={{ marginRight: '0.5rem' }}
-                />
-                パート
-              </label>
+              {employmentTypes.map((type) => (
+                <label key={type.code} style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  cursor: 'pointer',
+                  padding: '0.75rem',
+                  borderRadius: '4px',
+                  backgroundColor: formData.employmentType === type.code ? '#dbeafe' : 'transparent',
+                  border: `2px solid ${formData.employmentType === type.code ? '#2563eb' : '#d1d5db'}`,
+                  flex: 1
+                }}>
+                  <input
+                    type="radio"
+                    checked={formData.employmentType === type.code}
+                    onChange={() => setFormData({ ...formData, employmentType: type.code as '正社員' | 'パート' })}
+                    style={{ marginRight: '0.5rem' }}
+                  />
+                  {type.label}
+                </label>
+              ))}
             </div>
           </div>
 

@@ -13,35 +13,8 @@ import { Snackbar } from '../../components/Snackbar';
 import { ConfirmModal } from '../../components/ConfirmModal';
 import { formatDate } from '../../utils/formatters';
 import { fontSizes } from '../../config/fontSizes';
-
-interface LeaveRequest {
-  id: string;
-  employeeId: string;
-  employeeName: string;
-  startDate: string;
-  endDate: string;
-  days: number;
-  type: '有給' | '特別休暇' | '病気休暇' | '欠勤' | 'その他';
-  reason: string;
-  status: '申請中' | '承認' | '削除済み';
-  isHalfDay?: boolean;
-  requestedAt: string;
-}
-
-interface AttendanceCorrectionRequest {
-  id: string;
-  employeeId: string;
-  employeeName: string;
-  date: string;
-  originalClockIn: string | null;
-  originalClockOut: string | null;
-  requestedClockIn: string;
-  requestedClockOut: string | null;
-  requestedBreaks: Array<{ start: string; end: string | null }>;
-  reason: string;
-  status: '申請中' | '承認' | '却下';
-  requestedAt: string;
-}
+import { getRequestStatuses, getRequestTypes, getRequestStatusStyle } from '../../config/masterData';
+import { dummyLeaveRequests, dummyAttendanceCorrectionRequests, type LeaveRequest, type AttendanceCorrectionRequest } from '../../data/dummyData';
 
 interface UnifiedRequest {
   id: string;
@@ -73,6 +46,8 @@ interface UnifiedRequest {
 
 export const RequestApproval: React.FC = () => {
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+  const requestStatuses = getRequestStatuses();
+  const requestTypes = getRequestTypes();
   const [snackbar, setSnackbar] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
@@ -88,177 +63,25 @@ export const RequestApproval: React.FC = () => {
   const [selectedRequestIds, setSelectedRequestIds] = useState<Set<string>>(new Set());
 
   // ダミーデータ：有給申請
-  const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([
-    {
-      id: 'leave-1',
-      employeeId: 'EMP001',
-      employeeName: '山田太郎',
-      startDate: '2025-12-20',
-      endDate: '2025-12-20',
-      days: 1,
-      type: '有給',
-      reason: '私用のため',
-      status: '申請中',
-      isHalfDay: false,
-      requestedAt: '2025-12-15T10:00:00'
-    },
-    {
-      id: 'leave-2',
-      employeeId: 'EMP002',
-      employeeName: '佐藤花子',
-      startDate: '2025-12-25',
-      endDate: '2025-12-25',
-      days: 0.5,
-      type: '有給',
-      reason: '午前中のみ',
-      status: '申請中',
-      isHalfDay: true,
-      requestedAt: '2025-12-16T14:30:00'
-    },
-    {
-      id: 'leave-3',
-      employeeId: 'EMP003',
-      employeeName: '鈴木一郎',
-      startDate: '2025-12-28',
-      endDate: '2025-12-30',
-      days: 3,
-      type: '有給',
-      reason: '旅行のため',
-      status: '申請中',
-      isHalfDay: false,
-      requestedAt: '2025-12-17T09:15:00'
-    },
-    {
-      id: 'leave-4',
-      employeeId: 'EMP004',
-      employeeName: '田中次郎',
-      startDate: '2025-12-22',
-      endDate: '2025-12-22',
-      days: 1,
-      type: '欠勤',
-      reason: '体調不良のため',
-      status: '申請中',
-      isHalfDay: false,
-      requestedAt: '2025-12-18T08:00:00'
-    },
-    // 過去の申請（承認済み）
-    {
-      id: 'leave-5',
-      employeeId: 'EMP001',
-      employeeName: '山田太郎',
-      startDate: '2025-12-10',
-      endDate: '2025-12-10',
-      days: 1,
-      type: '有給',
-      reason: '私用のため',
-      status: '承認',
-      isHalfDay: false,
-      requestedAt: '2025-12-05T10:00:00'
-    },
-    {
-      id: 'leave-6',
-      employeeId: 'EMP002',
-      employeeName: '佐藤花子',
-      startDate: '2025-12-08',
-      endDate: '2025-12-08',
-      days: 0.5,
-      type: '有給',
-      reason: '午前中のみ',
-      status: '承認',
-      isHalfDay: true,
-      requestedAt: '2025-12-03T14:30:00'
-    },
-    // 過去の申請（削除済み）
-    {
-      id: 'leave-7',
-      employeeId: 'EMP003',
-      employeeName: '鈴木一郎',
-      startDate: '2025-12-05',
-      endDate: '2025-12-05',
-      days: 1,
-      type: '有給',
-      reason: '私用のため',
-      status: '削除済み',
-      isHalfDay: false,
-      requestedAt: '2025-11-30T09:00:00'
-    }
-  ]);
+  const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>(
+    dummyLeaveRequests.map(req => ({
+      ...req,
+      employeeName: req.employeeName || '',
+      type: req.type as '有給' | '特別休暇' | '病気休暇' | '欠勤' | 'その他',
+      status: req.status as '申請中' | '承認' | '削除済み',
+      isHalfDay: req.isHalfDay || false,
+      requestedAt: req.requestedAt || req.createdAt
+    }))
+  );
 
   // ダミーデータ：打刻修正申請
-  const [attendanceRequests, setAttendanceRequests] = useState<AttendanceCorrectionRequest[]>([
-    {
-      id: 'attendance-1',
-      employeeId: 'EMP001',
-      employeeName: '山田太郎',
-      date: '2025-12-10',
-      originalClockIn: '09:00',
-      originalClockOut: '18:00',
-      requestedClockIn: '09:15',
-      requestedClockOut: '18:15',
-      requestedBreaks: [{ start: '12:00', end: '13:00' }],
-      reason: '出勤時刻を間違えて打刻してしまいました',
-      status: '申請中',
-      requestedAt: '2025-12-11T10:00:00'
-    },
-    {
-      id: 'attendance-2',
-      employeeId: 'EMP002',
-      employeeName: '佐藤花子',
-      date: '2025-12-12',
-      originalClockIn: '09:10',
-      originalClockOut: null,
-      requestedClockIn: '09:10',
-      requestedClockOut: '18:10',
-      requestedBreaks: [{ start: '12:10', end: '13:10' }],
-      reason: '退勤時刻を打刻し忘れました',
-      status: '申請中',
-      requestedAt: '2025-12-13T09:00:00'
-    },
-    {
-      id: 'attendance-3',
-      employeeId: 'EMP003',
-      employeeName: '鈴木一郎',
-      date: '2025-12-14',
-      originalClockIn: '09:05',
-      originalClockOut: '18:05',
-      requestedClockIn: '09:05',
-      requestedClockOut: '18:20',
-      requestedBreaks: [{ start: '12:00', end: '13:00' }, { start: '15:00', end: '15:15' }],
-      reason: '休憩時間を追加したいです',
-      status: '申請中',
-      requestedAt: '2025-12-15T11:30:00'
-    },
-    // 過去の申請（承認済み）
-    {
-      id: 'attendance-4',
-      employeeId: 'EMP001',
-      employeeName: '山田太郎',
-      date: '2025-12-05',
-      originalClockIn: '09:00',
-      originalClockOut: '18:00',
-      requestedClockIn: '09:10',
-      requestedClockOut: '18:10',
-      requestedBreaks: [{ start: '12:00', end: '13:00' }],
-      reason: '出勤時刻を修正したいです',
-      status: '承認',
-      requestedAt: '2025-12-06T10:00:00'
-    },
-    // 過去の申請（却下済み）
-    {
-      id: 'attendance-5',
-      employeeId: 'EMP002',
-      employeeName: '佐藤花子',
-      date: '2025-12-03',
-      originalClockIn: '09:10',
-      originalClockOut: '18:10',
-      requestedClockIn: '09:00',
-      requestedClockOut: '18:00',
-      requestedBreaks: [{ start: '12:10', end: '13:10' }],
-      reason: '打刻時刻を修正したいです',
-      status: '却下',
-      requestedAt: '2025-12-04T09:00:00'
-    }
-  ]);
+  const [attendanceRequests, setAttendanceRequests] = useState<AttendanceCorrectionRequest[]>(
+    dummyAttendanceCorrectionRequests.map(req => ({
+      ...req,
+      status: req.status as '申請中' | '承認' | '却下',
+      requestedAt: req.requestedAt || req.createdAt
+    }))
+  );
 
   useEffect(() => {
     const handleResize = () => {
@@ -274,16 +97,16 @@ export const RequestApproval: React.FC = () => {
       id: req.id,
       type: '休暇申請' as const,
       employeeId: req.employeeId,
-      employeeName: req.employeeName,
-      status: req.status,
-      requestedAt: req.requestedAt,
+      employeeName: req.employeeName || '',
+      status: req.status as '申請中' | '承認' | '却下' | '削除済み',
+      requestedAt: req.requestedAt || req.createdAt,
       leaveData: {
         startDate: req.startDate,
         endDate: req.endDate,
         days: req.days,
-        leaveType: req.type,
+        leaveType: req.type as '有給' | '特別休暇' | '病気休暇' | '欠勤' | 'その他',
         reason: req.reason,
-        isHalfDay: req.isHalfDay
+        isHalfDay: req.isHalfDay || false
       }
     })),
     ...attendanceRequests.map(req => ({
@@ -291,8 +114,8 @@ export const RequestApproval: React.FC = () => {
       type: '打刻修正申請' as const,
       employeeId: req.employeeId,
       employeeName: req.employeeName,
-      status: req.status,
-      requestedAt: req.requestedAt,
+      status: req.status as '申請中' | '承認' | '却下' | '削除済み',
+      requestedAt: req.requestedAt || req.createdAt,
       attendanceData: {
         date: req.date,
         originalClockIn: req.originalClockIn,
@@ -562,8 +385,9 @@ export const RequestApproval: React.FC = () => {
               }}
             >
               <option value="all">すべて</option>
-              <option value="休暇申請">休暇申請</option>
-              <option value="打刻修正申請">打刻修正申請</option>
+              {requestTypes.map((type) => (
+                <option key={type.code} value={type.code}>{type.label}</option>
+              ))}
             </select>
           </div>
           <div style={{ flex: isMobile ? '1' : '1', minWidth: isMobile ? '100%' : '150px' }}>
@@ -584,10 +408,9 @@ export const RequestApproval: React.FC = () => {
               }}
             >
               <option value="all">すべて</option>
-              <option value="申請中">申請中</option>
-              <option value="承認">承認</option>
-              <option value="却下">却下</option>
-              <option value="削除済み">削除済み</option>
+              {requestStatuses.map((status) => (
+                <option key={status.code} value={status.code}>{status.label}</option>
+              ))}
             </select>
           </div>
           <div style={{ 
@@ -724,8 +547,7 @@ export const RequestApproval: React.FC = () => {
                   padding: '0.25rem 0.75rem',
                   borderRadius: '4px',
                   fontSize: fontSizes.badge,
-                  backgroundColor: request.status === '申請中' ? '#fef3c7' : request.status === '承認' ? '#d1fae5' : request.status === '削除済み' ? '#e5e7eb' : '#fee2e2',
-                  color: request.status === '申請中' ? '#92400e' : request.status === '承認' ? '#065f46' : request.status === '削除済み' ? '#6b7280' : '#991b1b',
+                  ...getRequestStatusStyle(request.status),
                   fontWeight: 'bold'
                 }}>
                   {request.status}
@@ -920,8 +742,7 @@ export const RequestApproval: React.FC = () => {
                       padding: '0.25rem 0.75rem',
                       borderRadius: '4px',
                       fontSize: fontSizes.button,
-                      backgroundColor: request.status === '申請中' ? '#fef3c7' : request.status === '承認' ? '#d1fae5' : request.status === '削除済み' ? '#e5e7eb' : '#fee2e2',
-                      color: request.status === '申請中' ? '#92400e' : request.status === '承認' ? '#065f46' : request.status === '削除済み' ? '#6b7280' : '#991b1b',
+                      ...getRequestStatusStyle(request.status),
                       fontWeight: 'bold'
                     }}>
                       {request.status}

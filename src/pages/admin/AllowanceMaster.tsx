@@ -14,6 +14,7 @@ import { Snackbar } from '../../components/Snackbar';
 import { ConfirmModal } from '../../components/ConfirmModal';
 import { EditIcon, DeleteIcon } from '../../components/Icons';
 import { fontSizes } from '../../config/fontSizes';
+import { dummyAllowances } from '../../data/dummyData';
 
 interface Allowance {
   id: string;
@@ -34,11 +35,7 @@ const defaultColors = [
 
 export const AllowanceMaster: React.FC = () => {
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
-  const [allowances, setAllowances] = useState<Allowance[]>([
-    { id: 'allowance1', name: '交通費', color: '#3b82f6' },
-    { id: 'allowance2', name: '住宅手当', color: '#10b981' },
-    { id: 'allowance3', name: '家族手当', color: '#f59e0b' }
-  ]);
+  const [allowances, setAllowances] = useState<Allowance[]>(dummyAllowances);
   const [formData, setFormData] = useState<Omit<Allowance, 'id'>>({
     name: '',
     color: defaultColors[0]

@@ -1,0 +1,144 @@
+{
+  "attendanceLogs": [
+    {
+      "id": "1",
+      "employeeId": "EMP001",
+      "employeeName": "山田太郎",
+      "date": "2025-11-30",
+      "clockIn": "09:00",
+      "clockOut": "18:00",
+      "breaks": [
+        {
+          "start": "12:00",
+          "end": "13:00"
+        }
+      ],
+      "status": "退勤済み",
+      "memo": "",
+      "createdAt": "2025-11-30T09:00:00.000Z",
+      "updatedAt": "2025-11-30T18:00:00.000Z"
+    },
+    {
+      "id": "2",
+      "employeeId": "EMP002",
+      "employeeName": "佐藤花子",
+      "date": "2025-11-30",
+      "clockIn": "10:00",
+      "clockOut": "17:00",
+      "breaks": [
+        {
+          "start": "12:30",
+          "end": "13:30"
+        }
+      ],
+      "status": "退勤済み",
+      "memo": "",
+      "createdAt": "2025-11-30T10:00:00.000Z",
+      "updatedAt": "2025-11-30T17:00:00.000Z"
+    },
+    {
+      "id": "3",
+      "employeeId": "EMP001",
+      "employeeName": "山田太郎",
+      "date": "2025-11-29",
+      "clockIn": "09:15",
+      "clockOut": "18:15",
+      "breaks": [
+        {
+          "start": "12:15",
+          "end": "13:15"
+        }
+      ],
+      "status": "退勤済み",
+      "memo": null,
+      "createdAt": "2025-11-29T09:15:00.000Z",
+      "updatedAt": "2025-11-29T18:15:00.000Z"
+    },
+    {
+      "id": "4",
+      "employeeId": "EMP003",
+      "employeeName": "鈴木一郎",
+      "date": "2025-11-30",
+      "clockIn": "09:05",
+      "clockOut": null,
+      "breaks": [
+        {
+          "start": "12:00",
+          "end": "13:00"
+        }
+      ],
+      "status": "出勤中",
+      "memo": "",
+      "createdAt": "2025-11-30T09:05:00.000Z",
+      "updatedAt": "2025-11-30T09:05:00.000Z"
+    },
+    {
+      "id": "5",
+      "employeeId": "EMP002",
+      "employeeName": "佐藤花子",
+      "date": "2025-11-29",
+      "clockIn": "10:15",
+      "clockOut": "17:30",
+      "breaks": [
+        {
+          "start": "12:30",
+          "end": "13:30"
+        }
+      ],
+      "status": "退勤済み",
+      "memo": "",
+      "createdAt": "2025-11-29T10:15:00.000Z",
+      "updatedAt": "2025-11-29T17:30:00.000Z"
+    },
+    {
+      "id": "6",
+      "employeeId": "EMP001",
+      "employeeName": "山田太郎",
+      "date": "2025-11-28",
+      "clockIn": "09:00",
+      "clockOut": "18:00",
+      "breaks": [
+        {
+          "start": "12:00",
+          "end": "13:00"
+        }
+      ],
+      "status": "退勤済み",
+      "memo": null,
+      "createdAt": "2025-11-28T09:00:00.000Z",
+      "updatedAt": "2025-11-28T18:00:00.000Z"
+    },
+    {
+      "id": "7",
+      "employeeId": "EMP003",
+      "employeeName": "鈴木一郎",
+      "date": "2025-11-29",
+      "clockIn": "09:10",
+      "clockOut": "18:20",
+      "breaks": [
+        {
+          "start": "12:10",
+          "end": "13:10"
+        }
+      ],
+      "status": "退勤済み",
+      "memo": null,
+      "createdAt": "2025-11-29T09:10:00.000Z",
+      "updatedAt": "2025-11-29T18:20:00.000Z"
+    },
+    {
+      "id": "8",
+      "employeeId": "EMP002",
+      "employeeName": "佐藤花子",
+      "date": "2025-11-28",
+      "clockIn": null,
+      "clockOut": null,
+      "breaks": [],
+      "status": "未出勤",
+      "memo": "",
+      "createdAt": "2025-11-28T00:00:00.000Z",
+      "updatedAt": "2025-11-28T00:00:00.000Z"
+    }
+  ]
+}
+

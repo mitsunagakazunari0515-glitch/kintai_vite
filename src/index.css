@@ -1,12 +1,54 @@
+* {
+  box-sizing: border-box;
+}
+
+:root {
+  --color-bg: #f5f0e8;
+  --color-bg-soft: #f9f3eb;
+  --color-primary: #8b5a2b; /* ウォールナット系ブラウン */
+  --color-primary-dark: #5b3b1f;
+  --color-accent: #c47c3f; /* キャメル系アクセント */
+  --color-border-soft: #e0d2c2;
+  --color-text-main: #3f3b36;
+}
+
 body {
   margin: 0;
-  background: linear-gradient(180deg, rgb(117, 81, 194), rgb(255, 255, 255));
-  display: flex;
-  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
-  height: 100vh;
-  width: 100vw;
-  justify-content: center;
-  align-items: center;
+  font-family: -apple-system, BlinkMacSystemFont, 'Noto Sans JP', 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: radial-gradient(circle at top left, #fdf7ee 0%, var(--color-bg) 40%, #e8ddcf 100%);
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--color-text-main);
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/* モバイル向けの基本スタイル */
+input, select, textarea {
+  font-size: 16px; /* iOSのズームを防ぐ */
+}
+
+/* タッチターゲットの最小サイズ */
+button, a {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* テーブルのモバイル対応 */
+@media (max-width: 768px) {
+  table {
+    font-size: 0.875rem;
+  }
+  
+  th, td {
+    padding: 0.5rem 0.25rem !important;
+  }
 }
 
 main {
@@ -17,18 +59,37 @@ main {
 
 button {
   border-radius: 8px;
-  border: 1px solid transparent;
+  border: 1px solid var(--color-border-soft);
   padding: 0.6em 1.2em;
-  font-size: 1em;
+  font-size: 0.875rem;
   font-weight: 500;
   font-family: inherit;
-  background-color: #1a1a1a;
-  cursor: pointer;
+  background: linear-gradient(145deg, var(--color-primary) 0%, var(--color-accent) 100%);
+  cursor: pointer !important;
   transition: border-color 0.25s;
-  color: white;
+  color: #fff;
+  box-shadow: 0 3px 6px rgba(91, 59, 31, 0.25);
+}
+
+/* PC表示時のボタンフォントサイズ */
+@media (min-width: 769px) {
+  button {
+    font-size: 0.875rem;
+  }
 }
 button:hover {
-  border-color: #646cff;
+  border-color: var(--color-primary-dark);
+  box-shadow: 0 4px 10px rgba(91, 59, 31, 0.35);
+  cursor: pointer !important;
+}
+button:not(:disabled):hover {
+  cursor: pointer !important;
+}
+button:disabled {
+  cursor: not-allowed !important;
+}
+button:not(:disabled) {
+  cursor: pointer !important;
 }
 button:focus,
 button:focus-visible {
@@ -56,7 +117,7 @@ li {
 }
 
 li:hover {
-  background: #dadbf9;
+  background: #f3e3cf;
 }
 
 a {

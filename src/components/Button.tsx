@@ -987,3 +987,50 @@ export const ClearButton: React.FC<Omit<ButtonProps, 'variant'>> = ({ ...props }
   );
 };
 
+/**
+ * 戻るボタンコンポーネント。
+ * 前の画面に戻る際に使用するボタンです。
+ *
+ * @param {Omit<ButtonProps, 'variant'>} props - ボタンのプロパティ。
+ * @returns {JSX.Element} 戻るボタンコンポーネント。
+ */
+export const BackButton: React.FC<Omit<ButtonProps, 'variant'>> = ({ ...props }) => {
+  const { onMouseEnter: propsOnMouseEnter, onMouseLeave: propsOnMouseLeave, style: propsStyle, ...restProps } = props;
+
+  return (
+    <Button
+      variant="secondary"
+      {...restProps}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '0.05rem',
+        backgroundColor: 'white',
+        color: '#6b7280',
+        border: '1px solid #6b7280',
+        minWidth: '100px',
+        fontSize: fontSizes.button,
+        ...propsStyle
+      }}
+      onMouseEnter={(e) => {
+        if (!restProps.disabled) {
+          e.currentTarget.style.backgroundColor = '#f3f4f6';
+          e.currentTarget.style.borderColor = '#4b5563';
+          e.currentTarget.style.color = '#4b5563';
+        }
+        propsOnMouseEnter?.(e);
+      }}
+      onMouseLeave={(e) => {
+        if (!restProps.disabled) {
+          e.currentTarget.style.backgroundColor = 'white';
+          e.currentTarget.style.borderColor = '#6b7280';
+          e.currentTarget.style.color = '#6b7280';
+        }
+        propsOnMouseLeave?.(e);
+      }}
+    >
+      ← 戻る
+    </Button>
+  );
+};
+

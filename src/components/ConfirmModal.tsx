@@ -5,7 +5,7 @@
 
 import React, { useState } from 'react';
 import { fontSizes } from '../config/fontSizes';
-import { CancelButton } from './Button';
+import { CancelButton, ApproveButton } from './Button';
 import { CheckIcon } from './Icons';
 
 /**
@@ -148,6 +148,12 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
               <CheckIcon size={18} color={cancelButtonHovered ? '#15803d' : '#ffffff'} />
               {confirmText}
             </button>
+          ) : confirmText === '承認' ? (
+            <ApproveButton
+              type="button"
+              onClick={onConfirm}
+              fullWidth
+            />
           ) : (
             <button
               type="button"

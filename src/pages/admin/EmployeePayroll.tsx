@@ -16,8 +16,8 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
-import { EditIcon } from '../../components/Icons';
-import { NewRegisterButton, ViewButton, PdfExportButton, CancelButton, RegisterButton, UpdateButton } from '../../components/Button';
+import { EditIcon, ViewIcon } from '../../components/Icons';
+import { NewRegisterButton, PdfExportButton, RegisterButton, UpdateButton, Button, EditButton, BackButton } from '../../components/Button';
 import { formatCurrency } from '../../utils/formatters';
 import { fontSizes } from '../../config/fontSizes';
 import { getCurrentFiscalYear } from '../../utils/fiscalYear';
@@ -733,35 +733,45 @@ export const EmployeePayroll: React.FC = () => {
                   {searchFiscalYear}年度（{searchFiscalYear}年4月 〜 {searchFiscalYear + 1}年3月）
                 </div>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
-                <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 'bold', fontSize: isMobile ? '0.875rem' : '0.7rem', opacity: 0, height: '1.25rem' }}>
-                  年度
-                </label>
-                <button
-                  onClick={() => {
-                    setSearchFiscalYear(getCurrentFiscalYear());
-                  }}
-                  style={{
-                    padding: '0.5rem 1rem',
-                    backgroundColor: '#6b7280',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '4px',
-                    fontWeight: 'bold',
-                    cursor: 'pointer',
-                    whiteSpace: 'nowrap',
-                    boxSizing: 'border-box',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    boxShadow: 'none',
-                    minHeight: 'auto',
-                    minWidth: 'auto'
-                  }}
-                >
-                  今年度に戻す
-                </button>
-              </div>
+              {!isMobile && (
+                <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
+                  <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 'bold', fontSize: isMobile ? '0.875rem' : '0.7rem', opacity: 0, height: '1.25rem' }}>
+                    年度
+                  </label>
+                  <button
+                    onClick={() => {
+                      setSearchFiscalYear(getCurrentFiscalYear());
+                    }}
+                    style={{
+                      padding: '0.5rem 1rem',
+                      backgroundColor: '#6b7280',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      fontWeight: 'bold',
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                      boxSizing: 'border-box',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: 'none',
+                      minHeight: 'auto',
+                      minWidth: 'auto'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = '#4b5563';
+                      e.currentTarget.style.color = 'white';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = '#6b7280';
+                      e.currentTarget.style.color = 'white';
+                    }}
+                  >
+                    今年度に戻す
+                  </button>
+                </div>
+              )}
               <div style={{ 
                 fontSize: fontSizes.badge,
                 color: '#6b7280',
@@ -820,10 +830,6 @@ export const EmployeePayroll: React.FC = () => {
                         </div>
                       </div>
                       <div style={{ display: 'flex', gap: '0.5rem', flexDirection: 'column' }}>
-                        <ViewButton
-                          onClick={() => handleView(record)}
-                          title="給与明細を閲覧"
-                        />
                         <button
                           onClick={() => handleEdit(record)}
                           style={{
@@ -836,7 +842,7 @@ export const EmployeePayroll: React.FC = () => {
                             display: 'inline-flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            color: '#10b981',
+                            color: '#2563eb',
                             transition: 'background-color 0.2s',
                             boxShadow: 'none',
                             minHeight: 'auto',
@@ -850,8 +856,24 @@ export const EmployeePayroll: React.FC = () => {
                           }}
                           title="編集"
                         >
-                          <EditIcon size={28} color="#10b981" />
+                          <EditIcon size={28} color="#2563eb" />
                         </button>
+                        <Button
+                          variant="primary"
+                          size="small"
+                          onClick={() => handleView(record)}
+                          title="給与明細を閲覧"
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.05rem',
+                            minWidth: '100px',
+                            fontSize: fontSizes.button
+                          }}
+                        >
+                          <ViewIcon size={16} color="#2563eb" />
+                          給与明細
+                        </Button>
                       </div>
                     </div>
                   </div>
@@ -932,40 +954,59 @@ export const EmployeePayroll: React.FC = () => {
                           }) : '-'}
                         </td>
                         <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                          <ViewButton
+                          <Button
+                            variant="primary"
+                            size="small"
                             onClick={() => handleView(record)}
                             title="給与明細を閲覧"
-                          />
-                        </td>
-                        <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                          <button
-                            onClick={() => handleEdit(record)}
                             style={{
-                              padding: '0.75rem',
-                              background: 'transparent',
-                              backgroundColor: 'transparent',
-                              border: 'none',
-                              borderRadius: '4px',
-                              cursor: 'pointer',
                               display: 'inline-flex',
                               alignItems: 'center',
-                              justifyContent: 'center',
-                              color: '#2563eb',
-                              transition: 'background-color 0.2s',
-                              boxShadow: 'none',
-                              minHeight: 'auto',
-                              minWidth: 'auto'
+                              gap: '0.05rem',
+                              minWidth: '100px',
+                              fontSize: fontSizes.button
                             }}
-                            onMouseEnter={(e) => {
-                              e.currentTarget.style.backgroundColor = '#eff6ff';
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.style.backgroundColor = 'transparent';
-                            }}
-                            title="編集"
                           >
-                            <EditIcon size={28} color="#2563eb" />
-                          </button>
+                            <ViewIcon size={16} color="#2563eb" />
+                            閲覧
+                          </Button>
+                        </td>
+                        <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                          {isMobile ? (
+                            <EditButton
+                              onClick={() => handleEdit(record)}
+                              size="small"
+                            />
+                          ) : (
+                            <button
+                              onClick={() => handleEdit(record)}
+                              style={{
+                                padding: '0.75rem',
+                                background: 'transparent',
+                                backgroundColor: 'transparent',
+                                border: 'none',
+                                borderRadius: '4px',
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                color: '#2563eb',
+                                transition: 'background-color 0.2s',
+                                boxShadow: 'none',
+                                minHeight: 'auto',
+                                minWidth: 'auto'
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.backgroundColor = '#eff6ff';
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.backgroundColor = 'transparent';
+                              }}
+                              title="編集"
+                            >
+                              <EditIcon size={28} color="#2563eb" />
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -990,12 +1031,10 @@ export const EmployeePayroll: React.FC = () => {
             alignItems: 'center',
             zIndex: 1000
           }}>
-            <CancelButton
+            <BackButton
               onClick={() => navigate('/admin/employees')}
               style={{ whiteSpace: 'nowrap' }}
-            >
-              ←戻る
-            </CancelButton>
+            />
           </div>
         </div>
       )}
@@ -1226,15 +1265,13 @@ export const EmployeePayroll: React.FC = () => {
               gap: '1rem',
               zIndex: 1000
             }}>
-              <CancelButton
+              <BackButton
                 onClick={() => {
                   setViewMode('list');
                   window.history.pushState({ viewMode: 'list' }, '', window.location.pathname);
                 }}
                 style={{ whiteSpace: 'nowrap' }}
-              >
-                ← 戻る
-              </CancelButton>
+              />
               <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                 <PdfExportButton
                   onClick={handleExportPDF}
@@ -1592,13 +1629,11 @@ export const EmployeePayroll: React.FC = () => {
               gap: '0.5rem',
               zIndex: 1000
             }}>
-              <CancelButton
+              <BackButton
                 onClick={handleCancel}
                 style={{ whiteSpace: 'nowrap' }}
-              >
-                ← 戻る
-              </CancelButton>
-              <div style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
+              />
+              <div style={{ flex: 1, display: 'flex', justifyContent: isMobile ? 'flex-end' : 'center' }}>
                 {viewMode === 'new' ? (
                   <RegisterButton
                     onClick={handleSave}
@@ -1611,7 +1646,7 @@ export const EmployeePayroll: React.FC = () => {
                   />
                 )}
               </div>
-              <div style={{ width: '120px' }}></div>
+              {!isMobile && <div style={{ width: '120px' }}></div>}
             </div>
           )}
         </div>

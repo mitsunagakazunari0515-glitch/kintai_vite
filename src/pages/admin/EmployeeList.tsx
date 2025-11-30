@@ -13,7 +13,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Snackbar } from '../../components/Snackbar';
-import { Button, ViewButton, NewRegisterButton, CancelButton, RegisterButton, UpdateButton } from '../../components/Button';
+import { Button, NewRegisterButton, CancelButton, RegisterButton, UpdateButton, EditButton } from '../../components/Button';
+import { ViewIcon } from '../../components/Icons';
 import { formatDate, formatCurrency } from '../../utils/formatters';
 import { fontSizes } from '../../config/fontSizes';
 import { getEmploymentTypes } from '../../config/masterData';
@@ -502,15 +503,34 @@ export const EmployeeList: React.FC = () => {
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                    <ViewButton
+                    <Button
+                      variant="primary"
+                      size="small"
                       onClick={() => navigate(`/admin/employees/${emp.id}/payroll`)}
                       title="給与明細を閲覧"
-                    />
-                    <Button
-                      variant="icon-edit"
-                      onClick={() => handleEdit(emp)}
-                      title="編集"
-                    />
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.05rem',
+                        minWidth: '100px',
+                        fontSize: fontSizes.button
+                      }}
+                    >
+                      <ViewIcon size={16} color="#2563eb" />
+                      給与明細
+                    </Button>
+                    {isMobile ? (
+                      <EditButton
+                        onClick={() => handleEdit(emp)}
+                        size="small"
+                      />
+                    ) : (
+                      <Button
+                        variant="icon-edit"
+                        onClick={() => handleEdit(emp)}
+                        title="編集"
+                      />
+                    )}
                   </div>
                 </div>
                 <div style={{ 
@@ -751,17 +771,36 @@ export const EmployeeList: React.FC = () => {
                       }) : '-'}
                     </td>
                     <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                      <ViewButton
+                      <Button
+                        variant="primary"
+                        size="small"
                         onClick={() => navigate(`/admin/employees/${emp.id}/payroll`)}
                         title="給与明細を閲覧"
-                      />
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.05rem',
+                          minWidth: '100px',
+                          fontSize: fontSizes.button
+                        }}
+                      >
+                        <ViewIcon size={16} color="#2563eb" />
+                        閲覧
+                      </Button>
                     </td>
                     <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                      <Button
-                        variant="icon-edit"
-                        onClick={() => handleEdit(emp)}
-                        title="編集"
-                      />
+                      {isMobile ? (
+                        <EditButton
+                          onClick={() => handleEdit(emp)}
+                          size="small"
+                        />
+                      ) : (
+                        <Button
+                          variant="icon-edit"
+                          onClick={() => handleEdit(emp)}
+                          title="編集"
+                        />
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -1056,11 +1095,6 @@ export const EmployeeList: React.FC = () => {
               </div>
 
               <div style={{ display: 'flex', gap: '1rem', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'flex-end' }}>
-                <CancelButton
-                  fullWidth
-                  type="button"
-                  onClick={handleCancel}
-                />
                 {editingEmployee ? (
                   <UpdateButton
                     fullWidth
@@ -1072,6 +1106,11 @@ export const EmployeeList: React.FC = () => {
                     type="submit"
                   />
                 )}
+                <CancelButton
+                  fullWidth
+                  type="button"
+                  onClick={handleCancel}
+                />
               </div>
             </form>
           </div>

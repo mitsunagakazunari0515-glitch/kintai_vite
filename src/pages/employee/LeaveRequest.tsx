@@ -12,7 +12,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { Snackbar } from '../../components/Snackbar';
-import { Button, ApplyButton } from '../../components/Button';
+import { Button, ApplyButton, CancelApprovalButton } from '../../components/Button';
 import { getCurrentFiscalYear, isInFiscalYear } from '../../utils/fiscalYear';
 import { fontSizes } from '../../config/fontSizes';
 import { getLeaveTypes, getRequestStatusStyle } from '../../config/masterData';
@@ -57,16 +57,19 @@ type ViewMode = 'apply' | 'history';
  */
 export const LeaveRequest: React.FC = () => {
   const { userId } = useAuth();
-  const [requests, setRequests] = useState<LeaveRequest[]>(
-    dummyEmployeeLeaveRequests
-      .filter(req => !userId || req.employeeId === userId)
+  const [requests, setRequests] = useState<LeaveRequest[]>([]);
+  
+  // ダミーデータを読み込み（従業員IDでのフィルタリングなし）
+  useEffect(() => {
+    const filtered = dummyEmployeeLeaveRequests
       .map(req => ({
         ...req,
         type: req.type as '有給' | '特別休暇' | '病気休暇' | '欠勤' | 'その他',
         status: req.status as '申請中' | '承認' | '削除済み',
         isHalfDay: req.isHalfDay || false
-      }))
-  );
+      }));
+    setRequests(filtered);
+  }, []);
   const leaveTypes = getLeaveTypes();
   const [formData, setFormData] = useState<Omit<LeaveRequest, 'id' | 'status'>>({
     employeeId: userId || '',
@@ -461,6 +464,14 @@ export const LeaveRequest: React.FC = () => {
                 border: 'none',
                 fontSize: fontSizes.button
               }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = '#4b5563';
+                e.currentTarget.style.color = 'white';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = '#6b7280';
+                e.currentTarget.style.color = 'white';
+              }}
             >
               今年度に戻す
             </Button>
@@ -505,17 +516,10 @@ export const LeaveRequest: React.FC = () => {
                           {request.status}
                         </span>
                         {request.status === '申請中' && (
-                          <Button
-                            type="button"
-                            variant="danger"
+                          <CancelApprovalButton
                             onClick={() => handleCancelRequest(request.id)}
-                            size="small"
-                            style={{
-                              padding: '0.25rem 0.75rem'
-                            }}
-                          >
-                            取消
-                          </Button>
+                            isTableButton
+                          />
                         )}
                       </div>
                     </div>

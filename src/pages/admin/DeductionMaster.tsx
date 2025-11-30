@@ -172,13 +172,6 @@ export const DeductionMaster: React.FC = () => {
               />
             </div>
             <div style={{ display: 'flex', gap: '1rem', flexDirection: isMobile ? 'column' : 'row' }}>
-              {editingId && (
-                <CancelButton
-                  fullWidth
-                  type="button"
-                  onClick={handleCancel}
-                />
-              )}
               {editingId ? (
                 <UpdateButton
                   fullWidth
@@ -188,6 +181,13 @@ export const DeductionMaster: React.FC = () => {
                 <RegisterButton
                   fullWidth
                   type="submit"
+                />
+              )}
+              {editingId && (
+                <CancelButton
+                  fullWidth
+                  type="button"
+                  onClick={handleCancel}
                 />
               )}
             </div>

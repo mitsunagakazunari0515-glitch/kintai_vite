@@ -12,7 +12,7 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { Button, CancelButton, RegisterButton, DeleteButton } from '../../components/Button';
+import { Button, CancelButton, RegisterButton, DeleteButton, UpdateButton } from '../../components/Button';
 import { Snackbar } from '../../components/Snackbar';
 import { formatDate, formatTime } from '../../utils/formatters';
 import { fontSizes } from '../../config/fontSizes';
@@ -1693,8 +1693,15 @@ export const Attendance: React.FC = () => {
                     padding: '0.75rem', 
                     textAlign: 'left', 
                     fontWeight: 'bold',
+                    borderRight: '1px solid #d1d5db',
                     whiteSpace: 'nowrap'
                   }}>勤務状況</th>
+                  <th style={{ 
+                    padding: '0.75rem', 
+                    textAlign: 'center', 
+                    fontWeight: 'bold',
+                    whiteSpace: 'nowrap'
+                  }}>修正</th>
                 </tr>
               </thead>
               <tbody>
@@ -1821,34 +1828,31 @@ export const Attendance: React.FC = () => {
                           {breakTime}
                         </td>
                         <td style={{ 
-                          padding: '0.75rem'
+                          padding: '0.75rem',
+                          borderRight: '1px solid #e5e7eb'
                         }}>
                           {log ? (
-                            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                              <span style={{
-                                padding: '0.25rem 0.5rem',
-                                borderRadius: '4px',
-                                fontSize: fontSizes.badge,
-                                backgroundColor: log.status === '退勤済み' ? '#d1fae5' : '#dbeafe',
-                                color: log.status === '退勤済み' ? '#065f46' : '#1e40af'
-                              }}>
-                                {log.status}
-                              </span>
-                              <button
-                                onClick={() => handleEdit(log)}
-                                style={{
-                                  padding: '0.25rem 0.5rem',
-                                  backgroundColor: '#2563eb',
-                                  color: 'white',
-                                  border: 'none',
-                                  borderRadius: '4px',
-                                  fontWeight: 'bold',
-                                  cursor: 'pointer'
-                                }}
-                              >
-                                修正
-                              </button>
-                            </div>
+                            <span style={{
+                              padding: '0.25rem 0.5rem',
+                              borderRadius: '4px',
+                              fontSize: fontSizes.badge,
+                              backgroundColor: log.status === '退勤済み' ? '#d1fae5' : '#dbeafe',
+                              color: log.status === '退勤済み' ? '#065f46' : '#1e40af'
+                            }}>
+                              {log.status}
+                            </span>
+                          ) : '-'}
+                        </td>
+                        <td style={{ 
+                          padding: '0.75rem',
+                          textAlign: 'center'
+                        }}>
+                          {log ? (
+                            <Button
+                              variant="icon-edit"
+                              onClick={() => handleEdit(log)}
+                              title="編集"
+                            />
                           ) : '-'}
                         </td>
                       </tr>

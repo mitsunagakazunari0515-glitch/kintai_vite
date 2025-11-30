@@ -13,7 +13,7 @@
 import { useState, useEffect } from 'react';
 import { formatTime, formatDate } from '../../utils/formatters';
 import { fontSizes } from '../../config/fontSizes';
-import { Button, RegisterButton, CancelButton } from '../../components/Button';
+import { Button, RegisterButton, CancelButton, EditButton } from '../../components/Button';
 import { Snackbar } from '../../components/Snackbar';
 import { dummyAttendanceLogs } from '../../data/dummyData';
 import { useSort } from '../../hooks/useSort';
@@ -430,6 +430,15 @@ export const AttendanceList: React.FC = () => {
                     </>
                   );
                 })()}
+                <div style={{ fontSize: fontSizes.medium, color: '#6b7280', marginBottom: '0.25rem' }}>
+                  メモ: {log.memo || '-'}
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
+                  <EditButton
+                    onClick={() => handleEdit(log)}
+                    size="small"
+                  />
+                </div>
               </div>
             ))}
           </div>
@@ -510,11 +519,18 @@ export const AttendanceList: React.FC = () => {
                         </div>
                       </td>
                       <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                        <Button
-                          variant="icon-edit"
-                          onClick={() => handleEdit(log)}
-                          title="編集"
-                        />
+                        {isMobile ? (
+                          <EditButton
+                            onClick={() => handleEdit(log)}
+                            size="small"
+                          />
+                        ) : (
+                          <Button
+                            variant="icon-edit"
+                            onClick={() => handleEdit(log)}
+                            title="編集"
+                          />
+                        )}
                       </td>
                     </tr>
                   );

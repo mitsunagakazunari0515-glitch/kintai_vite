@@ -253,14 +253,6 @@ export const AllowanceMaster: React.FC = () => {
               </div>
             </div>
             <div style={{ display: 'flex', gap: '0.4rem', flexDirection: isMobile ? 'column' : 'row' }}>
-              {editingId && (
-                <CancelButton
-                  size="small"
-                  fullWidth
-                  type="button"
-                  onClick={handleCancel}
-                />
-              )}
               {editingId ? (
                 <UpdateButton
                   size="small"
@@ -272,6 +264,14 @@ export const AllowanceMaster: React.FC = () => {
                   size="small"
                   fullWidth
                   type="submit"
+                />
+              )}
+              {editingId && (
+                <CancelButton
+                  size="small"
+                  fullWidth
+                  type="button"
+                  onClick={handleCancel}
                 />
               )}
             </div>

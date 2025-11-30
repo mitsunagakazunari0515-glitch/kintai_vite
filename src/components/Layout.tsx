@@ -54,8 +54,8 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
   }, [userRole]);
 
   // ヘッダーとナビゲーションの高さを計算
-  const headerHeight = isMobile ? 80 : 60; // モバイル: 約80px, PC: 約60px
-  const navHeight = isMobile ? 50 : 60; // モバイル: 約50px, PC: 約60px
+  const headerHeight = isMobile ? 60 : 60; // モバイル: 約60px, PC: 約60px
+  const navHeight = isMobile ? 0 : 60; // モバイル: 0px（非表示）, PC: 約60px
   const totalFixedHeight = headerHeight + navHeight;
 
   return (
@@ -65,12 +65,18 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
       flexDirection: 'column',
       background: 'radial-gradient(circle at top left, #fdf7ee 0%, #f5f0e8 40%, #e8ddcf 100%)'
     }}>
-      <Header isMobile={isMobile} />
-      <Navigation 
+      <Header 
         isMobile={isMobile} 
         userRole={userRole || 'employee'} 
         pendingRequestCount={pendingRequestCount}
       />
+      {!isMobile && (
+        <Navigation 
+          isMobile={isMobile} 
+          userRole={userRole || 'employee'} 
+          pendingRequestCount={pendingRequestCount}
+        />
+      )}
       <main style={{ 
         flex: 1, 
         padding: isMobile ? '1rem' : '1rem',

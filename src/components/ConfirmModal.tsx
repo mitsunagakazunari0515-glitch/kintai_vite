@@ -3,9 +3,10 @@
  * ユーザーに確認を求める際に使用するモーダルです。
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import { fontSizes } from '../config/fontSizes';
-import { CancelButton, DeleteButton } from './Button';
+import { CancelButton } from './Button';
+import { CheckIcon } from './Icons';
 
 /**
  * 確認モーダルコンポーネントのプロパティを表すインターフェース。
@@ -59,6 +60,8 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
   onCancel,
   isMobile = window.innerWidth <= 768
 }) => {
+  const [cancelButtonHovered, setCancelButtonHovered] = useState(false);
+  
   if (!isOpen) return null;
 
   return (
@@ -107,7 +110,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
         <div style={{
           display: 'flex',
           gap: '1rem',
-          flexDirection: isMobile ? 'column' : 'row',
+          flexDirection: isMobile ? 'column-reverse' : 'row',
           justifyContent: 'flex-end'
         }}>
           <CancelButton
@@ -115,12 +118,36 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
             onClick={onCancel}
             fullWidth
           />
-          {confirmText === '削除' ? (
-            <DeleteButton
+          { confirmText === '取消' || confirmText === '削除' ? (
+            <button
               type="button"
               onClick={onConfirm}
-              fullWidth
-            />
+              onMouseEnter={() => setCancelButtonHovered(true)}
+              onMouseLeave={() => setCancelButtonHovered(false)}
+              style={{
+                flex: 1,
+                padding: '0.75rem',
+                backgroundColor: cancelButtonHovered ? '#dcfce7' : '#16a34a',
+                color: cancelButtonHovered ? '#15803d' : '#ffffff',
+                border: `1px solid ${cancelButtonHovered ? '#15803d' : '#16a34a'}`,
+                borderRadius: '4px',
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '0.05rem',
+                minWidth: '100px',
+                fontSize: fontSizes.button,
+                boxShadow: 'none',
+                minHeight: 'auto',
+                transition: 'background-color 0.2s, border-color 0.2s, color 0.2s, transform 0.2s',
+                transform: cancelButtonHovered ? 'scale(1.02)' : 'scale(1)'
+              }}
+            >
+              <CheckIcon size={18} color={cancelButtonHovered ? '#15803d' : '#ffffff'} />
+              {confirmText}
+            </button>
           ) : (
             <button
               type="button"

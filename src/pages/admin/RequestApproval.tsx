@@ -15,6 +15,8 @@ import { formatDate } from '../../utils/formatters';
 import { fontSizes } from '../../config/fontSizes';
 import { getRequestStatuses, getRequestTypes, getRequestStatusStyle } from '../../config/masterData';
 import { dummyLeaveRequests, dummyAttendanceCorrectionRequests, type LeaveRequest, type AttendanceCorrectionRequest } from '../../data/dummyData';
+import { ChevronDownIcon, ChevronUpIcon } from '../../components/Icons';
+import { ApproveButton, BulkApproveButton, CancelApprovalButton, SelectAllButton, SearchButton, ClearButton } from '../../components/Button';
 
 /**
  * 統合された申請情報を表すインターフェース。
@@ -30,7 +32,7 @@ interface UnifiedRequest {
   /** 従業員名。 */
   employeeName: string;
   /** 申請ステータス。 */
-  status: '申請中' | '承認' | '却下' | '削除済み';
+  status: '申請中' | '承認' | '取消' | '削除済み';
   /** 申請日時。 */
   requestedAt: string;
   /** 休暇申請のフィールド（休暇申請の場合に存在）。 */
@@ -86,11 +88,19 @@ export const RequestApproval: React.FC = () => {
     confirmText?: string;
     onConfirm: () => void;
   } | null>(null);
-  const [searchYearMonthFrom, setSearchYearMonthFrom] = useState('');
-  const [searchYearMonthTo, setSearchYearMonthTo] = useState('');
+  // 今月の年月を取得（YYYY-MM形式）
+  const getCurrentYearMonth = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    return `${year}-${month}`;
+  };
+  const [searchYearMonthFrom, setSearchYearMonthFrom] = useState(getCurrentYearMonth());
+  const [searchYearMonthTo, setSearchYearMonthTo] = useState(getCurrentYearMonth());
   const [filterType, setFilterType] = useState<string>('all'); // 'all' | '休暇申請' | '打刻修正申請'
-  const [filterStatus, setFilterStatus] = useState<string>('all'); // 'all' | '申請中' | '承認' | '却下' | '削除済み'
+  const [filterStatus, setFilterStatus] = useState<string>('all'); // 'all' | '申請中' | '承認' | '取消' | '削除済み'
   const [selectedRequestIds, setSelectedRequestIds] = useState<Set<string>>(new Set());
+  const [isSearchExpanded, setIsSearchExpanded] = useState<boolean>(false); // モバイル時の検索条件の展開状態
 
   // ダミーデータ：有給申請
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>(
@@ -108,7 +118,7 @@ export const RequestApproval: React.FC = () => {
   const [attendanceRequests, setAttendanceRequests] = useState<AttendanceCorrectionRequest[]>(
     dummyAttendanceCorrectionRequests.map(req => ({
       ...req,
-      status: req.status as '申請中' | '承認' | '却下',
+      status: req.status as '申請中' | '承認' | '取消',
       requestedAt: req.requestedAt || req.createdAt
     }))
   );
@@ -128,7 +138,7 @@ export const RequestApproval: React.FC = () => {
       type: '休暇申請' as const,
       employeeId: req.employeeId,
       employeeName: req.employeeName || '',
-      status: req.status as '申請中' | '承認' | '却下' | '削除済み',
+      status: req.status as '申請中' | '承認' | '取消' | '削除済み',
       requestedAt: req.requestedAt || req.createdAt,
       leaveData: {
         startDate: req.startDate,
@@ -144,7 +154,7 @@ export const RequestApproval: React.FC = () => {
       type: '打刻修正申請' as const,
       employeeId: req.employeeId,
       employeeName: req.employeeName,
-      status: req.status as '申請中' | '承認' | '却下' | '削除済み',
+      status: req.status as '申請中' | '承認' | '取消' | '削除済み',
       requestedAt: req.requestedAt || req.createdAt,
       attendanceData: {
         date: req.date,
@@ -193,48 +203,24 @@ export const RequestApproval: React.FC = () => {
     }
   };
 
-  // 申請の却下
-  const handleReject = (request: UnifiedRequest) => {
-    setConfirmModal({
-      isOpen: true,
-      title: '申請の却下',
-      message: '申請を却下しますか？',
-      confirmText: '却下',
-      onConfirm: () => {
-        if (request.type === '休暇申請') {
-          setLeaveRequests(prev => 
-            prev.map(req => req.id === request.id ? { ...req, status: '削除済み' as const } : req)
-          );
-          setSnackbar({ message: '休暇申請を却下しました', type: 'success' });
-        } else {
-          setAttendanceRequests(prev => 
-            prev.map(req => req.id === request.id ? { ...req, status: '却下' as const } : req)
-          );
-          setSnackbar({ message: '打刻修正申請を却下しました', type: 'success' });
-        }
-        setConfirmModal(null);
-      }
-    });
-  };
-
-  // 承認済み申請の取消
+  // 申請の取消（申請中・承認どちらの場合も取消可能）
   const handleCancelApproval = (request: UnifiedRequest) => {
     setConfirmModal({
       isOpen: true,
-      title: '承認の取消',
-      message: '承認を取り消しますか？',
+      title: request.status === '申請中' ? '申請の取消' : '承認の取消',
+      message: request.status === '申請中' ? '申請を取り消しますか？' : '承認を取り消しますか？',
       confirmText: '取消',
       onConfirm: () => {
         if (request.type === '休暇申請') {
           setLeaveRequests(prev => 
-            prev.map(req => req.id === request.id ? { ...req, status: '申請中' as const } : req)
+            prev.map(req => req.id === request.id ? { ...req, status: '取消' as const } : req)
           );
-          setSnackbar({ message: '休暇申請の承認を取り消しました', type: 'success' });
+          setSnackbar({ message: request.status === '申請中' ? '休暇申請を取り消しました' : '休暇申請の承認を取り消しました', type: 'success' });
         } else {
           setAttendanceRequests(prev => 
-            prev.map(req => req.id === request.id ? { ...req, status: '申請中' as const } : req)
+            prev.map(req => req.id === request.id ? { ...req, status: '取消' as const } : req)
           );
-          setSnackbar({ message: '打刻修正申請の承認を取り消しました', type: 'success' });
+          setSnackbar({ message: request.status === '申請中' ? '打刻修正申請を取り消しました' : '打刻修正申請の承認を取り消しました', type: 'success' });
         }
         setConfirmModal(null);
       }
@@ -348,17 +334,164 @@ export const RequestApproval: React.FC = () => {
       {/* 検索・フィルター */}
       <div style={{
         backgroundColor: '#f9fafb',
-        padding: isMobile ? '0.75rem' : '1rem',
+        padding: isMobile ? '0' : '1rem',
         borderRadius: '8px',
         marginBottom: '1rem'
       }}>
-        <div style={{
-          display: 'flex',
-          flexDirection: isMobile ? 'column' : 'row',
-          gap: isMobile ? '0.75rem' : '1rem',
-          alignItems: isMobile ? 'stretch' : 'flex-end',
-          flexWrap: 'wrap'
-        }}>
+        {isMobile ? (
+          <>
+            {/* モバイル時：折りたたみ可能な検索ヘッダー */}
+            <button
+              onClick={() => setIsSearchExpanded(!isSearchExpanded)}
+              style={{
+                width: '100%',
+                padding: '0.75rem',
+                backgroundColor: 'transparent',
+                border: 'none',
+                borderTop: '1px solid #e5e7eb',
+                borderBottom: '1px solid #e5e7eb',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                cursor: 'pointer',
+                boxShadow: 'none',
+                minHeight: 'auto',
+                minWidth: 'auto'
+              }}
+            >
+              <span style={{ 
+                fontSize: fontSizes.label, 
+                fontWeight: 'bold', 
+                color: '#1f2937' 
+              }}>
+                絞り込み検索
+              </span>
+              {isSearchExpanded ? (
+                <ChevronUpIcon size={20} color="#6b7280" />
+              ) : (
+                <ChevronDownIcon size={20} color="#6b7280" />
+              )}
+            </button>
+            {/* モバイル時：展開された検索条件 */}
+            {isSearchExpanded && (
+              <div style={{
+                padding: '0.75rem',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.75rem'
+              }}>
+                <div style={{ flex: '1', minWidth: '100%' }}>
+                  <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 'bold', fontSize: fontSizes.label }}>
+                    申請年月（開始日）
+                  </label>
+                  <input
+                    type="month"
+                    value={searchYearMonthFrom}
+                    onChange={(e) => setSearchYearMonthFrom(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '0.5rem 0.75rem',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '4px',
+                      fontSize: fontSizes.input,
+                      boxSizing: 'border-box',
+                      height: 'calc(0.5rem * 2 + 0.875rem + 2px)'
+                    }}
+                  />
+                </div>
+                <div style={{ flex: '1', minWidth: '100%' }}>
+                  <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 'bold', fontSize: fontSizes.label }}>
+                    申請年月（終了日）
+                  </label>
+                  <input
+                    type="month"
+                    value={searchYearMonthTo}
+                    onChange={(e) => setSearchYearMonthTo(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '0.5rem 0.75rem',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '4px',
+                      fontSize: fontSizes.input,
+                      boxSizing: 'border-box',
+                      height: 'calc(0.5rem * 2 + 0.875rem + 2px)'
+                    }}
+                  />
+                </div>
+                <div style={{ flex: '1', minWidth: '100%' }}>
+                  <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 'bold', fontSize: fontSizes.label }}>
+                    種別
+                  </label>
+                  <select
+                    value={filterType}
+                    onChange={(e) => setFilterType(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '0.5rem 0.75rem',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '4px',
+                      fontSize: fontSizes.select,
+                      boxSizing: 'border-box',
+                      height: 'calc(0.5rem * 2 + 0.875rem + 2px)'
+                    }}
+                  >
+                    <option value="all">すべて</option>
+                    {requestTypes.map((type) => (
+                      <option key={type.code} value={type.code}>{type.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div style={{ flex: '1', minWidth: '100%' }}>
+                  <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 'bold', fontSize: fontSizes.label }}>
+                    ステータス
+                  </label>
+                  <select
+                    value={filterStatus}
+                    onChange={(e) => setFilterStatus(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '0.5rem 0.75rem',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '4px',
+                      fontSize: fontSizes.select,
+                      boxSizing: 'border-box',
+                      height: 'calc(0.5rem * 2 + 0.875rem + 2px)'
+                    }}
+                  >
+                    <option value="all">すべて</option>
+                    {requestStatuses.map((status) => (
+                      <option key={status.code} value={status.code}>{status.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div style={{ 
+                  fontSize: fontSizes.medium, 
+                  color: '#6b7280',
+                  minWidth: '100%'
+                }}>
+                  検索結果: {filteredRequests.length}件
+                </div>
+                <div style={{ minWidth: '100%', display: 'flex', gap: '0.5rem' }}>
+                  <ClearButton
+                    onClick={handleClearSearch}
+                    fullWidth
+                  />
+                  <SearchButton
+                    onClick={() => {}}
+                    fullWidth
+                  />
+                </div>
+              </div>
+            )}
+          </>
+        ) : (
+          <div style={{
+            display: 'flex',
+            flexDirection: 'row',
+            gap: '1rem',
+            alignItems: 'flex-end',
+            flexWrap: 'wrap'
+          }}>
           <div style={{ flex: isMobile ? '1' : '1', minWidth: isMobile ? '100%' : '150px' }}>
             <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 'bold', fontSize: fontSizes.label }}>
               申請年月（開始日）
@@ -456,83 +589,46 @@ export const RequestApproval: React.FC = () => {
           <div style={{ 
             flex: isMobile ? '1' : '0 0 auto',
             alignSelf: isMobile ? 'flex-start' : 'flex-end',
-            minWidth: isMobile ? '100%' : 'auto'
+            minWidth: isMobile ? '100%' : 'auto',
+            display: 'flex',
+            gap: '0.5rem'
           }}>
-            <button
+            <SearchButton
+              onClick={() => {}}
+            />
+            <ClearButton
               onClick={handleClearSearch}
-              style={{
-                padding: '0.5rem 1rem',
-                backgroundColor: '#6b7280',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                fontWeight: 'bold',
-                cursor: 'pointer',
-                boxShadow: 'none',
-                minHeight: 'auto',
-                minWidth: 'auto',
-                height: 'calc(0.5rem * 2 + 0.875rem + 2px)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}
-            >
-              クリア
-            </button>
+            />
           </div>
-        </div>
+          </div>
+        )}
+      </div>
         {filteredRequests.filter(req => req.status === '申請中').length > 0 && (
           <div style={{
-            marginTop: '1rem',
+            marginBottom: '1rem',
             display: 'flex',
             gap: '0.5rem',
             alignItems: 'center',
             flexWrap: 'wrap'
           }}>
-            <button
-              onClick={handleSelectAll}
-              style={{
-                padding: '0.5rem 1rem',
-                backgroundColor: '#6b7280',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                fontWeight: 'bold',
-                cursor: 'pointer',
-                boxShadow: 'none',
-                minHeight: 'auto',
-                minWidth: 'auto'
-              }}
-            >
-              {(() => {
-                const pendingRequests = filteredRequests.filter(req => req.status === '申請中');
-                const allSelected = pendingRequests.length > 0 && 
-                                  pendingRequests.every(req => selectedRequestIds.has(req.id));
-                return allSelected ? '全解除' : '全選択';
-              })()}
-            </button>
-            <button
+            {(() => {
+              const pendingRequests = filteredRequests.filter(req => req.status === '申請中');
+              const allSelected = pendingRequests.length > 0 && 
+                                pendingRequests.every(req => selectedRequestIds.has(req.id));
+              return (
+                <SelectAllButton
+                  onClick={handleSelectAll}
+                  isAllSelected={allSelected}
+                />
+              );
+            })()}
+            <BulkApproveButton
               onClick={handleBulkApprove}
               disabled={selectedRequestIds.size === 0}
-              style={{
-                padding: '0.5rem 1rem',
-                backgroundColor: selectedRequestIds.size === 0 ? '#9ca3af' : '#2563eb',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                fontWeight: 'bold',
-                cursor: selectedRequestIds.size === 0 ? 'not-allowed' : 'pointer',
-                boxShadow: 'none',
-                minHeight: 'auto',
-                minWidth: 'auto',
-                opacity: selectedRequestIds.size === 0 ? 0.5 : 1
-              }}
-            >
-              一括承認 ({selectedRequestIds.size}件)
-            </button>
+              count={selectedRequestIds.size}
+            />
           </div>
         )}
-      </div>
 
       {/* 申請一覧テーブル */}
       {filteredRequests.length === 0 ? (
@@ -551,25 +647,25 @@ export const RequestApproval: React.FC = () => {
             <div
               key={request.id}
               style={{
-                backgroundColor: request.status === '削除済み' || request.status === '却下' ? '#f3f4f6' : '#ffffff',
+                backgroundColor: request.status === '削除済み' || request.status === '取消' ? '#f3f4f6' : '#ffffff',
                 padding: '1rem',
                 borderRadius: '8px',
                 border: '1px solid #e5e7eb',
                 boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-                opacity: request.status === '削除済み' || request.status === '却下' ? 0.7 : 1
+                opacity: request.status === '削除済み' || request.status === '取消' ? 0.7 : 1
               }}
             >
               <div style={{ marginBottom: '0.75rem' }}>
-                <div style={{ fontSize: fontSizes.medium, color: request.status === '削除済み' || request.status === '却下' ? '#9ca3af' : '#6b7280', marginBottom: '0.25rem' }}>種別</div>
-                <div style={{ fontWeight: 'bold', color: request.status === '削除済み' || request.status === '却下' ? '#9ca3af' : 'inherit' }}>{request.type}</div>
+                <div style={{ fontSize: fontSizes.medium, color: request.status === '削除済み' || request.status === '取消' ? '#9ca3af' : '#6b7280', marginBottom: '0.25rem' }}>種別</div>
+                <div style={{ fontWeight: 'bold', color: request.status === '削除済み' || request.status === '取消' ? '#9ca3af' : 'inherit' }}>{request.type}</div>
               </div>
               <div style={{ marginBottom: '0.75rem' }}>
-                <div style={{ fontSize: fontSizes.medium, color: request.status === '削除済み' || request.status === '却下' ? '#9ca3af' : '#6b7280', marginBottom: '0.25rem' }}>従業員</div>
-                <div style={{ fontWeight: 'bold', color: request.status === '削除済み' || request.status === '却下' ? '#9ca3af' : 'inherit' }}>{request.employeeName} ({request.employeeId})</div>
+                <div style={{ fontSize: fontSizes.medium, color: request.status === '削除済み' || request.status === '取消' ? '#9ca3af' : '#6b7280', marginBottom: '0.25rem' }}>従業員</div>
+                <div style={{ fontWeight: 'bold', color: request.status === '削除済み' || request.status === '取消' ? '#9ca3af' : 'inherit' }}>{request.employeeName} ({request.employeeId})</div>
               </div>
               <div style={{ marginBottom: '0.75rem' }}>
-                <div style={{ fontSize: fontSizes.medium, color: request.status === '削除済み' || request.status === '却下' ? '#9ca3af' : '#6b7280', marginBottom: '0.25rem' }}>申請日時</div>
-                <div style={{ color: request.status === '削除済み' || request.status === '却下' ? '#9ca3af' : 'inherit' }}>{formatDate(request.requestedAt)} {new Date(request.requestedAt).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}</div>
+                <div style={{ fontSize: fontSizes.medium, color: request.status === '削除済み' || request.status === '取消' ? '#9ca3af' : '#6b7280', marginBottom: '0.25rem' }}>申請日時</div>
+                <div style={{ color: request.status === '削除済み' || request.status === '取消' ? '#9ca3af' : 'inherit' }}>{formatDate(request.requestedAt)} {new Date(request.requestedAt).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}</div>
               </div>
               <div style={{ marginBottom: '0.75rem' }}>
                 <div style={{ fontSize: fontSizes.medium, color: '#6b7280', marginBottom: '0.25rem' }}>ステータス</div>
@@ -616,66 +712,28 @@ export const RequestApproval: React.FC = () => {
                 </div>
               )}
               {request.status === '申請中' && (
-                <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem' }}>
-                  <button
-                    onClick={() => handleReject(request)}
-                    style={{
-                      flex: 1,
-                      padding: '0.5rem',
-                      backgroundColor: '#6b7280',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '4px',
-                      fontWeight: 'bold',
-                      cursor: 'pointer',
-                      boxShadow: 'none',
-                      minHeight: 'auto',
-                      minWidth: 'auto'
-                    }}
-                  >
-                    却下
-                  </button>
-                  <button
+                <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem', flexDirection: 'column' }}>
+                  <ApproveButton
                     onClick={() => handleApprove(request)}
-                    style={{
-                      flex: 1,
-                      padding: '0.5rem',
-                      backgroundColor: '#2563eb',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '4px',
-                      fontWeight: 'bold',
-                      cursor: 'pointer',
-                      boxShadow: 'none',
-                      minHeight: 'auto',
-                      minWidth: 'auto'
-                    }}
-                  >
-                    承認
-                  </button>
+                    fullWidth
+                  />
+                  <CancelApprovalButton
+                    onClick={() => handleCancelApproval(request)}
+                    fullWidth
+                  />
                 </div>
               )}
               {request.status === '承認' && (
                 <div style={{ marginTop: '0.75rem' }}>
-                  <button
+                  <CancelApprovalButton
                     onClick={() => handleCancelApproval(request)}
-                    style={{
-                      width: '100%',
-                      padding: '0.5rem',
-                      backgroundColor: '#dc2626',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '4px',
-                      fontSize: fontSizes.button,
-                      fontWeight: 'bold',
-                      cursor: 'pointer',
-                      boxShadow: 'none',
-                      minHeight: 'auto',
-                      minWidth: 'auto'
-                    }}
-                  >
-                    承認取消
-                  </button>
+                    fullWidth
+                  />
+                </div>
+              )}
+              {(request.status === '取消' || request.status === '削除済み') && (
+                <div style={{ marginTop: '0.75rem', color: '#9ca3af', fontSize: fontSizes.small }}>
+                  -
                 </div>
               )}
             </div>
@@ -688,7 +746,7 @@ export const RequestApproval: React.FC = () => {
           overflowY: 'auto',
           flex: 1
         }}>
-          <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, minWidth: '1000px', border: '2px solid #e5e7eb' }}>
+          <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, minWidth: '1100px', border: '2px solid #e5e7eb' }}>
             <thead>
               <tr style={{ 
                 borderBottom: '2px solid #e5e7eb', 
@@ -722,7 +780,8 @@ export const RequestApproval: React.FC = () => {
                 <th style={{ padding: '0.75rem', textAlign: 'left' }}>申請日時</th>
                 <th style={{ padding: '0.75rem', textAlign: 'left' }}>詳細</th>
                 <th style={{ padding: '0.75rem', textAlign: 'left' }}>ステータス</th>
-                <th style={{ padding: '0.75rem', textAlign: 'center' }}>操作</th>
+                <th style={{ padding: '0.75rem', textAlign: 'center' }}>承認</th>
+                <th style={{ padding: '0.75rem', textAlign: 'center' }}>取消</th>
               </tr>
             </thead>
             <tbody>
@@ -731,8 +790,8 @@ export const RequestApproval: React.FC = () => {
                   key={request.id} 
                   style={{ 
                     borderBottom: '1px solid #e5e7eb',
-                    backgroundColor: request.status === '削除済み' || request.status === '却下' ? '#f3f4f6' : '#ffffff',
-                    opacity: request.status === '削除済み' || request.status === '却下' ? 0.7 : 1
+                    backgroundColor: request.status === '削除済み' || request.status === '取消' ? '#f3f4f6' : '#ffffff',
+                    opacity: request.status === '削除済み' || request.status === '取消' ? 0.7 : 1
                   }}
                 >
                   <td style={{ padding: '0.75rem', textAlign: 'center' }}>
@@ -749,12 +808,12 @@ export const RequestApproval: React.FC = () => {
                       />
                     )}
                   </td>
-                  <td style={{ padding: '0.75rem', fontWeight: 'bold', color: request.status === '削除済み' || request.status === '却下' ? '#9ca3af' : 'inherit' }}>{request.type}</td>
-                  <td style={{ padding: '0.75rem', color: request.status === '削除済み' || request.status === '却下' ? '#9ca3af' : 'inherit' }}>{request.employeeName} ({request.employeeId})</td>
-                  <td style={{ padding: '0.75rem', color: request.status === '削除済み' || request.status === '却下' ? '#9ca3af' : 'inherit' }}>
+                  <td style={{ padding: '0.75rem', fontWeight: 'bold', color: request.status === '削除済み' || request.status === '取消' ? '#9ca3af' : 'inherit' }}>{request.type}</td>
+                  <td style={{ padding: '0.75rem', color: request.status === '削除済み' || request.status === '取消' ? '#9ca3af' : 'inherit' }}>{request.employeeName} ({request.employeeId})</td>
+                  <td style={{ padding: '0.75rem', color: request.status === '削除済み' || request.status === '取消' ? '#9ca3af' : 'inherit' }}>
                     {formatDate(request.requestedAt)} {new Date(request.requestedAt).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}
                   </td>
-                  <td style={{ padding: '0.75rem', fontSize: fontSizes.tableCell, color: request.status === '削除済み' || request.status === '却下' ? '#9ca3af' : 'inherit' }}>
+                  <td style={{ padding: '0.75rem', fontSize: fontSizes.tableCell, color: request.status === '削除済み' || request.status === '取消' ? '#9ca3af' : 'inherit' }}>
                     {request.type === '休暇申請' && request.leaveData && (
                       <div>
                         {request.leaveData.leaveType} / {formatDate(request.leaveData.startDate)}
@@ -779,62 +838,23 @@ export const RequestApproval: React.FC = () => {
                     </span>
                   </td>
                   <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                    {request.status === '申請中' && (
-                      <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
-                        <button
-                          onClick={() => handleReject(request)}
-                          style={{
-                            padding: '0.5rem 1rem',
-                            backgroundColor: '#6b7280',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '4px',
-                            fontWeight: 'bold',
-                            cursor: 'pointer',
-                            boxShadow: 'none',
-                            minHeight: 'auto',
-                            minWidth: 'auto'
-                          }}
-                        >
-                          却下
-                        </button>
-                        <button
-                          onClick={() => handleApprove(request)}
-                          style={{
-                            padding: '0.5rem 1rem',
-                            backgroundColor: '#2563eb',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '4px',
-                            fontWeight: 'bold',
-                            cursor: 'pointer',
-                            boxShadow: 'none',
-                            minHeight: 'auto',
-                            minWidth: 'auto'
-                          }}
-                        >
-                          承認
-                        </button>
-                      </div>
+                    {request.status === '申請中' ? (
+                      <ApproveButton
+                        onClick={() => handleApprove(request)}
+                        isTableButton
+                      />
+                    ) : (
+                      <span style={{ color: '#9ca3af' }}>-</span>
                     )}
-                    {request.status === '承認' && (
-                      <button
+                  </td>
+                  <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                    {(request.status === '申請中' || request.status === '承認') ? (
+                      <CancelApprovalButton
                         onClick={() => handleCancelApproval(request)}
-                        style={{
-                          padding: '0.5rem 1rem',
-                          backgroundColor: '#dc2626',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '4px',
-                          fontWeight: 'bold',
-                          cursor: 'pointer',
-                          boxShadow: 'none',
-                          minHeight: 'auto',
-                          minWidth: 'auto'
-                        }}
-                      >
-                        承認取消
-                      </button>
+                        isTableButton
+                      />
+                    ) : (
+                      <span style={{ color: '#9ca3af' }}>-</span>
                     )}
                   </td>
                 </tr>

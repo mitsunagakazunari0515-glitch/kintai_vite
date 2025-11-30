@@ -91,10 +91,14 @@ export const DeductionMaster: React.FC = () => {
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
     id: string;
+    name: string;
   } | null>(null);
 
   const handleDelete = (id: string) => {
-    setConfirmModal({ isOpen: true, id });
+    const deduction = deductions.find(d => d.id === id);
+    if (deduction) {
+      setConfirmModal({ isOpen: true, id, name: deduction.name });
+    }
   };
 
   const confirmDelete = () => {
@@ -122,7 +126,7 @@ export const DeductionMaster: React.FC = () => {
       {confirmModal && (
         <ConfirmModal
           isOpen={confirmModal.isOpen}
-          title="控除項目の削除"
+          title={`${confirmModal.name}削除確認`}
           message="この控除項目を削除しますか？"
           confirmText="削除"
           onConfirm={confirmDelete}

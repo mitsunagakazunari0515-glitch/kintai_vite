@@ -111,7 +111,7 @@ export const Attendance: React.FC = () => {
   const [now, setNow] = useState<Date>(new Date());
   const [selectedYear, setSelectedYear] = useState<number>(2025);
   const [selectedMonth, setSelectedMonth] = useState<number>(11);
-  const [showSummary, setShowSummary] = useState<boolean>(true);
+  const [showSummary, setShowSummary] = useState<boolean>(false);
   const [missingClockOutError, setMissingClockOutError] = useState<{ date: string; clockIn: string } | null>(null);
   const [snackbar, setSnackbar] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
@@ -742,7 +742,18 @@ export const Attendance: React.FC = () => {
             {getStatusMessage(currentStatus)}
           </div>
           <div style={{ marginBottom: isMobile ? '0.75rem' : '0.5rem' }}>
-            <p style={{ fontSize: isMobile ? '1.5rem' : '2rem', fontWeight: 'bold', color: '#2563eb' }}>
+            <p style={{ 
+              fontSize: isMobile ? '1.5rem' : '2rem', 
+              fontWeight: 'bold',
+              color: (() => {
+                const dateStr = now.toISOString().split('T')[0];
+                const date = new Date(dateStr);
+                const dayOfWeek = date.getDay();
+                if (dayOfWeek === 0) return '#dc2626'; // 日曜日→赤色
+                if (dayOfWeek === 6) return '#2563eb'; // 土曜日→青色
+                return '#1f2937'; // 平日→黒色
+              })()
+            }}>
               {(() => {
                 const dateStr = now.toISOString().split('T')[0];
                 const formattedDate = formatDate(dateStr);
@@ -1282,7 +1293,7 @@ export const Attendance: React.FC = () => {
               </div>
             )}
           </div>
-          <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', flexDirection: isMobile ? 'column' : 'row' }}>
+          <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', flexDirection: isMobile ? 'column-reverse' : 'row' }}>
             <CancelButton
               fullWidth
               onClick={handleCancelEdit}

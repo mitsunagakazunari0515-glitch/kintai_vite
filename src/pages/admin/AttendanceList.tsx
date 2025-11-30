@@ -17,6 +17,7 @@ import { Button, RegisterButton, CancelButton } from '../../components/Button';
 import { Snackbar } from '../../components/Snackbar';
 import { dummyAttendanceLogs } from '../../data/dummyData';
 import { useSort } from '../../hooks/useSort';
+import { ChevronDownIcon, ChevronUpIcon } from '../../components/Icons';
 
 /**
  * 休憩時間を表すインターフェース。
@@ -93,6 +94,7 @@ export const AttendanceList: React.FC = () => {
   const [showModal, setShowModal] = useState(false);
   const [editingLog, setEditingLog] = useState<AttendanceLog | null>(null);
   const [memo, setMemo] = useState('');
+  const [isSearchExpanded, setIsSearchExpanded] = useState<boolean>(false); // モバイル時の検索条件の展開状態
 
   useEffect(() => {
     const handleResize = () => {
@@ -219,17 +221,109 @@ export const AttendanceList: React.FC = () => {
       {/* 検索条件 */}
       <div style={{
         backgroundColor: '#f9fafb',
-        padding: isMobile ? '0.5rem' : '0.75rem',
+        padding: isMobile ? '0' : '0.75rem',
         borderRadius: '8px',
         marginBottom: '1rem'
       }}>
-        <div style={{
-          display: 'flex',
-          flexDirection: isMobile ? 'column' : 'row',
-          gap: isMobile ? '0.5rem' : '1rem',
-          alignItems: isMobile ? 'stretch' : 'flex-end',
-          flexWrap: 'wrap'
-        }}>
+        {isMobile ? (
+          <>
+            {/* モバイル時：折りたたみ可能な検索ヘッダー */}
+            <button
+              onClick={() => setIsSearchExpanded(!isSearchExpanded)}
+              style={{
+                width: '100%',
+                padding: '0.75rem',
+                backgroundColor: 'transparent',
+                border: 'none',
+                borderTop: '1px solid #e5e7eb',
+                borderBottom: '1px solid #e5e7eb',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                cursor: 'pointer',
+                boxShadow: 'none',
+                minHeight: 'auto',
+                minWidth: 'auto'
+              }}
+            >
+              <span style={{ 
+                fontSize: fontSizes.label, 
+                fontWeight: 'bold', 
+                color: '#1f2937' 
+              }}>
+                絞り込み検索
+              </span>
+              {isSearchExpanded ? (
+                <ChevronUpIcon size={20} color="#6b7280" />
+              ) : (
+                <ChevronDownIcon size={20} color="#6b7280" />
+              )}
+            </button>
+            {/* モバイル時：展開された検索条件 */}
+            {isSearchExpanded && (
+              <div style={{
+                padding: '0.75rem',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.75rem'
+              }}>
+                <div style={{ flex: '1', minWidth: '100%' }}>
+                  <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 'bold', fontSize: fontSizes.label }}>
+                    開始日
+                  </label>
+                  <input
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '0.5rem 0.75rem',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '4px',
+                      fontSize: '0.875rem',
+                      boxSizing: 'border-box',
+                      height: 'calc(0.5rem * 2 + 0.875rem + 2px)'
+                    }}
+                  />
+                </div>
+                <div style={{ flex: '1', minWidth: '100%' }}>
+                  <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 'bold', fontSize: fontSizes.label }}>
+                    終了日
+                  </label>
+                  <input
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    min={startDate}
+                    style={{
+                      width: '100%',
+                      padding: '0.5rem 0.75rem',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '4px',
+                      fontSize: '0.875rem',
+                      boxSizing: 'border-box',
+                      height: 'calc(0.5rem * 2 + 0.875rem + 2px)'
+                    }}
+                  />
+                </div>
+                <div style={{ 
+                  fontSize: fontSizes.medium, 
+                  color: '#6b7280',
+                  minWidth: '100%'
+                }}>
+                  検索結果: {filteredLogs.length}件
+                </div>
+              </div>
+            )}
+          </>
+        ) : (
+          <div style={{
+            display: 'flex',
+            flexDirection: 'row',
+            gap: '1rem',
+            alignItems: 'flex-end',
+            flexWrap: 'wrap'
+          }}>
           <div style={{ flex: isMobile ? '1' : '0 0 auto', minWidth: isMobile ? '100%' : '170px' }}>
             <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 'bold', fontSize: fontSizes.label }}>
               開始日
@@ -279,7 +373,8 @@ export const AttendanceList: React.FC = () => {
           }}>
             検索結果: {filteredLogs.length}件
           </div>
-        </div>
+          </div>
+        )}
       </div>
 
       {/* 勤怠情報一覧 */}

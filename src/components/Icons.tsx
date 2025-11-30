@@ -457,3 +457,156 @@ export const CheckIcon: React.FC<IconProps> = ({ size = 20, color = '#6b7280' })
   );
 };
 
+/**
+ * バーガーメニューアイコンコンポーネント。
+ * メニューを開く操作を表すアイコンを表示します。
+ *
+ * @param {IconProps} props - アイコンのプロパティ。
+ * @returns {JSX.Element} バーガーメニューアイコンコンポーネント。
+ */
+export const MenuIcon: React.FC<IconProps> = ({ size = 24, color = '#ffffff' }) => {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      style={{ display: 'block' }}
+    >
+      <path
+        d="M3 12h18M3 6h18M3 18h18"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+};
+
+/**
+ * 閉じるアイコンコンポーネント。
+ * メニューを閉じる操作を表すアイコンを表示します。
+ *
+ * @param {IconProps} props - アイコンのプロパティ。
+ * @returns {JSX.Element} 閉じるアイコンコンポーネント。
+ */
+export const CloseIcon: React.FC<IconProps> = ({ size = 24, color = '#ffffff' }) => {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      style={{ display: 'block' }}
+    >
+      <path
+        d="M18 6L6 18M6 6l12 12"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+};
+
+/**
+ * 下向き矢印アイコンコンポーネント。
+ * 折りたたみ可能なセクションの展開を示すアイコンを表示します。
+ *
+ * @param {IconProps} props - アイコンのプロパティ。
+ * @returns {JSX.Element} 下向き矢印アイコンコンポーネント。
+ */
+export const ChevronDownIcon: React.FC<IconProps> = ({ size = 24, color = '#6b7280' }) => {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      style={{ display: 'block' }}
+    >
+      <path d="M6 9L12 15L18 9" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+};
+
+/**
+ * 上向き矢印アイコンコンポーネント。
+ * 折りたたみ可能なセクションの折りたたみを示すアイコンを表示します。
+ *
+ * @param {IconProps} props - アイコンのプロパティ。
+ * @returns {JSX.Element} 上向き矢印アイコンコンポーネント。
+ */
+export const ChevronUpIcon: React.FC<IconProps> = ({ size = 24, color = '#6b7280' }) => {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      style={{ display: 'block' }}
+    >
+      <path d="M18 15L12 9L6 15" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+};
+
+/**
+ * 閲覧アイコンコンポーネント。
+ * ファイルと虫眼鏡アイコンが重なった形のアイコンを表示します。
+ *
+ * @param {IconProps} props - アイコンのプロパティ。
+ * @returns {JSX.Element} 閲覧アイコンコンポーネント。
+ */
+export const ViewIcon: React.FC<IconProps> = ({ size = 24, color = '#6b7280' }) => {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      style={{ display: 'block' }}
+    >
+      {/* ファイルアイコン */}
+      <path
+        d="M14 2H6C5.44772 2 5 2.44772 5 3V21C5 21.5523 5.44772 22 6 22H18C18.5523 22 19 21.5523 19 21V8L14 2Z"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M14 2V8H19"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      {/* 虫眼鏡アイコン（ファイルの上に重ねる） */}
+      <circle
+        cx="12"
+        cy="13"
+        r="3"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M15 16L13 14"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+};
+

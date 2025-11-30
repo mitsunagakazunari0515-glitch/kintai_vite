@@ -18,6 +18,7 @@ import { fontSizes } from '../../config/fontSizes';
 import { getLeaveTypes, getRequestStatusStyle } from '../../config/masterData';
 import { dummyEmployeeLeaveRequests } from '../../data/dummyData';
 import { formatDate } from '../../utils/formatters';
+import { ConfirmModal } from '../../components/ConfirmModal';
 
 /**
  * 休暇申請を表すインターフェース。
@@ -79,6 +80,7 @@ export const LeaveRequest: React.FC = () => {
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const [viewMode, setViewMode] = useState<ViewMode>('apply');
   const [snackbar, setSnackbar] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [cancelRequestId, setCancelRequestId] = useState<string | null>(null);
   
   const [searchFiscalYear, setSearchFiscalYear] = useState<number>(getCurrentFiscalYear());
   
@@ -173,12 +175,21 @@ export const LeaveRequest: React.FC = () => {
   };
 
   const handleCancelRequest = (requestId: string) => {
-    if (window.confirm('申請を取消しますか？')) {
+    setCancelRequestId(requestId);
+  };
+
+  const confirmCancelRequest = () => {
+    if (cancelRequestId) {
       setRequests(requests.map(req => 
-        req.id === requestId ? { ...req, status: '削除済み' as const } : req
+        req.id === cancelRequestId ? { ...req, status: '削除済み' as const } : req
       ));
       setSnackbar({ message: '申請を取消しました', type: 'success' });
+      setCancelRequestId(null);
     }
+  };
+
+  const cancelCancelRequest = () => {
+    setCancelRequestId(null);
   };
 
   return (
@@ -530,7 +541,16 @@ export const LeaveRequest: React.FC = () => {
         </div>
       )}
 
-
+      {/* 取消確認モーダル */}
+      <ConfirmModal
+        isOpen={cancelRequestId !== null}
+        title="休暇申請取消確認"
+        message="申請を取消しますか？"
+        confirmText="取消"
+        onConfirm={confirmCancelRequest}
+        onCancel={cancelCancelRequest}
+        isMobile={isMobile}
+      />
     </div>
   );
 };

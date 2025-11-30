@@ -19,6 +19,7 @@ import { fontSizes } from '../../config/fontSizes';
 import { getEmploymentTypes } from '../../config/masterData';
 import { dummyEmployees, dummyAllowances } from '../../data/dummyData';
 import { useSort } from '../../hooks/useSort';
+import { ChevronDownIcon, ChevronUpIcon } from '../../components/Icons';
 
 /**
  * 手当を表すインターフェース。
@@ -82,6 +83,7 @@ export const EmployeeList: React.FC = () => {
   const [showModal, setShowModal] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
   const [snackbar, setSnackbar] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [isSearchExpanded, setIsSearchExpanded] = useState<boolean>(false); // モバイル時の検索条件の展開状態
   const [formData, setFormData] = useState<Employee>({
     id: '',
     name: '',
@@ -231,17 +233,138 @@ export const EmployeeList: React.FC = () => {
       {/* 検索・フィルター */}
       <div style={{
         backgroundColor: '#f9fafb',
-        padding: isMobile ? '0.75rem' : '1rem',
+        padding: isMobile ? '0' : '1rem',
         borderRadius: '8px',
         marginBottom: '1rem'
       }}>
-        <div style={{
-          display: 'flex',
-          flexDirection: isMobile ? 'column' : 'row',
-          gap: isMobile ? '0.75rem' : '1rem',
-          alignItems: isMobile ? 'stretch' : 'flex-end',
-          flexWrap: 'wrap'
-        }}>
+        {isMobile ? (
+          <>
+            {/* モバイル時：折りたたみ可能な検索ヘッダー */}
+            <button
+              onClick={() => setIsSearchExpanded(!isSearchExpanded)}
+              style={{
+                width: '100%',
+                padding: '0.75rem',
+                backgroundColor: 'transparent',
+                border: 'none',
+                borderTop: '1px solid #e5e7eb',
+                borderBottom: '1px solid #e5e7eb',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                cursor: 'pointer',
+                boxShadow: 'none',
+                minHeight: 'auto',
+                minWidth: 'auto'
+              }}
+            >
+              <span style={{ 
+                fontSize: fontSizes.label, 
+                fontWeight: 'bold', 
+                color: '#1f2937' 
+              }}>
+                絞り込み検索
+              </span>
+              {isSearchExpanded ? (
+                <ChevronUpIcon size={20} color="#6b7280" />
+              ) : (
+                <ChevronDownIcon size={20} color="#6b7280" />
+              )}
+            </button>
+            {/* モバイル時：展開された検索条件 */}
+            {isSearchExpanded && (
+              <div style={{
+                padding: '0.75rem',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.75rem'
+              }}>
+                <div style={{ 
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.25rem'
+                }}>
+                  <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 'bold', fontSize: fontSizes.label }}>
+                    雇用形態
+                  </label>
+                  <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                    {employmentTypes.map((type) => (
+                      <label key={type.code} style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        cursor: 'pointer',
+                        gap: '0.5rem'
+                      }}>
+                        <input
+                          type="checkbox"
+                          checked={filterEmploymentTypes.includes(type.code)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setFilterEmploymentTypes([...filterEmploymentTypes, type.code]);
+                            } else {
+                              setFilterEmploymentTypes(filterEmploymentTypes.filter(t => t !== type.code));
+                            }
+                          }}
+                          style={{
+                            width: '18px',
+                            height: '18px',
+                            cursor: 'pointer',
+                            flexShrink: 0
+                          }}
+                        />
+                        <span style={{ fontSize: fontSizes.medium, whiteSpace: 'nowrap' }}>{type.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                <div style={{ 
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.25rem'
+                }}>
+                  <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 'bold', fontSize: fontSizes.label }}>
+                    表示従業員
+                  </label>
+                  <label style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    cursor: 'pointer',
+                    gap: '0.5rem'
+                  }}>
+                    <input
+                      type="checkbox"
+                      checked={showActiveOnly}
+                      onChange={(e) => setShowActiveOnly(e.target.checked)}
+                      style={{
+                        width: '18px',
+                        height: '18px',
+                        cursor: 'pointer',
+                        flexShrink: 0
+                      }}
+                    />
+                    <span style={{ fontSize: fontSizes.medium, whiteSpace: 'nowrap' }}>
+                      在籍のみ
+                    </span>
+                  </label>
+                </div>
+                <div style={{ 
+                  fontSize: fontSizes.badge,
+                  color: '#6b7280',
+                  minWidth: '100%'
+                }}>
+                  検索結果: {filteredEmployees.length}件
+                </div>
+              </div>
+            )}
+          </>
+        ) : (
+          <div style={{
+            display: 'flex',
+            flexDirection: 'row',
+            gap: '1rem',
+            alignItems: 'flex-end',
+            flexWrap: 'wrap'
+          }}>
           <div style={{ 
             flex: isMobile ? '1' : '0 0 auto',
             minWidth: isMobile ? '100%' : 'auto',
@@ -324,7 +447,8 @@ export const EmployeeList: React.FC = () => {
           }}>
             検索結果: {filteredEmployees.length}件
           </div>
-        </div>
+          </div>
+        )}
       </div>
 
       {/* 従業員一覧 */}

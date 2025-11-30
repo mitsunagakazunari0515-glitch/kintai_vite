@@ -108,10 +108,14 @@ export const AllowanceMaster: React.FC = () => {
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
     id: string;
+    name: string;
   } | null>(null);
 
   const handleDelete = (id: string) => {
-    setConfirmModal({ isOpen: true, id });
+    const allowance = allowances.find(a => a.id === id);
+    if (allowance) {
+      setConfirmModal({ isOpen: true, id, name: allowance.name });
+    }
   };
 
   const confirmDelete = () => {
@@ -139,7 +143,7 @@ export const AllowanceMaster: React.FC = () => {
       {confirmModal && (
         <ConfirmModal
           isOpen={confirmModal.isOpen}
-          title="手当の削除"
+          title={`${confirmModal.name}削除確認`}
           message="この手当を削除しますか？"
           confirmText="削除"
           onConfirm={confirmDelete}

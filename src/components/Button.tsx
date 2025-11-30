@@ -6,7 +6,8 @@ import {
   UploadIcon, 
   SearchIcon, 
   PdfIcon,
-  CheckIcon
+  CheckIcon,
+  ViewIcon
 } from './Icons';
 import { fontSizes } from '../config/fontSizes';
 
@@ -555,7 +556,7 @@ export const ViewButton: React.FC<Omit<ButtonProps, 'variant'>> = ({ iconSize = 
         ...props.style 
       }}
     >
-      <SearchIcon size={iconSize} color="#2563eb" />
+      <ViewIcon size={iconSize} color="#2563eb" />
       閲覧
     </Button>
   );
@@ -596,7 +597,7 @@ export const NewRegisterButton: React.FC<Omit<ButtonProps, 'variant'>> = ({ icon
  */
 export const PdfExportButton: React.FC<Omit<ButtonProps, 'variant'>> = ({ iconSize = 20, ...props }) => {
   return (
-    <Button 
+    <Button
       variant="danger" 
       {...props}
       style={{ 
@@ -622,6 +623,366 @@ export const PdfExportButton: React.FC<Omit<ButtonProps, 'variant'>> = ({ iconSi
     >
       <PdfIcon size={iconSize} color="#dc2626" />
       PDF出力
+    </Button>
+  );
+};
+
+/**
+ * 承認ボタンコンポーネント。
+ * 申請を承認する際に使用するボタンです。
+ *
+ * @param {Omit<ButtonProps, 'variant'> & { isTableButton?: boolean }} props - ボタンのプロパティ。
+ * @returns {JSX.Element} 承認ボタンコンポーネント。
+ */
+export const ApproveButton: React.FC<Omit<ButtonProps, 'variant'> & { isTableButton?: boolean }> = ({ iconSize = 18, isTableButton = false, ...props }) => {
+  const { onMouseEnter: propsOnMouseEnter, onMouseLeave: propsOnMouseLeave, style: propsStyle, ...restProps } = props;
+
+  return (
+    <Button
+      variant="primary"
+      {...restProps}
+      size={isTableButton ? 'small' : 'medium'}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '0.05rem',
+        backgroundColor: 'white',
+        color: '#16a34a',
+        border: '1px solid #16a34a',
+        minWidth: isTableButton ? 'auto' : '100px',
+        fontSize: isTableButton ? fontSizes.small : fontSizes.button,
+        padding: isTableButton ? '0.25rem 0.5rem' : undefined,
+        ...propsStyle
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.backgroundColor = '#dcfce7';
+        e.currentTarget.style.borderColor = '#15803d';
+        e.currentTarget.style.color = '#15803d';
+        e.currentTarget.style.transform = 'scale(1.02)';
+        propsOnMouseEnter?.(e);
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.backgroundColor = 'white';
+        e.currentTarget.style.borderColor = '#16a34a';
+        e.currentTarget.style.color = '#16a34a';
+        e.currentTarget.style.transform = 'scale(1)';
+        propsOnMouseLeave?.(e);
+      }}
+    >
+      <CheckIcon size={isTableButton ? 14 : iconSize} color="#16a34a" />
+      承認
+    </Button>
+  );
+};
+
+/**
+ * 一括承認ボタンコンポーネント。
+ * 複数の申請を一括承認する際に使用するボタンです。
+ *
+ * @param {Omit<ButtonProps, 'variant'> & { count?: number }} props - ボタンのプロパティ。
+ * @returns {JSX.Element} 一括承認ボタンコンポーネント。
+ */
+export const BulkApproveButton: React.FC<Omit<ButtonProps, 'variant'> & { count?: number }> = ({ iconSize = 18, count = 0, ...props }) => {
+  const { onMouseEnter: propsOnMouseEnter, onMouseLeave: propsOnMouseLeave, style: propsStyle, ...restProps } = props;
+
+  return (
+    <Button
+      variant="primary"
+      {...restProps}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '0.05rem',
+        backgroundColor: count === 0 ? '#9ca3af' : 'white',
+        color: count === 0 ? 'white' : '#16a34a',
+        border: count === 0 ? '1px solid #9ca3af' : '1px solid #16a34a',
+        minWidth: '100px',
+        fontSize: fontSizes.button,
+        opacity: count === 0 ? 0.5 : 1,
+        cursor: count === 0 ? 'not-allowed' : 'pointer',
+        ...propsStyle
+      }}
+      onMouseEnter={(e) => {
+        if (count > 0 && !restProps.disabled) {
+          e.currentTarget.style.backgroundColor = '#dcfce7';
+          e.currentTarget.style.borderColor = '#15803d';
+          e.currentTarget.style.color = '#15803d';
+          e.currentTarget.style.transform = 'scale(1.02)';
+          // アイコンの色も更新
+          const icon = e.currentTarget.querySelector('svg');
+          if (icon) {
+            const paths = icon.querySelectorAll('path');
+            paths.forEach(path => {
+              path.setAttribute('stroke', '#15803d');
+            });
+          }
+        }
+        propsOnMouseEnter?.(e);
+      }}
+      onMouseLeave={(e) => {
+        if (count > 0 && !restProps.disabled) {
+          e.currentTarget.style.backgroundColor = 'white';
+          e.currentTarget.style.borderColor = '#16a34a';
+          e.currentTarget.style.color = '#16a34a';
+          e.currentTarget.style.transform = 'scale(1)';
+          // アイコンの色も更新
+          const icon = e.currentTarget.querySelector('svg');
+          if (icon) {
+            const paths = icon.querySelectorAll('path');
+            paths.forEach(path => {
+              path.setAttribute('stroke', '#16a34a');
+            });
+          }
+        } else if (count === 0 || restProps.disabled) {
+          // disable時は元のスタイルに戻す
+          e.currentTarget.style.backgroundColor = '#9ca3af';
+          e.currentTarget.style.borderColor = '#9ca3af';
+          e.currentTarget.style.color = 'white';
+          e.currentTarget.style.transform = 'scale(1)';
+          // アイコンの色も更新
+          const icon = e.currentTarget.querySelector('svg');
+          if (icon) {
+            const paths = icon.querySelectorAll('path');
+            paths.forEach(path => {
+              path.setAttribute('stroke', 'white');
+            });
+          }
+        }
+        propsOnMouseLeave?.(e);
+      }}
+    >
+      <CheckIcon size={iconSize} color={count === 0 ? 'white' : '#16a34a'} />
+      一括承認 ({count}件)
+    </Button>
+  );
+};
+
+/**
+ * 却下ボタンコンポーネント。
+ * 申請を却下する際に使用するボタンです。
+ *
+ * @param {Omit<ButtonProps, 'variant'> & { isTableButton?: boolean }} props - ボタンのプロパティ。
+ * @returns {JSX.Element} 却下ボタンコンポーネント。
+ */
+export const RejectButton: React.FC<Omit<ButtonProps, 'variant'> & { isTableButton?: boolean }> = ({ isTableButton = false, ...props }) => {
+  return (
+    <Button
+      variant="secondary"
+      {...props}
+      size={isTableButton ? 'small' : 'medium'}
+      style={{
+        backgroundColor: '#6b7280',
+        color: 'white',
+        border: 'none',
+        minWidth: isTableButton ? 'auto' : '100px',
+        fontSize: isTableButton ? fontSizes.small : fontSizes.button,
+        padding: isTableButton ? '0.25rem 0.5rem' : undefined,
+        ...props.style
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.backgroundColor = '#4b5563';
+        props.onMouseEnter?.(e as any);
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.backgroundColor = '#6b7280';
+        props.onMouseLeave?.(e as any);
+      }}
+    >
+      却下
+    </Button>
+  );
+};
+
+/**
+ * 承認取消ボタンコンポーネント。
+ * 承認を取り消す際に使用するボタンです。
+ *
+ * @param {Omit<ButtonProps, 'variant'> & { isTableButton?: boolean }} props - ボタンのプロパティ。
+ * @returns {JSX.Element} 承認取消ボタンコンポーネント。
+ */
+export const CancelApprovalButton: React.FC<Omit<ButtonProps, 'variant'> & { isTableButton?: boolean }> = ({ isTableButton = false, iconSize = 18, ...props }) => {
+  const { onMouseEnter: propsOnMouseEnter, onMouseLeave: propsOnMouseLeave, style: propsStyle, ...restProps } = props;
+
+  return (
+    <Button
+      variant="danger"
+      {...restProps}
+      size={isTableButton ? 'small' : 'medium'}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '0.05rem',
+        backgroundColor: '#dc2626',
+        color: 'white',
+        border: 'none',
+        minWidth: isTableButton ? 'auto' : '100px',
+        fontSize: isTableButton ? fontSizes.small : fontSizes.button,
+        padding: isTableButton ? '0.25rem 0.5rem' : undefined,
+        ...propsStyle
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.backgroundColor = '#b91c1c';
+        e.currentTarget.style.color = 'white';
+        propsOnMouseEnter?.(e);
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.backgroundColor = '#dc2626';
+        e.currentTarget.style.color = 'white';
+        propsOnMouseLeave?.(e);
+      }}
+    >
+      <CancelIconComponent size={isTableButton ? 14 : iconSize} color="white" />
+      取消
+    </Button>
+  );
+};
+
+/**
+ * 全選択/全解除ボタンコンポーネント。
+ * 一括選択機能で使用するボタンです。
+ *
+ * @param {Omit<ButtonProps, 'variant'> & { isAllSelected: boolean }} props - ボタンのプロパティ。
+ * @returns {JSX.Element} 全選択/全解除ボタンコンポーネント。
+ */
+export const SelectAllButton: React.FC<Omit<ButtonProps, 'variant'> & { isAllSelected: boolean }> = ({ isAllSelected, ...props }) => {
+  const { onMouseEnter: propsOnMouseEnter, onMouseLeave: propsOnMouseLeave, style: propsStyle, ...restProps } = props;
+
+  return (
+    <Button
+      variant="primary"
+      {...restProps}
+      style={{
+        backgroundColor: 'white',
+        color: '#2563eb',
+        border: '1px solid #2563eb',
+        minWidth: '100px',
+        fontSize: fontSizes.button,
+        ...propsStyle
+      }}
+      onMouseEnter={(e) => {
+        if (!restProps.disabled) {
+          e.currentTarget.style.backgroundColor = '#eff6ff';
+          e.currentTarget.style.borderColor = '#1d4ed8';
+          e.currentTarget.style.color = '#1d4ed8';
+        }
+        propsOnMouseEnter?.(e);
+      }}
+      onMouseLeave={(e) => {
+        if (!restProps.disabled) {
+          e.currentTarget.style.backgroundColor = 'white';
+          e.currentTarget.style.borderColor = '#2563eb';
+          e.currentTarget.style.color = '#2563eb';
+        }
+        propsOnMouseLeave?.(e);
+      }}
+    >
+      {isAllSelected ? '全解除' : '全選択'}
+    </Button>
+  );
+};
+
+/**
+ * 検索ボタンコンポーネント。
+ * 検索機能で使用するボタンです。
+ *
+ * @param {Omit<ButtonProps, 'variant'>} props - ボタンのプロパティ。
+ * @returns {JSX.Element} 検索ボタンコンポーネント。
+ */
+export const SearchButton: React.FC<Omit<ButtonProps, 'variant'>> = ({ iconSize = 18, ...props }) => {
+  const { onMouseEnter: propsOnMouseEnter, onMouseLeave: propsOnMouseLeave, style: propsStyle, ...restProps } = props;
+
+  return (
+    <Button
+      variant="primary"
+      {...restProps}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '0.05rem',
+        backgroundColor: 'white',
+        color: '#2563eb',
+        border: '1px solid #2563eb',
+        minWidth: '100px',
+        fontSize: fontSizes.button,
+        ...propsStyle
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.backgroundColor = '#eff6ff';
+        e.currentTarget.style.borderColor = '#1d4ed8';
+        e.currentTarget.style.color = '#1d4ed8';
+        e.currentTarget.style.transform = 'scale(1.02)';
+        // アイコンの色も更新
+        const icon = e.currentTarget.querySelector('svg');
+        if (icon) {
+          const paths = icon.querySelectorAll('path, circle');
+          paths.forEach(path => {
+            path.setAttribute('stroke', '#1d4ed8');
+          });
+        }
+        propsOnMouseEnter?.(e);
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.backgroundColor = 'white';
+        e.currentTarget.style.borderColor = '#2563eb';
+        e.currentTarget.style.color = '#2563eb';
+        e.currentTarget.style.transform = 'scale(1)';
+        // アイコンの色も更新
+        const icon = e.currentTarget.querySelector('svg');
+        if (icon) {
+          const paths = icon.querySelectorAll('path, circle');
+          paths.forEach(path => {
+            path.setAttribute('stroke', '#2563eb');
+          });
+        }
+        propsOnMouseLeave?.(e);
+      }}
+    >
+      <SearchIcon size={iconSize} color="#2563eb" />
+      検索
+    </Button>
+  );
+};
+
+/**
+ * クリアボタンコンポーネント。
+ * 検索条件をクリアする際に使用するボタンです。
+ *
+ * @param {Omit<ButtonProps, 'variant'>} props - ボタンのプロパティ。
+ * @returns {JSX.Element} クリアボタンコンポーネント。
+ */
+export const ClearButton: React.FC<Omit<ButtonProps, 'variant'>> = ({ ...props }) => {
+  const { onMouseEnter: propsOnMouseEnter, onMouseLeave: propsOnMouseLeave, style: propsStyle, ...restProps } = props;
+
+  return (
+    <Button
+      variant="secondary"
+      {...restProps}
+      style={{
+        backgroundColor: 'white',
+        color: '#6b7280',
+        border: '1px solid #6b7280',
+        minWidth: '100px',
+        fontSize: fontSizes.button,
+        ...propsStyle
+      }}
+      onMouseEnter={(e) => {
+        if (!restProps.disabled) {
+          e.currentTarget.style.backgroundColor = '#f3f4f6';
+          e.currentTarget.style.borderColor = '#4b5563';
+          e.currentTarget.style.color = '#4b5563';
+        }
+        propsOnMouseEnter?.(e);
+      }}
+      onMouseLeave={(e) => {
+        if (!restProps.disabled) {
+          e.currentTarget.style.backgroundColor = 'white';
+          e.currentTarget.style.borderColor = '#6b7280';
+          e.currentTarget.style.color = '#6b7280';
+        }
+        propsOnMouseLeave?.(e);
+      }}
+    >
+      クリア
     </Button>
   );
 };

@@ -201,7 +201,7 @@ export const Login: React.FC = () => {
                 fontSize: fontSizes.input,
                 boxSizing: 'border-box'
               }}
-              placeholder="IDを入力"
+              placeholder="ID(メールアドレス)を入力"
             />
           </div>
           <div style={{ marginBottom: '1.5rem' }}>

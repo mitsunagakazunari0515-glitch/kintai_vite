@@ -12,7 +12,7 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { Button, CancelButton, RegisterButton, DeleteButton, UpdateButton } from '../../components/Button';
+import { Button, CancelButton, RegisterButton, DeleteButton, EditButton } from '../../components/Button';
 import { Snackbar } from '../../components/Snackbar';
 import { formatDate, formatTime } from '../../utils/formatters';
 import { fontSizes } from '../../config/fontSizes';
@@ -1848,11 +1848,20 @@ export const Attendance: React.FC = () => {
                           textAlign: 'center'
                         }}>
                           {log ? (
-                            <Button
-                              variant="icon-edit"
-                              onClick={() => handleEdit(log)}
-                              title="編集"
-                            />
+                            isMobile ? (
+                              <EditButton
+                                onClick={() => handleEdit(log)}
+                                size="small"
+                              >
+                                修正
+                              </EditButton>
+                            ) : (
+                              <Button
+                                variant="icon-edit"
+                                onClick={() => handleEdit(log)}
+                                title="修正"
+                              />
+                            )
                           ) : '-'}
                         </td>
                       </tr>

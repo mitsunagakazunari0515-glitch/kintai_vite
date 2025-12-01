@@ -603,7 +603,7 @@ export const AttendanceList: React.FC = () => {
                 }}
               />
             </div>
-            <div style={{ display: 'flex', gap: '1rem', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'flex-end' }}>
+            <div style={{ display: 'flex', gap: '1rem', flexDirection: isMobile ? 'column-reverse' : 'row', justifyContent: 'flex-end' }}>
               <CancelButton
                 fullWidth
                 type="button"

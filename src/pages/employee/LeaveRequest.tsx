@@ -454,27 +454,30 @@ export const LeaveRequest: React.FC = () => {
             <span style={{ fontSize: fontSizes.medium, color: '#6b7280' }}>
               ({searchFiscalYear}年4月 〜 {searchFiscalYear + 1}年3月)
             </span>
-            <Button
-              type="button"
-              onClick={() => setSearchFiscalYear(getCurrentFiscalYear())}
-              style={{
-                padding: '0.5rem 1rem',
-                backgroundColor: '#6b7280',
-                color: 'white',
-                border: 'none',
-                fontSize: fontSizes.button
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = '#4b5563';
-                e.currentTarget.style.color = 'white';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = '#6b7280';
-                e.currentTarget.style.color = 'white';
-              }}
-            >
-              今年度に戻す
-            </Button>
+            {/* PC時のみ「今年度に戻す」ボタンを表示 */}
+            {!isMobile && (
+              <Button
+                type="button"
+                onClick={() => setSearchFiscalYear(getCurrentFiscalYear())}
+                style={{
+                  padding: '0.5rem 1rem',
+                  backgroundColor: '#6b7280',
+                  color: 'white',
+                  border: 'none',
+                  fontSize: fontSizes.button
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = '#4b5563';
+                  e.currentTarget.style.color = 'white';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = '#6b7280';
+                  e.currentTarget.style.color = 'white';
+                }}
+              >
+                今年度に戻す
+              </Button>
+            )}
           </div>
           <div style={{
             backgroundColor: '#f9fafb',

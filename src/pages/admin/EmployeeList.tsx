@@ -483,9 +483,9 @@ export const EmployeeList: React.FC = () => {
                   <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
                       <span style={{ fontWeight: 'bold', fontSize: '1.125rem' }}>
-                        {emp.name}
+                        {isMobile && emp.isAdmin ? `${emp.name}(管理者)` : emp.name}
                       </span>
-                      {emp.isAdmin && (
+                      {!isMobile && emp.isAdmin && (
                         <span style={{
                           padding: '0.125rem 0.5rem',
                           borderRadius: '4px',

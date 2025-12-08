@@ -79,13 +79,22 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const checkAuthStatus = useCallback(async () => {
     try {
       const user = await getCurrentUser();
-      const session = await fetchAuthSession();
+      // Identity Poolのエラーを無視して、User Poolの認証のみを使用
+      let session = null;
+      try {
+        session = await fetchAuthSession();
+      } catch (sessionError) {
+        // Identity Poolのエラーは無視（User Poolの認証のみを使用する場合）
+        log('⚠ Identity Pool session fetch failed (using User Pool only):', sessionError);
+        // User Poolの認証のみを使用する場合は、sessionがなくても続行
+      }
       
       log('🔍 Checking auth status...');
       log('User:', user);
       log('Session:', session);
       
-      if (user && session) {
+      // User Poolの認証が成功していれば続行（Identity Poolはオプション）
+      if (user) {
         // ユーザー属性を取得（メールアドレスなどを含む）
         let userEmail = '';
         try {
@@ -106,7 +115,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
         
         // トークンからメールアドレスを取得してみる
-        if (!userEmail && session.tokens?.idToken) {
+        if (!userEmail && session?.tokens?.idToken) {
           try {
             // IDトークンからメールアドレスをデコード
             const idToken = session.tokens.idToken;

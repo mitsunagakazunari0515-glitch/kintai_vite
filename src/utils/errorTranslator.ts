@@ -30,6 +30,16 @@ export const translateAuthError = (error: unknown): string => {
 
   if (errorName === 'NotAuthorizedException' || errorMessage.includes('NotAuthorizedException') || 
       errorMessage.includes('認証に失敗')) {
+    // SECRET_HASHが不足している場合のエラーを確認
+    if (errorMessage.includes('SECRET_HASH') || errorMessage.includes('secret but SECRET_HASH') ||
+        errorMessage.includes('Client') && errorMessage.includes('configured with secret')) {
+      return '認証設定のエラーが発生しました。\n' +
+             'Cognito User Pool ClientにApp Clientシークレットが設定されているため、認証に失敗しています。\n' +
+             '対処方法:\n' +
+             '1. AWS CognitoコンソールでUser Pool Clientの設定を確認\n' +
+             '2. 「クライアントのシークレットを生成」の設定を無効にする（Webアプリケーションでは推奨）\n' +
+             'または、App Clientシークレットを削除してください。';
+    }
     return 'メールアドレスまたはパスワードが正しくありません。';
   }
 
@@ -78,6 +88,15 @@ export const translateAuthError = (error: unknown): string => {
            '1. AWS認証情報を設定してください: npx ampx configure profile\n' +
            '2. Amplifyサンドボックスを起動してください: npx ampx sandbox\n' +
            '3. amplify_outputs.jsonが生成されることを確認してください';
+  }
+
+  // Identity Pool関連のエラー
+  if (errorMessage.includes('Token is not from a supported provider') || 
+      errorMessage.includes('identity pool') || 
+      errorMessage.includes('InvalidIdentityPoolConfigurationException')) {
+    return 'Identity Poolの設定エラーが発生しました。\n' +
+           'Identity PoolにGoogleプロバイダーが設定されていない可能性があります。\n' +
+           'AWS CognitoコンソールでIdentity Poolの設定を確認してください。';
   }
 
   // デフォルトエラーメッセージ

@@ -2,7 +2,7 @@
   "auth": {
     "user_pool_id": "ap-northeast-1_BEqjl3q81",
     "aws_region": "ap-northeast-1",
-    "user_pool_client_id": "19m7ms3tcrebrmqehv7ilsglpk",
+    "user_pool_client_id": "53d4mih47qjsbkjrojrc5oegaj",
     "identity_pool_id": "ap-northeast-1:8b1e2ecf-2422-49fc-aef9-81eccba724e4",
     "mfa_methods": [],
     "standard_required_attributes": [

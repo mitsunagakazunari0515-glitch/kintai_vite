@@ -14,6 +14,7 @@ import { useState, useEffect, useRef } from 'react';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { formatCurrency } from '../../utils/formatters';
+import { error } from '../../utils/logger';
 import { fontSizes } from '../../config/fontSizes';
 import { Snackbar } from '../../components/Snackbar';
 
@@ -250,7 +251,7 @@ export const Payroll: React.FC = () => {
       pdf.addImage(imgData, 'PNG', imgX, imgY, imgWidth * ratio, imgHeight * ratio);
       pdf.save(`${selectedRecord.employeeName}_${selectedRecord.period.replace(/\s/g, '_')}.pdf`);
     } catch (error) {
-      console.error('PDF出力エラー:', error);
+      error('PDF出力エラー:', error);
       alert('PDF出力に失敗しました');
     }
   };

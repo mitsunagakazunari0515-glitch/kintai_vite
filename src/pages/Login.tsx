@@ -9,9 +9,12 @@
  */
 
 import { useState, useEffect } from 'react';
-import { useNavigate, Navigate } from 'react-router-dom';
+import { useNavigate, Navigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { fontSizes } from '../config/fontSizes';
+import { ProgressBar } from '../components/ProgressBar';
+import { translateAuthError } from '../utils/errorTranslator';
+import { error as logError } from '../utils/logger';
 
 /**
  * ログイン画面コンポーネント。
@@ -25,11 +28,10 @@ export const Login: React.FC = () => {
   const [password, setPassword] = useState('');
   const [userType, setUserType] = useState<'admin' | 'employee'>('employee');
   const [error, setError] = useState('');
-  const [showReset, setShowReset] = useState(false);
-  const [resetId, setResetId] = useState('');
-  const [resetMessage, setResetMessage] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
-  const { login, isAuthenticated, userRole, isLoading } = useAuth();
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const { login, signInWithGoogle, isAuthenticated, userRole, isLoading: authLoading } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -41,16 +43,19 @@ export const Login: React.FC = () => {
   }, []);
 
   // 認証状態の復元中は何も表示しない
-  if (isLoading) {
+  if (authLoading) {
     return null;
   }
 
   // 既に認証済みの場合は適切な画面にリダイレクト
   if (isAuthenticated) {
-    return <Navigate to={userRole === 'admin' ? '/admin/employees' : '/employee/attendance'} replace />;
+    // Googleログインのフラグがある場合はApp.tsxで処理されるので、ここでは通常のリダイレクトのみ
+    if (localStorage.getItem('googleLoginInProgress') !== 'true') {
+      return <Navigate to={userRole === 'admin' ? '/admin/employees' : '/employee/attendance'} replace />;
+    }
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
@@ -59,53 +64,66 @@ export const Login: React.FC = () => {
       return;
     }
 
-    const success = login(id, password, userType);
-    if (success) {
-      if (userType === 'admin') {
-        navigate('/admin/employees');
+    setIsLoading(true);
+    try {
+      const success = await login(id, password, userType);
+      if (success) {
+        if (userType === 'admin') {
+          navigate('/admin/employees');
+        } else {
+          navigate('/employee/attendance');
+        }
       } else {
-        navigate('/employee/attendance');
+        setError('ログインに失敗しました。IDまたはパスワードが正しくありません。');
       }
-    } else {
-      setError('ログインに失敗しました');
+    } catch (err) {
+      logError('Login error:', err);
+      setError(translateAuthError(err));
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleResetSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setResetMessage('');
-
-    if (!resetId.trim()) {
-      setResetMessage('IDまたはメールアドレスを入力してください');
-      return;
+  const handleGoogleLogin = async () => {
+    try {
+      setIsGoogleLoading(true);
+      setError('');
+      // GoogleログインからのコールバックかどうかをlocalStorageに保存
+      localStorage.setItem('googleLoginInProgress', 'true');
+      await signInWithGoogle();
+      // signInWithRedirectを使用しているため、リダイレクトが発生します
+      // コールバック後の処理はAuthContextのHubリスナーで処理されます
+    } catch (err) {
+      logError('Google login error:', err);
+      localStorage.removeItem('googleLoginInProgress');
+      setError(translateAuthError(err));
+      setIsGoogleLoading(false);
     }
-
-    // 実際のシステムではここでパスワード再設定メール送信APIを呼び出す
-    setResetMessage('パスワード再設定手続きの案内を送信しました（デモ用メッセージ）');
-    setResetId('');
   };
 
   return (
-    <div style={{
-      display: 'flex',
-      justifyContent: 'center',
-      alignItems: 'center',
-      minHeight: '100vh',
-      background: 'radial-gradient(circle at top left, #fdf7ee 0%, #f5f0e8 40%, #e8ddcf 100%)'
-    }}>
+    <>
+      <ProgressBar isLoading={isLoading || isGoogleLoading} />
       <div style={{
-        backgroundColor: 'white',
-        padding: isMobile ? '1.5rem' : '2rem',
-        borderRadius: '8px',
-        boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
-        width: '100%',
-        maxWidth: '400px',
-        margin: isMobile ? '1rem' : '0'
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        minHeight: '100vh',
+        background: 'radial-gradient(circle at top left, #fdf7ee 0%, #f5f0e8 40%, #e8ddcf 100%)'
       }}>
-        <h1 style={{ textAlign: 'center', marginBottom: '2rem', color: '#8b5a2b' }}>
-          A・1勤怠管理システム
-        </h1>
-        <form onSubmit={handleSubmit}>
+        <div style={{
+          backgroundColor: 'white',
+          padding: isMobile ? '1.5rem' : '2rem',
+          borderRadius: '8px',
+          boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+          width: '100%',
+          maxWidth: '400px',
+          margin: isMobile ? '1rem' : '0'
+        }}>
+          <h1 style={{ textAlign: 'center', marginBottom: '2rem', color: '#8b5a2b' }}>
+            A・1勤怠管理システム
+          </h1>
+          <form onSubmit={handleSubmit}>
           <div style={{ marginBottom: '1.5rem' }}>
             <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
               ログインタイプ
@@ -237,129 +255,159 @@ export const Login: React.FC = () => {
           )}
           <button
             type="submit"
+            disabled={isLoading}
             onMouseEnter={(e) => {
-              e.currentTarget.style.background = 'linear-gradient(145deg, #7a4a1f 0%, #b46c2f 100%)';
-              e.currentTarget.style.transform = 'scale(1.02)';
-              e.currentTarget.style.cursor = 'pointer';
+              if (!isLoading) {
+                e.currentTarget.style.background = 'linear-gradient(145deg, #7a4a1f 0%, #b46c2f 100%)';
+                e.currentTarget.style.transform = 'scale(1.02)';
+                e.currentTarget.style.cursor = 'pointer';
+              }
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'linear-gradient(145deg, #8b5a2b 0%, #c47c3f 100%)';
-              e.currentTarget.style.transform = 'scale(1)';
-              e.currentTarget.style.cursor = 'pointer';
+              if (!isLoading) {
+                e.currentTarget.style.background = 'linear-gradient(145deg, #8b5a2b 0%, #c47c3f 100%)';
+                e.currentTarget.style.transform = 'scale(1)';
+                e.currentTarget.style.cursor = 'pointer';
+              }
             }}
             style={{
               width: '100%',
               padding: '0.75rem',
-            background: 'linear-gradient(145deg, #8b5a2b 0%, #c47c3f 100%)',
+              background: isLoading 
+                ? 'linear-gradient(145deg, #9ca3af 0%, #6b7280 100%)'
+                : 'linear-gradient(145deg, #8b5a2b 0%, #c47c3f 100%)',
               color: 'white',
               border: 'none',
               borderRadius: '4px',
               fontSize: fontSizes.button,
               fontWeight: 'bold',
-              cursor: 'pointer',
-              transition: 'background 0.2s, transform 0.2s'
+              cursor: isLoading ? 'not-allowed' : 'pointer',
+              transition: 'background 0.2s, transform 0.2s',
+              opacity: isLoading ? 0.6 : 1
             }}
           >
-            ログイン
+            {isLoading ? 'ログイン中...' : 'ログイン'}
           </button>
-          {/* パスワード再設定エリア */}
-          <div style={{ marginTop: '1.5rem', fontSize: fontSizes.medium }}>
+          {/* Googleログインボタン */}
+          <div style={{ marginTop: '1.5rem', marginBottom: '1.5rem' }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginBottom: '1rem',
+              position: 'relative'
+            }}>
+              <div style={{
+                flex: 1,
+                height: '1px',
+                backgroundColor: '#d1d5db'
+              }}></div>
+              <span style={{
+                padding: '0 1rem',
+                color: '#6b7280',
+                fontSize: fontSizes.small
+              }}>または</span>
+              <div style={{
+                flex: 1,
+                height: '1px',
+                backgroundColor: '#d1d5db'
+              }}></div>
+            </div>
             <button
               type="button"
-              onClick={() => {
-                setShowReset(!showReset);
-                setResetMessage('');
+              onClick={handleGoogleLogin}
+              disabled={isGoogleLoading}
+              onMouseEnter={(e) => {
+                if (!isGoogleLoading) {
+                  e.currentTarget.style.backgroundColor = '#f3f4f6';
+                  e.currentTarget.style.transform = 'scale(1.02)';
+                  e.currentTarget.style.cursor = 'pointer';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!isGoogleLoading) {
+                  e.currentTarget.style.backgroundColor = '#ffffff';
+                  e.currentTarget.style.transform = 'scale(1)';
+                  e.currentTarget.style.cursor = 'pointer';
+                }
               }}
               style={{
-                background: 'none',
-                border: 'none',
-                padding: 0,
-                margin: 0,
+                width: '100%',
+                padding: '0.75rem',
+                backgroundColor: '#ffffff',
+                color: '#3c4043',
+                border: '1px solid #dadce0',
+                borderRadius: '4px',
+                fontSize: fontSizes.button,
+                fontWeight: '500',
+                cursor: isGoogleLoading ? 'not-allowed' : 'pointer',
+                transition: 'background-color 0.2s, transform 0.2s',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '0.5rem',
+                opacity: isGoogleLoading ? 0.6 : 1
+              }}
+            >
+              {isGoogleLoading ? (
+                <>
+                  <span>処理中...</span>
+                </>
+              ) : (
+                <>
+                  <svg width="18" height="18" viewBox="0 0 18 18" style={{ marginRight: '0.25rem' }}>
+                    <path
+                      fill="#4285F4"
+                      d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z"
+                    />
+                    <path
+                      fill="#34A853"
+                      d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z"
+                    />
+                    <path
+                      fill="#FBBC05"
+                      d="M3.964 10.707c-.18-.54-.282-1.117-.282-1.707s.102-1.167.282-1.707V4.961H.957C.348 6.175 0 7.55 0 9s.348 2.825.957 4.039l3.007-2.332z"
+                    />
+                    <path
+                      fill="#EA4335"
+                      d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.961L3.964 7.293C4.672 5.163 6.656 3.58 9 3.58z"
+                    />
+                  </svg>
+                  Googleでログイン
+                </>
+              )}
+            </button>
+          </div>
+          {/* パスワード再設定リンク */}
+          <div style={{ marginTop: '1.5rem', textAlign: 'center' }}>
+            <Link
+              to="/password-reset"
+              style={{
                 color: '#2563eb',
                 textDecoration: 'underline',
-                cursor: 'pointer',
-                boxShadow: 'none',
-                borderRadius: 0,
-                minHeight: 'auto',
-                minWidth: 'auto'
+                fontSize: fontSizes.medium
               }}
             >
               パスワードをお忘れの方はこちら
-            </button>
-            {showReset && (
-              <div
-                style={{
-                  marginTop: '1rem',
-                  padding: '0.75rem',
-                  backgroundColor: '#f9fafb',
-                  borderRadius: '6px',
-                  border: '1px solid #e5e7eb'
-                }}
-              >
-                <p style={{ margin: '0 0 0.5rem 0', fontSize: fontSizes.medium, color: '#4b5563' }}>
-                  登録済みのIDまたはメールアドレスを入力してください。パスワード再設定の案内を送信します。
-                </p>
-                <form onSubmit={handleResetSubmit}>
-                  <input
-                    type="text"
-                    value={resetId}
-                    onChange={(e) => setResetId(e.target.value)}
-                    placeholder="ID または メールアドレス"
-                    style={{
-                      width: '100%',
-                      padding: '0.5rem',
-                      border: '1px solid #d1d5db',
-                      borderRadius: '4px',
-                      fontSize: fontSizes.input,
-                      boxSizing: 'border-box',
-                      marginBottom: '0.5rem'
-                    }}
-                  />
-                  <button
-                    type="submit"
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = '#059669';
-                      e.currentTarget.style.transform = 'scale(1.02)';
-                      e.currentTarget.style.cursor = 'pointer';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = '#10b981';
-                      e.currentTarget.style.transform = 'scale(1)';
-                      e.currentTarget.style.cursor = 'pointer';
-                    }}
-                    style={{
-                      width: '100%',
-                      padding: '0.5rem',
-                      backgroundColor: '#10b981',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '4px',
-                      fontSize: fontSizes.input,
-                      fontWeight: 'bold',
-                      cursor: 'pointer',
-                      transition: 'background-color 0.2s, transform 0.2s'
-                    }}
-                  >
-                    再設定リンクを送信
-                  </button>
-                </form>
-                {resetMessage && (
-                  <div
-                    style={{
-                      marginTop: '0.5rem',
-                      fontSize: fontSizes.small,
-                      color: resetMessage.includes('送信しました') ? '#059669' : '#dc2626'
-                    }}
-                  >
-                    {resetMessage}
-                  </div>
-                )}
-              </div>
-            )}
+            </Link>
+          </div>
+          {/* 新規登録リンク */}
+          <div style={{ marginTop: '1rem', textAlign: 'center' }}>
+            <Link
+              to="/signup"
+              style={{
+                color: '#2563eb',
+                textDecoration: 'underline',
+                fontSize: fontSizes.medium
+              }}
+            >
+              新規登録はこちら
+            </Link>
           </div>
         </form>
       </div>
     </div>
+    </>
   );
 };
 

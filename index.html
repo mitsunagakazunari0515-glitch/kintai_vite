@@ -1,14 +1,37 @@
 <!doctype html>
-<html lang="ja">
+<html lang="ja" translate="no">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="google" content="notranslate" />
+    <meta name="google-translate-customization" content="disabled" />
+    <meta http-equiv="Content-Security-Policy" content="style-src-elem 'self' 'unsafe-inline' https://d1zdvpjg2so4m0.cloudfront.net https://d2sfzp6yh6nxed.cloudfront.net https://www.gstatic.com;">
     <title>勤怠管理システム</title>
+    <script>
+      // Google翻訳を完全に無効化
+      (function() {
+        // translate属性を強制的に設定
+        document.documentElement.setAttribute('translate', 'no');
+        document.body && document.body.setAttribute('translate', 'no');
+        
+        // Google翻訳のスクリプトが読み込まれるのを防ぐ
+        if (window.google && window.google.translate) {
+          window.google.translate = undefined;
+        }
+        
+        // ページ読み込み後に再度設定
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', function() {
+            document.documentElement.setAttribute('translate', 'no');
+            document.body && document.body.setAttribute('translate', 'no');
+          });
+        }
+      })();
+    </script>
   </head>
-  <body>
-    <div id="root"></div>
+  <body translate="no">
+    <div id="root" translate="no"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

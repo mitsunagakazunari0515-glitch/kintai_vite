@@ -1,8 +1,12 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { useEffect } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { Layout } from './components/Layout';
+import { ProgressBar } from './components/ProgressBar';
 import { Login } from './pages/Login';
+import { SignUp } from './pages/SignUp';
+import { PasswordReset } from './pages/PasswordReset';
 import { EmployeeList } from './pages/admin/EmployeeList';
 import { EmployeeRegistration } from './pages/admin/EmployeeRegistration';
 import { EmployeePayroll } from './pages/admin/EmployeePayroll';
@@ -60,16 +64,41 @@ const EmployeeRoutes = () => (
  * @returns {JSX.Element | null} アプリケーションルートコンポーネント。認証状態の復元中はnullを返します。
  */
 const AppRoutes = () => {
-  const { isLoading } = useAuth();
+  const { isLoading, isAuthenticated, userRole } = useAuth();
+  const navigate = useNavigate();
 
-  // 認証状態の復元中は何も表示しない
+  // Googleログインからのコールバックかどうかをチェックして直接遷移
+  useEffect(() => {
+    if (!isLoading && isAuthenticated && localStorage.getItem('googleLoginInProgress') === 'true') {
+      // Googleログインのフラグを削除
+      localStorage.removeItem('googleLoginInProgress');
+      // ユーザーロールに応じて直接遷移
+      if (userRole === 'admin') {
+        navigate('/admin/employees', { replace: true });
+      } else {
+        navigate('/employee/attendance', { replace: true });
+      }
+    }
+  }, [isLoading, isAuthenticated, userRole, navigate]);
+
+  // 認証状態の復元中はプログレスバーのみを表示
   if (isLoading) {
-    return null; // またはローディングスピナーを表示
+    return (
+      <>
+        <ProgressBar isLoading={true} />
+        <div style={{ 
+          height: '100vh',
+          backgroundColor: '#fff'
+        }} />
+      </>
+    );
   }
 
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/signup" element={<SignUp />} />
+      <Route path="/password-reset" element={<PasswordReset />} />
       <Route
         path="/admin/*"
         element={

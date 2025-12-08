@@ -25,5 +25,13 @@ dist-ssr
 
 # amplify
 .amplify
-amplify_outputs*
+amplify_outputs.json
+amplify_outputs.production.json
+!amplify_outputs.production.json.template
 amplifyconfiguration*
+.env
+.env.local
+.env.*.local
+!.env.development
+!.env.production
+!.env.example

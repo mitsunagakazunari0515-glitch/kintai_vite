@@ -1,0 +1,8 @@
+/*
+  # Content Security Policy
+  # Amplify Hostingが自動設定するCSPに追加でGoogle翻訳のドメインを許可
+  # nonceベースのCSPと競合しないよう、style-src-elemを明示的に設定
+  # 注意: セキュリティ上の理由から、可能な限りGoogle翻訳は無効化することを推奨
+  # 複数のCSPヘッダーがある場合、両方のポリシーが適用されます
+  Content-Security-Policy: style-src-elem 'self' 'unsafe-inline' https://d1zdvpjg2so4m0.cloudfront.net https://d2sfzp6yh6nxed.cloudfront.net https://www.gstatic.com https://*.gstatic.com;
+

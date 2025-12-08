@@ -1,0 +1,59 @@
+{
+  "auth": {
+    "user_pool_id": "ap-northeast-1_BEqjl3q81",
+    "aws_region": "ap-northeast-1",
+    "user_pool_client_id": "YOUR_PRODUCTION_CLIENT_ID",
+    "identity_pool_id": "YOUR_PRODUCTION_IDENTITY_POOL_ID",
+    "mfa_methods": [],
+    "standard_required_attributes": [
+      "email"
+    ],
+    "username_attributes": [
+      "email"
+    ],
+    "user_verification_types": [
+      "email"
+    ],
+    "mfa_configuration": "NONE",
+    "password_policy": {
+      "min_length": 8,
+      "require_lowercase": true,
+      "require_numbers": true,
+      "require_symbols": true,
+      "require_uppercase": true
+    },
+    "oauth": {
+      "identity_providers": [
+        "GOOGLE"
+      ],
+      "redirect_sign_in_uri": [
+        "http://localhost:5173/",
+        "https://www.sys-a1int.work/"
+      ],
+      "redirect_sign_out_uri": [
+        "http://localhost:5173/login",
+        "https://www.sys-a1int.work/login"
+      ],
+      "response_type": "code",
+      "scopes": [
+        "phone",
+        "email",
+        "openid",
+        "profile",
+        "aws.cognito.signin.user.admin"
+      ],
+      "domain": "YOUR_PRODUCTION_COGNITO_DOMAIN.auth.ap-northeast-1.amazoncognito.com"
+    },
+    "unauthenticated_identities_enabled": true
+  },
+  "data": {
+    "url": "YOUR_PRODUCTION_APPSYNC_ENDPOINT",
+    "aws_region": "ap-northeast-1",
+    "api_key": "YOUR_PRODUCTION_API_KEY",
+    "default_authorization_type": "apiKey",
+    "authorization_types": [
+      "apiKey"
+    ]
+  }
+}
+

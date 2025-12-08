@@ -11,14 +11,6 @@ frontend:
     preBuild:
       commands:
         - npm ci --cache .npm --prefer-offline
-        # 本番環境ではamplify_outputs.production.jsonを使用
-        - |
-          if [ -f "amplify_outputs.production.json" ]; then
-            cp amplify_outputs.production.json public/amplify_outputs.production.json
-            echo "amplify_outputs.production.json copied to public directory"
-          else
-            echo "Warning: amplify_outputs.production.json not found. Using default configuration."
-          fi
     build:
       commands:
         - npm run build

@@ -26,8 +26,8 @@ dist-ssr
 # amplify
 .amplify
 amplify_outputs.json
-amplify_outputs.production.json
-!amplify_outputs.production.json.template
+# amplify_outputs.production.json は本番環境で必要なのでリポジトリに含める
+# !amplify_outputs.production.json.template
 amplifyconfiguration*
 .env
 .env.local

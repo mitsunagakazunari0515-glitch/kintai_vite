@@ -51,7 +51,9 @@ export const Login: React.FC = () => {
   if (isAuthenticated) {
     // Googleログインのフラグがある場合はApp.tsxで処理されるので、ここでは通常のリダイレクトのみ
     if (localStorage.getItem('googleLoginInProgress') !== 'true') {
-      return <Navigate to={userRole === 'admin' ? '/admin/employees' : '/employee/attendance'} replace />;
+      // userRoleがnullでない場合はuserRoleを使用、nullの場合はuserTypeを使用
+      const role = userRole || userType;
+      return <Navigate to={role === 'admin' ? '/admin/employees' : '/employee/attendance'} replace />;
     }
   }
 
@@ -66,14 +68,21 @@ export const Login: React.FC = () => {
 
     setIsLoading(true);
     try {
+      // ログイン前にuserTypeをlocalStorageに保存（login関数内でも保存されるが、念のため）
+      localStorage.setItem('loginUserType', userType);
+      
       const success = await login(id, password, userType);
       if (success) {
-        if (userType === 'admin') {
-          navigate('/admin/employees');
-        } else {
-          navigate('/employee/attendance');
-        }
+        // ログイン成功後、少し待ってから遷移（checkAuthStatusの完了を待つ）
+        // login関数内でloginUserTypeが使用され、userRoleが設定される
+        const targetPath = userType === 'admin' ? '/admin/employees' : '/employee/attendance';
+        // 少し遅延させて、checkAuthStatusの完了を確実にする
+        setTimeout(() => {
+          navigate(targetPath, { replace: true });
+        }, 50);
       } else {
+        // ログイン失敗時はloginUserTypeを削除
+        localStorage.removeItem('loginUserType');
         setError('ログインに失敗しました。IDまたはパスワードが正しくありません。');
       }
     } catch (err) {
@@ -88,6 +97,11 @@ export const Login: React.FC = () => {
     try {
       setIsGoogleLoading(true);
       setError('');
+      
+      // Googleログイン開始前に、選択されたタブ（userType）をlocalStorageに保存
+      // コールバック後にこの値を使用してロールを設定する
+      localStorage.setItem('loginUserType', userType);
+      
       // GoogleログインからのコールバックかどうかをlocalStorageに保存
       localStorage.setItem('googleLoginInProgress', 'true');
       await signInWithGoogle();
@@ -96,6 +110,7 @@ export const Login: React.FC = () => {
     } catch (err) {
       logError('Google login error:', err);
       localStorage.removeItem('googleLoginInProgress');
+      localStorage.removeItem('loginUserType'); // エラー時は削除
       setError(translateAuthError(err));
       setIsGoogleLoading(false);
     }

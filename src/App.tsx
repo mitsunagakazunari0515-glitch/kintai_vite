@@ -72,8 +72,13 @@ const AppRoutes = () => {
     if (!isLoading && isAuthenticated && localStorage.getItem('googleLoginInProgress') === 'true') {
       // Googleログインのフラグを削除
       localStorage.removeItem('googleLoginInProgress');
-      // ユーザーロールに応じて直接遷移
-      if (userRole === 'admin') {
+      
+      // loginUserTypeが設定されている場合はそれを使用、なければuserRoleを使用
+      const loginUserType = localStorage.getItem('loginUserType') as 'admin' | 'employee' | null;
+      const targetRole = loginUserType || userRole;
+      
+      // 選択されたロールに応じて直接遷移
+      if (targetRole === 'admin') {
         navigate('/admin/employees', { replace: true });
       } else {
         navigate('/employee/attendance', { replace: true });

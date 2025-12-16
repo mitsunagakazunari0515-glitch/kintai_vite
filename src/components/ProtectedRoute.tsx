@@ -30,8 +30,19 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requir
     return <Navigate to="/login" replace />;
   }
 
-  if (requiredRole && userRole !== requiredRole) {
+  // userRoleがnullの場合は、localStorageからloginUserTypeを取得（ログイン直後の一時的な対応）
+  const loginUserType = localStorage.getItem('loginUserType') as 'admin' | 'employee' | null;
+  const effectiveRole = userRole || loginUserType;
+
+  if (requiredRole && effectiveRole !== requiredRole) {
+    // ロールが一致しない場合は、localStorageのloginUserTypeをクリアしてログインページにリダイレクト
+    localStorage.removeItem('loginUserType');
     return <Navigate to="/login" replace />;
+  }
+
+  // ロールチェックが成功したら、loginUserTypeをクリア（userRoleが正しく設定された後）
+  if (userRole && localStorage.getItem('loginUserType')) {
+    localStorage.removeItem('loginUserType');
   }
 
   return <>{children}</>;

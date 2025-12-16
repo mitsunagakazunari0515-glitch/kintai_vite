@@ -55,20 +55,27 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [isLoading, setIsLoading] = useState<boolean>(true); // 初期状態は読み込み中
   const [isAmplifyConfigured, setIsAmplifyConfigured] = useState<boolean>(false); // Amplifyが設定されているかどうか
 
-  // ユーザー情報を取得してロールを判定する関数（useCallbackでメモ化）
-  const fetchUserRole = useCallback(async (userEmail: string): Promise<UserRole> => {
+  // ユーザー情報を取得してロールを判定する関数（将来API連携時に使用予定）
+  // 現在は使用されていない（ログイン画面で選択されたタブを優先するため）
+  const fetchUserRole = useCallback(async (_userEmail: string): Promise<UserRole> => {
     try {
-      // ここでは簡易的にメールアドレスで判定
-      // 実際の実装では、Cognitoのユーザー属性やDynamoDBなどからロールを取得
-      // 管理者のメールアドレスのパターンに基づいて判定（例: @admin.example.com）
-      // または、Cognitoのユーザー属性から'custom:role'を取得
+      // TODO: 将来的な実装（API連携時）
+      // 1. 従業員情報テーブルをAPIで参照（GET /employees?email={userEmail}）
+      // 2. メールアドレスで現在有効なアカウントかを確認（入社日<=本日<退職日）
+      // 3. APIから従業員認可/管理者認可をレスポンスとして取得
+      // 4. レスポンスに基づいてロールを返却（例: employee.isAdmin === true → 'admin'）
+      // 
+      // 実装例:
+      // const response = await apiRequest(`/employees?email=${encodeURIComponent(_userEmail)}`);
+      // const employee = await response.json();
+      // if (employee && new Date(employee.joinDate) <= new Date() && (!employee.leaveDate || new Date(employee.leaveDate) > new Date())) {
+      //   return employee.isAdmin ? 'admin' : 'employee';
+      // }
+      // throw new Error('Invalid employee');
       
-      // デモ用: メールアドレスに基づいてロールを判定
-      // 実際には、Cognitoのユーザー属性から取得することを推奨
-      if (userEmail.includes('@admin.') || userEmail.includes('admin@')) {
-        return 'admin';
-      }
-      return 'employee';
+      // 現在は未実装のため、デフォルトを返す（実際には使用されない）
+      log('⚠️ fetchUserRole called but API integration not implemented yet');
+      return 'employee'; // デフォルトは従業員
     } catch (err) {
       logError('Failed to fetch user role:', err);
       return 'employee'; // デフォルトは従業員
@@ -135,7 +142,32 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           signInDetails: user.signInDetails
         });
         
-        const role = await fetchUserRole(userEmail);
+        // 現在はAPIと繋げられていないため、ログイン画面で選択されたタブを優先して使用
+        // 将来的には、APIから従業員情報を取得して認可を判定する
+        const loginUserType = localStorage.getItem('loginUserType') as UserRole;
+        let role: UserRole;
+        
+        if (loginUserType) {
+          // ログイン画面で選択されたロールを優先（現在の実装）
+          role = loginUserType;
+          log('✅ Using login screen selected role:', role);
+        } else {
+          // フォールバック: 既存の認証情報からロールを取得（再読み込み時など）
+          // 将来的にはAPIから取得する予定
+          const authData = localStorage.getItem('auth');
+          if (authData) {
+            try {
+              const parsed = JSON.parse(authData);
+              role = parsed.role || 'employee';
+            } catch (e) {
+              role = 'employee';
+            }
+          } else {
+            // デフォルトは従業員
+            role = 'employee';
+          }
+          log('✅ Using fallback role:', role);
+        }
         
         setIsAuthenticated(true);
         setUserRole(role);
@@ -143,6 +175,19 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         
         // ローカルストレージにも保存（後方互換性のため）
         localStorage.setItem('auth', JSON.stringify({ role, userId: user.userId, email: userEmail }));
+        
+        // loginUserTypeが使用された場合のみ削除（重複チェック防止）
+        // userRoleが正しく設定された後、次のレンダリングサイクルで削除
+        if (loginUserType && loginUserType === role) {
+          // 状態更新後に削除するため、少し遅延させる
+          setTimeout(() => {
+            const currentLoginUserType = localStorage.getItem('loginUserType');
+            // まだ同じ値が残っている場合のみ削除
+            if (currentLoginUserType === role) {
+              localStorage.removeItem('loginUserType');
+            }
+          }, 100);
+        }
       } else {
         log('❌ No user or session found');
         setIsAuthenticated(false);
@@ -253,7 +298,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
   }, [checkAuthStatus]);
 
-  const login = async (id: string, password: string, _role: UserRole): Promise<boolean> => {
+  const login = async (id: string, password: string, role: UserRole): Promise<boolean> => {
     try {
       // Amplifyが設定されていない場合、エラーを返す
       if (!isAmplifyConfigured) {
@@ -261,15 +306,27 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         return false;
       }
 
+      // signInを呼ぶ前にloginUserTypeを設定（Hubリスナーが先に反応する可能性があるため）
+      if (role) {
+        localStorage.setItem('loginUserType', role);
+      }
+
       const { isSignedIn } = await signIn({ username: id, password });
       
       if (isSignedIn) {
         // 認証状態を再チェック
+        // checkAuthStatus内でloginUserTypeが優先的に使用される
         await checkAuthStatus();
+        
         return true;
+      } else {
+        // ログイン失敗時はloginUserTypeを削除
+        localStorage.removeItem('loginUserType');
+        return false;
       }
-      return false;
     } catch (err) {
+      // エラー時もloginUserTypeを削除
+      localStorage.removeItem('loginUserType');
       logError('Login error:', err);
       return false;
     }

@@ -15,7 +15,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { Button, CancelButton, RegisterButton, DeleteButton, EditButton } from '../../components/Button';
 import { Snackbar } from '../../components/Snackbar';
 import { ProgressBar } from '../../components/ProgressBar';
-import { formatDate, formatTime, formatJSTDateTime, parseJSTDateTime, extractTimeFromJST } from '../../utils/formatters';
+import { formatDate, formatJSTDateTime, parseJSTDateTime, extractTimeFromJST } from '../../utils/formatters';
 import { fontSizes } from '../../config/fontSizes';
 import { PlusIcon, WarningIcon } from '../../components/Icons';
 import { 
@@ -220,19 +220,6 @@ export const Attendance: React.FC = () => {
   const getEmployeeId = (): string | null => {
     const userInfo = getUserInfo();
     return userInfo.employeeId;
-  };
-  // 昨日の日付を取得（退勤時刻未登録エラーのテスト用）
-  const getYesterdayDate = () => {
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    return yesterday.toISOString().split('T')[0];
-  };
-
-  // 一昨日の日付を取得（退勤時刻未登録エラーのテスト用）
-  const getDayBeforeYesterdayDate = () => {
-    const dayBeforeYesterday = new Date();
-    dayBeforeYesterday.setDate(dayBeforeYesterday.getDate() - 2);
-    return dayBeforeYesterday.toISOString().split('T')[0];
   };
 
   const [logs, setLogs] = useState<AttendanceLog[]>([]);
@@ -554,9 +541,6 @@ export const Attendance: React.FC = () => {
     return `${year}-${month}-${day}`;
   };
 
-  const getCurrentTime = () => {
-    return new Date().toTimeString().slice(0, 5);
-  };
 
   // 日付を統一フォーマットに変換（YYYY年MM月DD日）
   // 日付フォーマット関数（yyyy/mm/dd形式）
@@ -857,7 +841,6 @@ export const Attendance: React.FC = () => {
   // 現在時刻を取得して5時を過ぎたかどうかを判定
   const currentTime = now;
   const currentHour = currentTime.getHours();
-  const isNewWorkday = currentHour >= 5; // 5時以降は新しい勤務日
   
   // APIから取得したtodayLogを優先的に使用（todayLogがある場合は表示する）
   // todayLogがない場合は、logsから今日の日付で検索
@@ -2070,17 +2053,21 @@ export const Attendance: React.FC = () => {
                             // YYYY-MM-DD HH:MM:SS形式から時刻を抽出して計算
                             try {
                               const startDate = parseJSTDateTime(breakItem.startIso);
-                              const endDate = parseJSTDateTime(breakItem.endIso);
-                              const diffMs = endDate.getTime() - startDate.getTime();
-                              const diffMinutes = Math.floor(diffMs / (1000 * 60));
-                              breakMinutes += Math.max(0, diffMinutes);
+                              const endDate = breakItem.endIso ? parseJSTDateTime(breakItem.endIso) : null;
+                              if (endDate) {
+                                const diffMs = endDate.getTime() - startDate.getTime();
+                                const diffMinutes = Math.floor(diffMs / (1000 * 60));
+                                breakMinutes += Math.max(0, diffMinutes);
+                              }
                             } catch (error) {
                               // パースエラーの場合は従来の方法で計算
-                              const [bStartHour, bStartMinute] = breakItem.start.split(':').map(Number);
-                              const [bEndHour, bEndMinute] = breakItem.end.split(':').map(Number);
-                              const bStartMinutes = bStartHour * 60 + bStartMinute;
-                              const bEndMinutes = bEndHour * 60 + bEndMinute;
-                              breakMinutes += Math.max(0, bEndMinutes - bStartMinutes);
+                              if (breakItem.start && breakItem.end) {
+                                const [bStartHour, bStartMinute] = breakItem.start.split(':').map(Number);
+                                const [bEndHour, bEndMinute] = breakItem.end.split(':').map(Number);
+                                const bStartMinutes = bStartHour * 60 + bStartMinute;
+                                const bEndMinutes = bEndHour * 60 + bEndMinute;
+                                breakMinutes += Math.max(0, bEndMinutes - bStartMinutes);
+                              }
                             }
                           }
                         });

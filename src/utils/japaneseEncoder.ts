@@ -129,8 +129,7 @@ export const encodeForHttpHeader = (str: string): {
  * @returns デコードされた文字列
  */
 export const decodeFromHttpHeader = (
-  encodedValue: string,
-  isEncoded?: boolean
+  encodedValue: string
 ): string => {
   if (!encodedValue) {
     return '';

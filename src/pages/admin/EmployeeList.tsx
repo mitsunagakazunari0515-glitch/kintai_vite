@@ -24,7 +24,7 @@ import { useSort } from '../../hooks/useSort';
 import { ChevronDownIcon, ChevronUpIcon } from '../../components/Icons';
 import { createEmployee, updateEmployee, getEmployees, CreateEmployeeRequest } from '../../utils/employeeApi';
 import { getAllowances } from '../../utils/allowanceApi';
-import { error as logError, log, warn } from '../../utils/logger';
+import { error as logError } from '../../utils/logger';
 import { translateApiError } from '../../utils/apiErrorTranslator';
 
 /**
@@ -351,7 +351,7 @@ export const EmployeeList: React.FC = () => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: isMobile ? 'auto' : '100%' }}>
-      {isLoadingEmployees && <ProgressBar />}
+      {isLoadingEmployees && <ProgressBar isLoading={isLoadingEmployees} />}
       {snackbar && (
         <Snackbar
           message={snackbar.message}

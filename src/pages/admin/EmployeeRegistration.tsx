@@ -114,9 +114,9 @@ export const EmployeeRegistration: React.FC = () => {
   // 従業員IDの自動採番関数
   // 実際の実装では、既存の従業員リストから最大のIDを取得して+1する
   // ここでは簡易的に、既存のダミーデータ（EMP001, EMP002）を考慮して次のIDを生成
-  const generateEmployeeId = (): string => {
-    // 実際の実装では、APIから既存の従業員リストを取得して最大の番号を計算する
-    // ここでは、既存のダミーデータの最大番号（2）を考慮して、次のID（EMP003）を生成
+  // const generateEmployeeId = (): string => {
+  //   // 実際の実装では、APIから既存の従業員リストを取得して最大の番号を計算する
+  //   // ここでは、既存のダミーデータの最大番号（2）を考慮して、次のID（EMP003）を生成
     // 実際の実装では、以下のようなロジックを使用：
     // const existingIds = employees.map(emp => {
     //   const match = emp.id.match(/^EMP(\d+)$/);

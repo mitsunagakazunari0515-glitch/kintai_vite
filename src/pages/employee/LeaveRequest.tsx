@@ -23,12 +23,11 @@ import {
   getLeaveRequestList, 
   createLeaveRequest, 
   updateLeaveRequest, 
-  deleteLeaveRequest,
-  LeaveRequest as ApiLeaveRequest
+  deleteLeaveRequest
 } from '../../utils/leaveRequestApi';
 import { error as logError } from '../../utils/logger';
 import { translateApiError } from '../../utils/apiErrorTranslator';
-import { getLeaveTypeLabel, getLeaveRequestStatusLabel, getLeaveRequestStatusStyle, getLeaveTypeCodeFromLabel } from '../../utils/codeTranslator';
+import { getLeaveTypeLabel, getLeaveRequestStatusLabel, getLeaveTypeCodeFromLabel } from '../../utils/codeTranslator';
 import { getUserInfo } from '../../config/apiConfig';
 
 /**
@@ -167,11 +166,11 @@ export const LeaveRequest: React.FC = () => {
   }, [formData.startDate, formData.endDate, formData.isHalfDay]);
 
   // 有給残日数の計算（申請時のバリデーション用）
-  const totalPaidLeaveDays = 20; // 年間有給日数
-  const usedPaidLeaveDays = requests
-    .filter(req => req.type === '有給' && req.status === '承認')
-    .reduce((sum, req) => sum + req.days, 0);
-  const remainingPaidLeaveDays = totalPaidLeaveDays - usedPaidLeaveDays;
+  // const totalPaidLeaveDays = 20; // 年間有給日数
+  // const usedPaidLeaveDays = requests
+  //   .filter(req => req.type === '有給' && req.status === '承認')
+  //   .reduce((sum, req) => sum + req.days, 0);
+  // const remainingPaidLeaveDays = totalPaidLeaveDays - usedPaidLeaveDays;
 
   // 申請履歴を年度でフィルタリング
   const filteredRequests = requests.filter(req => {
@@ -256,7 +255,7 @@ export const LeaveRequest: React.FC = () => {
         if (employeeIdForFetch) {
           const listResponse = await getLeaveRequestList(employeeIdForFetch);
           const convertedRequests: LeaveRequest[] = listResponse.requests.map(req => ({
-            id: req.leaveRequestId || req.id,
+            id: req.id,
             employeeId: req.employeeId,
             startDate: req.startDate,
             endDate: req.endDate,

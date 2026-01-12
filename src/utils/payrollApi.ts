@@ -283,7 +283,7 @@ export const convertPayrollApiResponseToRecord = (
     id: response.payrollId,
     year: response.year,
     month: response.month,
-    type: response.statementType,
+    type: response.statementType === 'salary' ? 'payroll' : response.statementType,
     employeeId,
     employeeName,
     companyName,

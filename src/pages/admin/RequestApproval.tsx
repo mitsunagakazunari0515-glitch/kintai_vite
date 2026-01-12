@@ -18,8 +18,7 @@ import { ChevronDownIcon, ChevronUpIcon } from '../../components/Icons';
 import { ApproveButton, BulkApproveButton, CancelApprovalButton, SelectAllButton, SearchButton, ClearButton, Button, RegisterButton, CancelButton } from '../../components/Button';
 import { 
   getApplicationList,
-  updateApplicationStatus,
-  UnifiedApplication as ApiUnifiedApplication
+  updateApplicationStatus
 } from '../../utils/applicationApi';
 import { getEmployees, EmployeeResponse } from '../../utils/employeeApi';
 import { createLeaveRequest } from '../../utils/leaveRequestApi';
@@ -567,12 +566,17 @@ export const RequestApproval: React.FC = () => {
       // UIの日本語ラベルをAPIの英語コードに変換
       const apiLeaveType = getLeaveTypeCodeFromLabel(registerFormData.type) as 'paid' | 'special' | 'sick' | 'absence' | 'other';
 
+      // 日数を計算
+      const days = registerFormData.isHalfDay ? 0.5 : 
+        Math.ceil((new Date(finalEndDate).getTime() - new Date(registerFormData.startDate).getTime()) / (1000 * 60 * 60 * 24)) + 1;
+      
       const apiRequest = await createLeaveRequest({
         employeeId: registerFormData.employeeId,
         startDate: registerFormData.startDate,
         endDate: finalEndDate,
         leaveType: apiLeaveType,
         reason: registerFormData.reason,
+        days: days,
         isHalfDay: registerFormData.isHalfDay
       });
 
@@ -582,23 +586,8 @@ export const RequestApproval: React.FC = () => {
         ? `${selectedEmployee.firstName} ${selectedEmployee.lastName}`
         : '不明な従業員';
 
-      // ローカル状態に追加（APIから取得したデータを変換）
-      const newRequest: UnifiedRequest = {
-        id: apiRequest.id,
-        type: '休暇申請',
-        employeeId: apiRequest.employeeId,
-        employeeName: employeeName,
-        status: getLeaveRequestStatusLabel(apiRequest.status) as '申請中' | '承認' | '取消' | '削除済み',
-        requestedAt: apiRequest.requestedAt,
-        leaveData: {
-          startDate: apiRequest.startDate,
-          endDate: apiRequest.endDate,
-          days: apiRequest.days,
-          leaveType: getLeaveTypeLabel(apiRequest.leaveType) as '有給' | '特別休暇' | '病気休暇' | '欠勤' | 'その他',
-          reason: apiRequest.reason,
-          isHalfDay: apiRequest.isHalfDay
-        }
-      };
+      // 申請一覧を再取得
+      await fetchApplications();
 
       setShowRegisterModal(false);
       setRegisterFormData({
@@ -641,7 +630,7 @@ export const RequestApproval: React.FC = () => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: isMobile ? 'auto' : '100%' }}>
-      {isLoading && <ProgressBar />}
+      {isLoading && <ProgressBar isLoading={isLoading} />}
       {snackbar && (
         <Snackbar
           message={snackbar.message}

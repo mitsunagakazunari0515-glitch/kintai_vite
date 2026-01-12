@@ -21,7 +21,7 @@ import { getAttendanceList, updateAttendance, updateAttendanceMemo, AttendanceLo
 import { getEmployees } from '../../utils/employeeApi';
 import { log, error as logError } from '../../utils/logger';
 import { translateApiError } from '../../utils/apiErrorTranslator';
-import { getAttendanceStatusLabel, getAttendanceStatusStyle } from '../../utils/codeTranslator';
+import { getAttendanceStatusLabel } from '../../utils/codeTranslator';
 import { ProgressBar } from '../../components/ProgressBar';
 
 /**

@@ -2,8 +2,13 @@ import React, { createContext, useContext, useState, useEffect, useCallback, Rea
 import { signIn, signOut, getCurrentUser, fetchAuthSession, signInWithRedirect, fetchUserAttributes, resetPassword, confirmResetPassword, signUp, confirmSignUp } from 'aws-amplify/auth';
 import { Hub } from 'aws-amplify/utils';
 import { Amplify } from 'aws-amplify';
-import { getAmplifyConfigPath, getAmplifyEnvironment } from '../config/amplifyConfig';
+import { getAmplifyConfigPath, getAmplifyEnvironment, setAmplifyApiEndpoint } from '../config/amplifyConfig';
 import { log, error as logError, warn } from '../utils/logger';
+import { getAuthorization, refreshAuthorization } from '../utils/authApi';
+import { translateApiError } from '../utils/apiErrorTranslator';
+import { Snackbar } from '../components/Snackbar';
+import { ProgressBar } from '../components/ProgressBar';
+import { saveLoginUserType, saveGoogleLoginInProgress, getLoginUserType, getGoogleLoginInProgress } from '../utils/storageHelper';
 
 /**
  * ユーザーのロールを表す型。
@@ -20,12 +25,14 @@ interface AuthContextType {
   userRole: UserRole;
   /** ユーザーID。 */
   userId: string | null;
+  /** ユーザー名（従業員名）。 */
+  userName: string | null;
   /** 認証状態の復元中かどうか。 */
   isLoading: boolean;
   /** ログイン処理を行う関数（メール/パスワード）。 */
   login: (id: string, password: string, role: UserRole) => Promise<boolean>;
   /** Googleログイン処理を行う関数。 */
-  signInWithGoogle: () => Promise<void>;
+  signInWithGoogle: (userType?: 'admin' | 'employee') => Promise<void>;
   /** ログアウト処理を行う関数。 */
   logout: () => Promise<void>;
   /** パスワード再設定コードを送信する関数。 */
@@ -52,56 +59,244 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [userRole, setUserRole] = useState<UserRole>(null);
   const [userId, setUserId] = useState<string | null>(null);
+  const [userName, setUserName] = useState<string | null>(null); // ユーザー名（従業員名）
   const [isLoading, setIsLoading] = useState<boolean>(true); // 初期状態は読み込み中
   const [isAmplifyConfigured, setIsAmplifyConfigured] = useState<boolean>(false); // Amplifyが設定されているかどうか
+  const [snackbar, setSnackbar] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [isApiLoading, setIsApiLoading] = useState<boolean>(false); // API通信中のローディング状態
 
-  // ユーザー情報を取得してロールを判定する関数（将来API連携時に使用予定）
-  // 現在は使用されていない（ログイン画面で選択されたタブを優先するため）
-  const fetchUserRole = useCallback(async (_userEmail: string): Promise<UserRole> => {
+  // 認可情報を取得してロールを判定する関数
+  const fetchUserRole = useCallback(async (): Promise<UserRole> => {
+    setIsApiLoading(true);
     try {
-      // TODO: 将来的な実装（API連携時）
-      // 1. 従業員情報テーブルをAPIで参照（GET /employees?email={userEmail}）
-      // 2. メールアドレスで現在有効なアカウントかを確認（入社日<=本日<退職日）
-      // 3. APIから従業員認可/管理者認可をレスポンスとして取得
-      // 4. レスポンスに基づいてロールを返却（例: employee.isAdmin === true → 'admin'）
-      // 
-      // 実装例:
-      // const response = await apiRequest(`/employees?email=${encodeURIComponent(_userEmail)}`);
-      // const employee = await response.json();
-      // if (employee && new Date(employee.joinDate) <= new Date() && (!employee.leaveDate || new Date(employee.leaveDate) > new Date())) {
-      //   return employee.isAdmin ? 'admin' : 'employee';
-      // }
-      // throw new Error('Invalid employee');
+      const authInfo = await getAuthorization();
       
-      // 現在は未実装のため、デフォルトを返す（実際には使用されない）
-      log('⚠️ fetchUserRole called but API integration not implemented yet');
-      return 'employee'; // デフォルトは従業員
+      // 在籍していない場合はエラーをスロー
+      if (!authInfo.isActive) {
+        const errorMessage = '在籍していない従業員はログインできません';
+        setSnackbar({ message: errorMessage, type: 'error' });
+        setTimeout(() => setSnackbar(null), 5000);
+        throw new Error(errorMessage);
+      }
+      
+      // ユーザー名を設定（姓・名の順序で表示）
+      // API仕様: firstName = 苗字（姓）, lastName = 名前（名）
+      // 表示時は日本語の慣習に従って「姓 名」の順序で結合する（例: "山田 太郎"）
+      // つまり `${firstName} ${lastName}` の順序で表示する
+      const displayName = `${authInfo.firstName} ${authInfo.lastName}`;
+      
+      // ローカルストレージに認可情報を保存
+      const userInfo = {
+        employeeId: authInfo.employeeId,
+        requestedBy: displayName, // 姓・名の順序で結合した表示名
+        role: authInfo.role,
+        email: authInfo.email
+      };
+      localStorage.setItem('userInfo', JSON.stringify(userInfo));
+      
+      // ユーザー名を設定
+      setUserName(displayName);
+      
+      return authInfo.role as UserRole;
     } catch (err) {
       logError('Failed to fetch user role:', err);
-      return 'employee'; // デフォルトは従業員
+      // エラー時はローカルストレージから認可情報を削除
+      localStorage.removeItem('userInfo');
+      
+      // エラーメッセージをスナックバーで表示
+      const errorMessage = translateApiError(err);
+      setSnackbar({ message: errorMessage, type: 'error' });
+      setTimeout(() => setSnackbar(null), 5000);
+      
+      throw err;
+    } finally {
+      setIsApiLoading(false);
     }
   }, []);
 
   // 認証状態をチェックする関数（useCallbackでメモ化）
-  const checkAuthStatus = useCallback(async () => {
+  const checkAuthStatus = useCallback(async (forceCheck: boolean = false) => {
+    // ログイン画面の場合は、API通信をスキップ（ログインボタン押下時のみAPI通信）
+    // ただし、forceCheckがtrueの場合や、loginUserType/googleLoginInProgressが設定されている場合は実行
+    const currentPath = window.location.pathname;
+    const isLoginPage = currentPath === '/login' || currentPath === '/';
+    
+    // URLパラメータまたはCookieからloginUserTypeを取得（リダイレクト後のコールバック時に使用）
+    const urlParams = new URLSearchParams(window.location.search);
+    let loginUserTypeFromUrl = urlParams.get('loginUserType');
+    
+    // URLパラメータにない場合は、Cookieから取得を試みる
+    if (!loginUserTypeFromUrl || (loginUserTypeFromUrl !== 'admin' && loginUserTypeFromUrl !== 'employee')) {
+      const cookies = document.cookie.split(';');
+      for (const cookie of cookies) {
+        const [name, value] = cookie.trim().split('=');
+        if (name === 'loginUserType') {
+          loginUserTypeFromUrl = decodeURIComponent(value);
+          break;
+        }
+      }
+    }
+    
+    if (loginUserTypeFromUrl === 'admin' || loginUserTypeFromUrl === 'employee') {
+      log('🔍 checkAuthStatus - Found loginUserType in URL parameters or cookies:', loginUserTypeFromUrl);
+      sessionStorage.setItem('loginUserType', loginUserTypeFromUrl);
+      localStorage.setItem('loginUserType', loginUserTypeFromUrl);
+      // Cookieを削除（使用後は不要）
+      document.cookie = 'loginUserType=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+    }
+    
+    // sessionStorageから優先的に取得（リダイレクト時にlocalStorageがクリアされる可能性があるため）
+    let loginUserType = sessionStorage.getItem('loginUserType');
+    if (!loginUserType) {
+      loginUserType = localStorage.getItem('loginUserType');
+    }
+    // URLパラメータがある場合は、それを優先
+    if (loginUserTypeFromUrl && (loginUserTypeFromUrl === 'admin' || loginUserTypeFromUrl === 'employee')) {
+      loginUserType = loginUserTypeFromUrl;
+    }
+    
+    let googleLoginInProgress = sessionStorage.getItem('googleLoginInProgress');
+    if (!googleLoginInProgress) {
+      googleLoginInProgress = localStorage.getItem('googleLoginInProgress');
+    }
+    // Googleログイン後のコールバックの可能性がある場合、フラグを設定
+    // AmplifyのコールバックURLには通常、codeパラメータが含まれる
+    if (!googleLoginInProgress && urlParams.get('code')) {
+      log('🔍 checkAuthStatus - Detected OAuth callback (code parameter found), setting googleLoginInProgress flag');
+      googleLoginInProgress = 'true';
+      
+      // Cookie、sessionStorage、localStorageに保存
+      const expirationDate = new Date();
+      expirationDate.setTime(expirationDate.getTime() + 60 * 60 * 1000); // 1時間
+      document.cookie = `googleLoginInProgress=true; expires=${expirationDate.toUTCString()}; path=/; SameSite=Lax`;
+      sessionStorage.setItem('googleLoginInProgress', 'true');
+      localStorage.setItem('googleLoginInProgress', 'true');
+      
+      // OAuthコールバック時、loginUserTypeがストレージから取得できない場合は、Cookieから復元を試みる
+      if (!loginUserType) {
+        const cookies = document.cookie.split(';');
+        for (const cookie of cookies) {
+          const [name, value] = cookie.trim().split('=');
+          if (name === 'loginUserType') {
+            loginUserType = decodeURIComponent(value);
+            log('🔍 checkAuthStatus - Found loginUserType in cookie during OAuth callback:', loginUserType);
+            sessionStorage.setItem('loginUserType', loginUserType);
+            localStorage.setItem('loginUserType', loginUserType);
+            break;
+          }
+        }
+      }
+    }
+    
+    // CookieからもloginUserTypeを確認（まだ取得できていない場合）
+    if (!loginUserType) {
+      const cookies = document.cookie.split(';');
+      for (const cookie of cookies) {
+        const [name, value] = cookie.trim().split('=');
+        if (name === 'loginUserType') {
+          loginUserType = decodeURIComponent(value);
+          log('🔍 checkAuthStatus - Found loginUserType in cookie:', loginUserType);
+          sessionStorage.setItem('loginUserType', loginUserType);
+          localStorage.setItem('loginUserType', loginUserType);
+          break;
+        }
+      }
+    }
+    
+    if (isLoginPage && !forceCheck && !loginUserType && !googleLoginInProgress) {
+      log('ℹ️ Login page detected - skipping auth check (no login attempt detected)');
+      setIsLoading(false);
+      return;
+    }
+    
+    // ログイン試行が検出された場合は、ログイン画面でもAPI通信を実行
+    if (isLoginPage && (forceCheck || loginUserType || googleLoginInProgress)) {
+      log('ℹ️ Login page detected but login attempt found - proceeding with auth check');
+    }
+    
     try {
-      const user = await getCurrentUser();
-      // Identity Poolのエラーを無視して、User Poolの認証のみを使用
-      let session = null;
+      // ユーザーが認証されているかチェック
+      // ログインしていない場合はUserUnAuthenticatedExceptionがスローされる（これは正常な状態）
+      let user = null;
       try {
-        session = await fetchAuthSession();
-      } catch (sessionError) {
-        // Identity Poolのエラーは無視（User Poolの認証のみを使用する場合）
-        log('⚠ Identity Pool session fetch failed (using User Pool only):', sessionError);
-        // User Poolの認証のみを使用する場合は、sessionがなくても続行
+        user = await getCurrentUser();
+      } catch (authError: any) {
+        // UserUnAuthenticatedExceptionは正常な状態（ログインしていない）
+        if (authError?.name === 'UserUnAuthenticatedException' || authError?.message?.includes('User needs to be authenticated')) {
+          log('ℹ️ User is not authenticated (this is normal on login screen)');
+          // 認証されていない状態を正常に処理
+          setIsAuthenticated(false);
+          setUserRole(null);
+          setUserId(null);
+          setUserName(null);
+          setIsLoading(false);
+          return;
+        }
+        // その他のエラーは再スロー
+        throw authError;
+      }
+      
+      // Identity Poolのエラーを無視して、User Poolの認証のみを使用
+      // Googleログイン直後は、トークンが取得できるまで少し待機する必要がある場合がある
+      let session = null;
+      let retryCount = 0;
+      const maxRetries = 5; // 最大5回リトライ（合計約2.5秒待機）
+      
+      while (retryCount < maxRetries) {
+        try {
+          session = await fetchAuthSession();
+          // トークンが取得できた場合はループを抜ける
+          if (session?.tokens?.idToken && session?.tokens?.accessToken) {
+            break;
+          }
+        } catch (sessionError) {
+          // Identity Poolのエラーは無視（User Poolの認証のみを使用する場合）
+          log('⚠ Identity Pool session fetch failed (using User Pool only):', sessionError);
+          // User Poolの認証のみを使用する場合は、sessionがなくても続行
+        }
+        
+        // トークンが取得できていない場合は、少し待機してリトライ
+        if (!session?.tokens?.idToken || !session?.tokens?.accessToken) {
+          retryCount++;
+          if (retryCount < maxRetries) {
+            log(`⏳ Waiting for tokens... (retry ${retryCount}/${maxRetries})`);
+            await new Promise(resolve => setTimeout(resolve, 500)); // 500ms待機
+          }
+        } else {
+          break; // トークンが取得できた場合はループを抜ける
+        }
       }
       
       log('🔍 Checking auth status...');
       log('User:', user);
       log('Session:', session);
+      log('Retry count:', retryCount);
       
       // User Poolの認証が成功していれば続行（Identity Poolはオプション）
       if (user) {
+        // トークンが存在するか確認（API通信には有効なトークンが必要）
+        const idToken = session?.tokens?.idToken;
+        const accessToken = session?.tokens?.accessToken;
+        
+        // トークンが存在しない場合は、API通信をスキップしてログイン画面に留まる
+        if (!idToken || !accessToken) {
+          log('⚠️ Tokens not found or invalid after retries - skipping API call and staying on login screen');
+          setIsAuthenticated(false);
+          setUserRole(null);
+          setUserId(null);
+          setUserName(null);
+          localStorage.removeItem('auth');
+          localStorage.removeItem('userInfo');
+          setIsLoading(false);
+          // エラーメッセージをスナックバーで表示
+          setSnackbar({ 
+            message: '認証トークンの取得に失敗しました。再度ログインしてください。', 
+            type: 'error' 
+          });
+          setTimeout(() => setSnackbar(null), 5000);
+          return; // 早期リターンしてログイン画面に留まる
+        }
+        
         // ユーザー属性を取得（メールアドレスなどを含む）
         let userEmail = '';
         try {
@@ -122,10 +317,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
         
         // トークンからメールアドレスを取得してみる
-        if (!userEmail && session?.tokens?.idToken) {
+        if (!userEmail && idToken) {
           try {
             // IDトークンからメールアドレスをデコード
-            const idToken = session.tokens.idToken;
             // JWTトークンは3つの部分に分かれている（header.payload.signature）
             const payload = JSON.parse(atob(idToken.toString().split('.')[1]));
             userEmail = payload.email || payload['cognito:username'] || '';
@@ -142,51 +336,200 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           signInDetails: user.signInDetails
         });
         
-        // 現在はAPIと繋げられていないため、ログイン画面で選択されたタブを優先して使用
-        // 将来的には、APIから従業員情報を取得して認可を判定する
-        const loginUserType = localStorage.getItem('loginUserType') as UserRole;
+        // APIから認可情報を取得してロールを判定
+        // 認証が成功するまで（200レスポンスが返ってくるまで）ログイン画面に留まる
         let role: UserRole;
+        // loginUserTypeをスコープ外で定義（後で使用するため）
+        const loginUserType = localStorage.getItem('loginUserType') as UserRole;
         
-        if (loginUserType) {
-          // ログイン画面で選択されたロールを優先（現在の実装）
-          role = loginUserType;
-          log('✅ Using login screen selected role:', role);
-        } else {
-          // フォールバック: 既存の認証情報からロールを取得（再読み込み時など）
-          // 将来的にはAPIから取得する予定
-          const authData = localStorage.getItem('auth');
-          if (authData) {
+        try {
+          role = await fetchUserRole();
+          log('✅ Role fetched from API:', role);
+          
+          // APIから正常に認可情報を取得できた場合のみ認証状態を設定
+          setIsAuthenticated(true);
+          setUserRole(role);
+          setUserId(user.userId);
+          // ユーザー名をローカルストレージから取得
+          const userInfoStr = localStorage.getItem('userInfo');
+          if (userInfoStr) {
             try {
-              const parsed = JSON.parse(authData);
-              role = parsed.role || 'employee';
+              const userInfo = JSON.parse(userInfoStr);
+              setUserName(userInfo.requestedBy || null);
             } catch (e) {
-              role = 'employee';
+              setUserName(null);
             }
-          } else {
-            // デフォルトは従業員
-            role = 'employee';
           }
-          log('✅ Using fallback role:', role);
-        }
-        
-        setIsAuthenticated(true);
-        setUserRole(role);
-        setUserId(user.userId);
-        
-        // ローカルストレージにも保存（後方互換性のため）
-        localStorage.setItem('auth', JSON.stringify({ role, userId: user.userId, email: userEmail }));
-        
-        // loginUserTypeが使用された場合のみ削除（重複チェック防止）
-        // userRoleが正しく設定された後、次のレンダリングサイクルで削除
-        if (loginUserType && loginUserType === role) {
-          // 状態更新後に削除するため、少し遅延させる
-          setTimeout(() => {
-            const currentLoginUserType = localStorage.getItem('loginUserType');
-            // まだ同じ値が残っている場合のみ削除
-            if (currentLoginUserType === role) {
-              localStorage.removeItem('loginUserType');
+          
+          // ローカルストレージにも保存（後方互換性のため）
+          localStorage.setItem('auth', JSON.stringify({ role, userId: user.userId, email: userEmail }));
+          
+          // Googleログインの場合、loginUserTypeが設定されていない可能性があるため、確認して保持する
+          // 注意: Googleログイン後のコールバック時、IndexedDB、Cookie、sessionStorage、localStorageの順で確認
+          // リダイレクト時にストレージがクリアされる可能性があるため、IndexedDBから優先的に取得
+          let currentLoginUserType: string | null = null;
+          
+          // 1. IndexedDBから取得（最も永続的）
+          try {
+            currentLoginUserType = await getLoginUserType();
+            if (currentLoginUserType) {
+              log('🔍 checkAuthStatus - Found loginUserType in IndexedDB after successful authentication:', currentLoginUserType);
             }
-          }, 100);
+          } catch (error) {
+            log('⚠️ checkAuthStatus - Failed to get loginUserType from IndexedDB:', error);
+          }
+          
+          // 2. IndexedDBにない場合は、sessionStorageから取得
+          if (!currentLoginUserType) {
+            currentLoginUserType = sessionStorage.getItem('loginUserType');
+          }
+          
+          // 3. sessionStorageにもない場合はlocalStorageから取得
+          if (!currentLoginUserType) {
+            currentLoginUserType = localStorage.getItem('loginUserType');
+          }
+          
+          // 4. localStorageにもない場合は、Cookieから取得（リダイレクト後にストレージがクリアされている可能性があるため）
+          if (!currentLoginUserType) {
+            const cookies = document.cookie.split(';');
+            for (const cookie of cookies) {
+              const [name, value] = cookie.trim().split('=');
+              if (name === 'loginUserType') {
+                currentLoginUserType = decodeURIComponent(value);
+                log('🔍 checkAuthStatus - Found loginUserType in cookie after successful authentication, restoring to storage:', currentLoginUserType);
+                // Cookieから取得した値をsessionStorageとlocalStorageに復元
+                sessionStorage.setItem('loginUserType', currentLoginUserType);
+                localStorage.setItem('loginUserType', currentLoginUserType);
+                break;
+              }
+            }
+          }
+          
+          let currentGoogleLoginInProgress: string | null = null;
+          
+          // 1. IndexedDBから取得（最も永続的）
+          try {
+            const fromIndexedDB = await getGoogleLoginInProgress();
+            if (fromIndexedDB) {
+              currentGoogleLoginInProgress = 'true';
+              log('🔍 checkAuthStatus - Found googleLoginInProgress in IndexedDB after successful authentication');
+            }
+          } catch (error) {
+            log('⚠️ checkAuthStatus - Failed to get googleLoginInProgress from IndexedDB:', error);
+          }
+          
+          // 2. IndexedDBにない場合は、sessionStorageから取得
+          if (!currentGoogleLoginInProgress) {
+            currentGoogleLoginInProgress = sessionStorage.getItem('googleLoginInProgress');
+          }
+          
+          // 3. sessionStorageにもない場合はlocalStorageから取得
+          if (!currentGoogleLoginInProgress) {
+            currentGoogleLoginInProgress = localStorage.getItem('googleLoginInProgress');
+          }
+          
+          // 4. localStorageにもない場合は、Cookieから取得
+          if (!currentGoogleLoginInProgress) {
+            const cookies = document.cookie.split(';');
+            for (const cookie of cookies) {
+              const [name, value] = cookie.trim().split('=');
+              if (name === 'googleLoginInProgress') {
+                currentGoogleLoginInProgress = decodeURIComponent(value);
+                log('🔍 checkAuthStatus - Found googleLoginInProgress in cookie after successful authentication, restoring to storage:', currentGoogleLoginInProgress);
+                // Cookieから取得した値をsessionStorageとlocalStorageに復元
+                sessionStorage.setItem('googleLoginInProgress', currentGoogleLoginInProgress);
+                localStorage.setItem('googleLoginInProgress', currentGoogleLoginInProgress);
+                break;
+              }
+            }
+          }
+          
+          // 5. すべてのストレージにない場合、URLパラメータにcodeがある場合はOAuthコールバックと判断
+          if (!currentGoogleLoginInProgress && urlParams.get('code')) {
+            log('🔍 checkAuthStatus - Detected OAuth callback (code parameter found), setting googleLoginInProgress flag');
+            currentGoogleLoginInProgress = 'true';
+            await saveGoogleLoginInProgress();
+            // フォールバックとして、Cookie、sessionStorage、localStorageにも保存
+            const expirationDate = new Date();
+            expirationDate.setTime(expirationDate.getTime() + 60 * 60 * 1000); // 1時間
+            document.cookie = `googleLoginInProgress=true; expires=${expirationDate.toUTCString()}; path=/; SameSite=Lax`;
+            sessionStorage.setItem('googleLoginInProgress', 'true');
+            localStorage.setItem('googleLoginInProgress', 'true');
+          }
+          
+          log('🔍 checkAuthStatus - Checking loginUserType after successful authentication:', {
+            loginUserType: currentLoginUserType,
+            googleLoginInProgress: currentGoogleLoginInProgress,
+            role: role,
+            isLoginPage: isLoginPage,
+            cookie: {
+              loginUserType: document.cookie.split(';').find(c => c.trim().startsWith('loginUserType='))?.split('=')[1] || null,
+              googleLoginInProgress: document.cookie.split(';').find(c => c.trim().startsWith('googleLoginInProgress='))?.split('=')[1] || null
+            },
+            sessionStorage: {
+              loginUserType: sessionStorage.getItem('loginUserType'),
+              googleLoginInProgress: sessionStorage.getItem('googleLoginInProgress')
+            },
+            localStorage: {
+              loginUserType: localStorage.getItem('loginUserType'),
+              googleLoginInProgress: localStorage.getItem('googleLoginInProgress')
+            }
+          });
+          
+          // Googleログインの場合、loginUserTypeが設定されていない場合は、エラーログを出力（デバッグ用）
+          if (currentGoogleLoginInProgress === 'true' && !currentLoginUserType) {
+            log('⚠️ WARNING: Google login in progress but loginUserType not found in cookie, localStorage, or sessionStorage!');
+            log('⚠️ This may cause incorrect redirection. Will use userRole for redirection:', role);
+          }
+          
+          // 注意: loginUserTypeは、App.tsxやLogin.tsxでリダイレクト処理が完了するまで保持する必要がある
+          // そのため、ここでは削除しない（App.tsxやLogin.tsxで削除される）
+          // Googleログインの場合、App.tsxでloginUserTypeを確認してリダイレクト先を決定する
+          // 通常ログインの場合、Login.tsxでpendingLoginを使用してリダイレクト先を決定する
+        } catch (err: any) {
+          // 401エラー（認証エラー）の場合は、認証状態をリセットしてログイン画面に戻る
+          // その他のエラーも同様に処理（認証が成功するまでログイン画面に留まる）
+          const isUnauthorized = err?.status === 401 || err?.isUnauthorized || err?.message?.includes('401') || err?.message?.includes('Unauthorized') || err?.message?.includes('Failed to fetch');
+          const isForbidden = err?.status === 403 || err?.message?.includes('403') || err?.message?.includes('Forbidden') || err?.message?.includes('アクセス権限');
+          
+          if (isUnauthorized) {
+            log('❌ Unauthorized (401) or CORS error - Resetting auth state and staying on login screen');
+          } else if (isForbidden) {
+            log('❌ Forbidden (403) - Access denied, resetting auth state and staying on login screen');
+          } else {
+            logError('❌ Failed to fetch role from API - staying on login screen:', err);
+          }
+          
+          // エラーメッセージをスナックバーで表示（初回起動時は表示しない）
+          // ただし、明示的なログイン試行後のエラーのみ表示
+          const shouldShowError = loginUserType || localStorage.getItem('auth'); // ログイン試行がある場合のみ表示
+          if (shouldShowError) {
+            const errorMessage = translateApiError(err);
+            setSnackbar({ message: errorMessage, type: 'error' });
+            setTimeout(() => setSnackbar(null), 5000);
+          }
+          
+          // 認証状態をリセットしてログイン画面に留まる
+          setIsAuthenticated(false);
+          setUserRole(null);
+          setUserId(null);
+          setUserName(null);
+          localStorage.removeItem('auth');
+          localStorage.removeItem('userInfo');
+          // Googleログイン中の場合は、googleLoginInProgressフラグを削除（エラー時は処理を中断）
+          if (localStorage.getItem('googleLoginInProgress') === 'true') {
+            localStorage.removeItem('googleLoginInProgress');
+            log('ℹ️ Google login error - removed googleLoginInProgress flag');
+          }
+          // フォールバックを使用しない（認証が成功するまで待つ）
+          setIsLoading(false);
+          
+          // エラーを再スローして、呼び出し元（login関数など）で検知できるようにする
+          // forceCheckがtrueの場合（ログイン試行時）は例外をスロー
+          if (forceCheck) {
+            throw err; // ログイン試行時は例外をスローしてエラーを伝播
+          }
+          return; // 初期ロード時など、forceCheckがfalseの場合は早期リターン
         }
       } else {
         log('❌ No user or session found');
@@ -195,13 +538,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setUserId(null);
         localStorage.removeItem('auth');
       }
-    } catch (error) {
-      // ユーザーが認証されていない
-      logError('❌ Error checking auth status:', error);
+    } catch (error: any) {
+      // ユーザーが認証されていない場合のエラー処理
+      // UserUnAuthenticatedExceptionは既に上で処理されているため、ここではその他のエラーのみを処理
+      if (error?.name === 'UserUnAuthenticatedException' || error?.message?.includes('User needs to be authenticated')) {
+        // 既に処理済みの場合は何もしない（エラーログを出力しない）
+        log('ℹ️ User is not authenticated');
+      } else {
+        // その他のエラーのみログに出力
+        logError('❌ Error checking auth status:', error);
+      }
       setIsAuthenticated(false);
       setUserRole(null);
       setUserId(null);
       localStorage.removeItem('auth');
+      localStorage.removeItem('userInfo');
     } finally {
       setIsLoading(false);
     }
@@ -220,12 +571,43 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         // fetch APIを使用してamplify_outputs.jsonを読み込む
         // publicディレクトリから読み込み（scripts/copy-amplify-outputs.jsでコピーされる）
         // これにより、ファイルが存在しない場合でもビルドエラーが発生しません
-        const response = await fetch(configPath);
+        // リトライロジックを追加（開発サーバーが起動していない場合の対策）
+        let response: Response | null = null;
+        let lastError: Error | null = null;
+        const maxRetries = 3;
+        const retryDelay = 1000; // 1秒
+        
+        for (let i = 0; i < maxRetries; i++) {
+          try {
+            response = await fetch(configPath);
+            if (response.ok) {
+              break; // 成功したらループを抜ける
+            }
+          } catch (error: any) {
+            lastError = error;
+            if (i < maxRetries - 1) {
+              // 最後の試行でない場合は待機してリトライ
+              await new Promise(resolve => setTimeout(resolve, retryDelay));
+              log(`⚠️ Retrying to load Amplify config (attempt ${i + 2}/${maxRetries})...`);
+            }
+          }
+        }
+        
+        if (!response || !response.ok) {
+          throw lastError || new Error(`Failed to load config after ${maxRetries} attempts`);
+        }
         
         if (response.ok) {
           const outputs = await response.json();
           log('📋 Loaded Amplify outputs:', outputs);
           Amplify.configure(outputs);
+          
+          // APIエンドポイントを設定（amplify_outputs.jsonから取得）
+          if (outputs.api?.url) {
+            setAmplifyApiEndpoint(outputs.api.url);
+            log('✅ API endpoint set from amplify_outputs.json:', outputs.api.url);
+          }
+          
           setIsAmplifyConfigured(true);
           log(`✓ Amplify configured successfully for ${environment} environment`);
           return true;
@@ -251,11 +633,28 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     // Amplifyの設定と認証状態の確認
     configureAmplify().then((configured) => {
       if (configured) {
-        // Amplify設定が完了してから認証状態を確認
-        // 少し待機してからチェック（Amplifyの初期化を確実に完了させるため）
-        setTimeout(() => {
-          checkAuthStatus();
-        }, 100);
+        // OAuthコールバック時（URLパラメータにcodeがある場合）は、ログイン画面でもcheckAuthStatusを呼ぶ
+        const urlParams = new URLSearchParams(window.location.search);
+        const hasCode = urlParams.get('code');
+        const isOAuthCallback = hasCode !== null;
+        
+        // ログイン画面の場合は、API通信をスキップ（ログインボタン押下時のみAPI通信）
+        // ただし、OAuthコールバック時は例外（forceCheck=trueで呼ぶ）
+        // それ以外の画面の場合は、認証状態を確認（既に認証されている場合の復元）
+        const currentPath = window.location.pathname;
+        const isLoginPage = currentPath === '/login' || currentPath === '/';
+        
+        if (!isLoginPage || isOAuthCallback) {
+          // ログイン画面以外、またはOAuthコールバック時は、認証状態を確認
+          // 少し待機してからチェック（Amplifyの初期化を確実に完了させるため）
+          setTimeout(() => {
+            checkAuthStatus(isOAuthCallback);
+          }, 100);
+        } else {
+          // ログイン画面でOAuthコールバックでない場合は、API通信をスキップして読み込みを終了
+          log('ℹ️ Login page detected - skipping initial auth check');
+          setIsLoading(false);
+        }
       } else {
         // 設定に失敗した場合は読み込みを終了
         setIsLoading(false);
@@ -271,18 +670,69 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       switch (payload.event) {
         case 'signedIn':
           log('✅ User signed in event received');
-          checkAuthStatus();
+          // ログイン試行が検出された場合は、ログイン画面でもAPI通信を実行
+          checkAuthStatus(true);
           break;
         case 'signedOut':
           log('👋 User signed out');
           setIsAuthenticated(false);
           setUserRole(null);
           setUserId(null);
+          setUserName(null);
           localStorage.removeItem('auth');
+          localStorage.removeItem('userInfo');
           break;
         case 'tokenRefresh':
           log('🔄 Token refreshed');
-          checkAuthStatus();
+          // トークンリフレッシュ時に認可情報を更新
+          setIsApiLoading(true);
+          refreshAuthorization()
+            .then((authInfo) => {
+              log('✅ Authorization refreshed:', authInfo);
+              
+              // ユーザー名を設定（姓・名の順序で表示）
+              // API仕様: firstName = 苗字（姓）, lastName = 名前（名）
+              // 表示時は日本語の慣習に従って「姓 名」の順序で結合する（例: "山田 太郎"）
+              // つまり `${firstName} ${lastName}` の順序で表示する
+              const displayName = `${authInfo.firstName} ${authInfo.lastName}`;
+              
+              // ローカルストレージに認可情報を保存
+              const userInfo = {
+                employeeId: authInfo.employeeId,
+                requestedBy: displayName, // 姓・名の順序で結合した表示名
+                role: authInfo.role,
+                email: authInfo.email
+              };
+              localStorage.setItem('userInfo', JSON.stringify(userInfo));
+              
+              // 認証状態も更新
+              setIsAuthenticated(true);
+              setUserRole(authInfo.role as UserRole);
+              setUserName(displayName);
+              
+              // ローカルストレージのauthも更新
+              const authData = localStorage.getItem('auth');
+              if (authData) {
+                try {
+                  const parsed = JSON.parse(authData);
+                  parsed.role = authInfo.role;
+                  localStorage.setItem('auth', JSON.stringify(parsed));
+                } catch (e) {
+                  // エラー時は無視
+                }
+              }
+            })
+            .catch((error) => {
+              logError('Failed to refresh authorization:', error);
+              // エラーメッセージをスナックバーで表示
+              const errorMessage = translateApiError(error);
+              setSnackbar({ message: errorMessage, type: 'error' });
+              setTimeout(() => setSnackbar(null), 5000);
+              // エラー時は既存の認証状態を維持（checkAuthStatusは呼ばない）
+            })
+            .finally(() => {
+              setIsApiLoading(false);
+            });
           break;
         case 'tokenRefresh_failure':
           logError('❌ Token refresh failed:', payload.data);
@@ -307,8 +757,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
 
       // signInを呼ぶ前にloginUserTypeを設定（Hubリスナーが先に反応する可能性があるため）
+      // 注意: Login.tsxのhandleSubmitでも設定されているが、念のためここでも設定
       if (role) {
+        console.log('AuthContext: login - Setting loginUserType to localStorage:', role);
         localStorage.setItem('loginUserType', role);
+        // 確認: localStorageに正しく設定されたか確認
+        const verifyLoginUserType = localStorage.getItem('loginUserType');
+        console.log('AuthContext: login - Verified loginUserType in localStorage:', verifyLoginUserType);
       }
 
       const { isSignedIn } = await signIn({ username: id, password });
@@ -316,9 +771,43 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (isSignedIn) {
         // 認証状態を再チェック
         // checkAuthStatus内でloginUserTypeが優先的に使用される
-        await checkAuthStatus();
-        
-        return true;
+        // ログイン試行が検出された場合は、ログイン画面でもAPI通信を実行
+        // forceCheck=trueで呼び出すことで、エラー時には例外がスローされる
+        try {
+          await checkAuthStatus(true);
+          
+          // checkAuthStatusが成功した場合（例外がスローされなかった場合）
+          // 認証状態とuserRoleは正しく設定されているはず
+          // 少し待機してから状態を確認（状態更新の完了を待つ）
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
+          // 認証状態が正しく設定されているか確認
+          // 注意: この時点でのisAuthenticatedとuserRoleの値を直接参照できないため、
+          // checkAuthStatusが例外をスローしなかった場合は成功とみなす
+          // checkAuthStatus内でエラーが発生した場合は例外がスローされるため、
+          // ここに到達した場合は認証・認可が成功したことを意味する
+          
+          return true;
+        } catch (authError: any) {
+          // checkAuthStatus内でエラーが発生した場合（権限エラー、401、403など）
+          logError('Authorization check failed after login:', authError);
+          localStorage.removeItem('loginUserType');
+          
+          // 認証状態を確実にリセット（checkAuthStatus内でもリセットされているが、念のため）
+          setIsAuthenticated(false);
+          setUserRole(null);
+          setUserId(null);
+          setUserName(null);
+          localStorage.removeItem('auth');
+          localStorage.removeItem('userInfo');
+          
+          // エラーメッセージをスナックバーで表示（既にcheckAuthStatus内で表示されている可能性があるが、念のため）
+          const errorMessage = translateApiError(authError);
+          setSnackbar({ message: errorMessage, type: 'error' });
+          setTimeout(() => setSnackbar(null), 5000);
+          
+          return false;
+        }
       } else {
         // ログイン失敗時はloginUserTypeを削除
         localStorage.removeItem('loginUserType');
@@ -332,7 +821,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
-  const signInWithGoogle = async () => {
+  const signInWithGoogle = async (userType?: 'admin' | 'employee') => {
     // Amplifyが設定されていない場合、エラーをスロー
     if (!isAmplifyConfigured) {
       const error = new Error(
@@ -344,10 +833,86 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
 
     try {
+      // userTypeが渡されている場合は、IndexedDB、Cookie、sessionStorage、localStorageに保存
+      // リダイレクト後にストレージがクリアされる可能性があるため、IndexedDBを優先的に使用
+      if (userType) {
+        log('🔐 signInWithGoogle - userType received:', userType);
+        
+        // IndexedDBに保存（最も永続的）
+        await saveLoginUserType(userType);
+        await saveGoogleLoginInProgress();
+        
+        // フォールバックとして、Cookie、sessionStorage、localStorageにも保存
+        const expirationDate = new Date();
+        expirationDate.setTime(expirationDate.getTime() + 60 * 60 * 1000); // 1時間
+        document.cookie = `loginUserType=${encodeURIComponent(userType)}; expires=${expirationDate.toUTCString()}; path=/; SameSite=Lax`;
+        document.cookie = `googleLoginInProgress=true; expires=${expirationDate.toUTCString()}; path=/; SameSite=Lax`;
+        
+        sessionStorage.setItem('loginUserType', userType);
+        sessionStorage.setItem('googleLoginInProgress', 'true');
+        localStorage.setItem('loginUserType', userType);
+        localStorage.setItem('googleLoginInProgress', 'true');
+        
+        log('🔐 signInWithGoogle - Saved loginUserType to IndexedDB, cookie, sessionStorage, and localStorage');
+      }
+      
+      // 既にログインしている場合は、まずログアウトしてから再度ログイン
+      try {
+        const currentUser = await getCurrentUser();
+        if (currentUser) {
+          log('既にログイン済みのユーザーが検出されました。ログアウトしてから再度ログインします。');
+          await signOut();
+          // ログアウト後に少し待機（状態の更新を待つ）
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      } catch (notSignedInError) {
+        // ログインしていない場合は正常な状態
+        log('ユーザーはログインしていません。通常のログインフローを続行します。');
+      }
+      
       // AWS Amplify Gen 2では、signInWithRedirectを使用してGoogleログインを開始
+      // リダイレクト前に、loginUserTypeをURLパラメータとして追加
+      // これにより、コールバック後にURLパラメータから取得できる
+      if (userType) {
+        const currentUrl = new URL(window.location.href);
+        currentUrl.searchParams.set('loginUserType', userType);
+        // URLを更新（ただし、実際のリダイレクトはAmplifyが行うため、これは補助的なもの）
+        // 実際には、AmplifyのリダイレクトURLにこのパラメータが含まれることはないため、
+        // 別の方法で保持する必要がある
+        log('🔐 signInWithGoogle - loginUserType will be preserved via storage:', userType);
+      }
+      
+      log('🔐 signInWithGoogle - Starting signInWithRedirect');
       await signInWithRedirect({ provider: 'Google' });
-    } catch (err) {
+    } catch (err: any) {
       logError('Google sign-in error:', err);
+      
+      // UserAlreadyAuthenticatedExceptionの場合は、ログアウトしてから再度試行
+      if (err?.name === 'UserAlreadyAuthenticatedException' || err?.message?.includes('already a signed in user')) {
+        log('既にログイン済みのユーザーが検出されました。ログアウトしてから再度試行します。');
+        try {
+          await signOut();
+          // ログアウト後に少し待機（状態の更新を待つ）
+          await new Promise(resolve => setTimeout(resolve, 500));
+          // userTypeが設定されている場合は、再度保存（Cookie、sessionStorage、localStorage）
+          if (userType) {
+            const expirationDate = new Date();
+            expirationDate.setTime(expirationDate.getTime() + 60 * 60 * 1000); // 1時間
+            document.cookie = `loginUserType=${encodeURIComponent(userType)}; expires=${expirationDate.toUTCString()}; path=/; SameSite=Lax`;
+            
+            sessionStorage.setItem('loginUserType', userType);
+            sessionStorage.setItem('googleLoginInProgress', 'true');
+            localStorage.setItem('loginUserType', userType);
+            localStorage.setItem('googleLoginInProgress', 'true');
+          }
+          // 再度ログインを試行
+          await signInWithRedirect({ provider: 'Google' });
+          return; // 成功した場合はここで終了
+        } catch (retryError) {
+          logError('ログアウト後の再ログインに失敗しました:', retryError);
+          throw new Error('既にログイン済みのユーザーです。ページを再読み込みしてください。');
+        }
+      }
       
       // より詳細なエラーメッセージを提供
       if (err instanceof Error && err.message.includes('UserPool')) {
@@ -371,6 +936,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setUserRole(null);
       setUserId(null);
       localStorage.removeItem('auth');
+      localStorage.removeItem('userInfo');
     } catch (err) {
       logError('Logout error:', err);
       // エラーが発生してもローカル状態はクリア
@@ -378,6 +944,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setUserRole(null);
       setUserId(null);
       localStorage.removeItem('auth');
+      localStorage.removeItem('userInfo');
     }
   };
 
@@ -492,7 +1059,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     <AuthContext.Provider value={{ 
       isAuthenticated, 
       userRole, 
-      userId, 
+      userId,
+      userName,
       isLoading, 
       login, 
       signInWithGoogle, 
@@ -502,6 +1070,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       signUp: handleSignUp,
       confirmSignUp: handleConfirmSignUp
     }}>
+      <ProgressBar isLoading={isApiLoading} />
+      {snackbar && (
+        <Snackbar
+          message={snackbar.message}
+          type={snackbar.type}
+          onClose={() => setSnackbar(null)}
+        />
+      )}
       {children}
     </AuthContext.Provider>
   );

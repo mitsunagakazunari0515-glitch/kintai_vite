@@ -71,8 +71,29 @@
       },
       "createdAt": "2025-09-30T23:59:59.000Z",
       "updatedAt": "2024-12-10T14:20:00.000Z"
+    },
+    {
+      "id": "bonus-1",
+      "employeeId": "EMP001",
+      "employeeName": "山田太郎",
+      "companyName": "株式会社A・1インテリア",
+      "period": "2025年 12月",
+      "type": "bonus",
+      "bonusDetail": {
+        "bonus": 500000,
+        "totalEarnings": 500000,
+        "healthInsurance": 62500,
+        "employeePension": 75000,
+        "employmentInsurance": 2500,
+        "incomeTax": 35000,
+        "totalDeductions": 175000,
+        "netPay": 325000
+      },
+      "createdAt": "2025-12-31T23:59:59.000Z",
+      "updatedAt": "2024-12-31T10:00:00.000Z"
     }
   ]
 }
+
 
 

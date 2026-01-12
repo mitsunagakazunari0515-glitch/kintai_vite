@@ -25,7 +25,7 @@ interface HeaderProps {
  * @returns {JSX.Element} ヘッダーコンポーネント。
  */
 export const Header: React.FC<HeaderProps> = ({ isMobile = false, userRole: propUserRole, pendingRequestCount = 0 }) => {
-  const { logout, userRole: contextUserRole, userId } = useAuth();
+  const { logout, userRole: contextUserRole, userId, userName } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const userRole = propUserRole || contextUserRole || 'employee';
@@ -106,7 +106,7 @@ export const Header: React.FC<HeaderProps> = ({ isMobile = false, userRole: prop
             }}
           >
             <span style={{ fontSize: '1rem' }}>
-              従業員名：{userId || 'ゲスト'}
+              従業員名：{userName || userId || 'ゲスト'}
             </span>
             <button
               onClick={handleLogout}
@@ -210,7 +210,7 @@ export const Header: React.FC<HeaderProps> = ({ isMobile = false, userRole: prop
                   従業員名
                 </div>
                 <div style={{ fontSize: fontSizes.h3.desktop, fontWeight: 'bold', color: '#1f2937' }}>
-                  {userId || 'ゲスト'}
+                  {userName || userId || 'ゲスト'}
                 </div>
               </div>
 

@@ -14,7 +14,8 @@ import { Snackbar } from '../../components/Snackbar';
 import { ConfirmModal } from '../../components/ConfirmModal';
 import { RegisterButton, UpdateButton, CancelButton, EditButton, DeleteButton } from '../../components/Button';
 import { fontSizes } from '../../config/fontSizes';
-import { dummyDeductions } from '../../data/dummyData';
+import { getDeductions, createDeduction, updateDeduction, deleteDeduction } from '../../utils/deductionApi';
+import { error as logError } from '../../utils/logger';
 
 /**
  * 控除を表すインターフェース。
@@ -35,7 +36,8 @@ interface Deduction {
  */
 export const DeductionMaster: React.FC = () => {
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
-  const [deductions, setDeductions] = useState<Deduction[]>(dummyDeductions);
+  const [deductions, setDeductions] = useState<Deduction[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
   const [formData, setFormData] = useState<Omit<Deduction, 'id'>>({
     name: ''
   });
@@ -50,37 +52,61 @@ export const DeductionMaster: React.FC = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // 控除マスタ一覧をAPIから取得
+  useEffect(() => {
+    const fetchDeductions = async () => {
+      setIsLoading(true);
+      try {
+        const response = await getDeductions();
+        setDeductions(response.deductions);
+      } catch (error) {
+        logError('Failed to fetch deductions:', error);
+        setSnackbar({ message: '控除マスタの取得に失敗しました', type: 'error' });
+        setTimeout(() => setSnackbar(null), 3000);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchDeductions();
+  }, []);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name.trim()) {
       setSnackbar({ message: '控除名を入力してください', type: 'error' });
+      setTimeout(() => setSnackbar(null), 3000);
       return;
     }
 
-    if (editingId) {
-      // 編集モード
-      setDeductions(deductions.map(d => 
-        d.id === editingId ? { ...d, name: formData.name } : d
-      ));
-      setSnackbar({ message: '控除項目を更新しました', type: 'success' });
-    } else {
-      // 新規登録
-      // 同じ名前が既に存在するかチェック
-      const duplicate = deductions.find(d => d.name === formData.name);
-      if (duplicate) {
-        setSnackbar({ message: '同じ名前の控除項目が既に登録されています', type: 'error' });
-        return;
+    try {
+      if (editingId) {
+        // 編集モード
+        const updated = await updateDeduction(editingId, {
+          name: formData.name
+        });
+        setDeductions(deductions.map(d => 
+          d.id === editingId ? updated : d
+        ));
+        setSnackbar({ message: '控除項目を更新しました', type: 'success' });
+      } else {
+        // 新規登録
+        const newDeduction = await createDeduction({
+          name: formData.name
+        });
+        setDeductions([...deductions, newDeduction]);
+        setSnackbar({ message: '控除項目を登録しました', type: 'success' });
       }
-      const newDeduction: Deduction = {
-        id: `deduction${Date.now()}`,
-        ...formData
-      };
-      setDeductions([...deductions, newDeduction]);
-      setSnackbar({ message: '控除項目を登録しました', type: 'success' });
-    }
 
-    setFormData({ name: '' });
-    setEditingId(null);
+      setFormData({ name: '' });
+      setEditingId(null);
+      setTimeout(() => setSnackbar(null), 3000);
+    } catch (error) {
+      logError('Failed to save deduction:', error);
+      const errorMessage = error instanceof Error ? error.message : '控除項目の保存に失敗しました';
+      setSnackbar({ message: errorMessage, type: 'error' });
+      setTimeout(() => setSnackbar(null), 3000);
+    }
   };
 
   const handleEdit = (deduction: Deduction) => {
@@ -101,11 +127,20 @@ export const DeductionMaster: React.FC = () => {
     }
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (confirmModal) {
-      setDeductions(deductions.filter(d => d.id !== confirmModal.id));
-      setSnackbar({ message: '控除項目を削除しました', type: 'success' });
-      setConfirmModal(null);
+      try {
+        await deleteDeduction(confirmModal.id);
+        setDeductions(deductions.filter(d => d.id !== confirmModal.id));
+        setSnackbar({ message: '控除項目を削除しました', type: 'success' });
+        setTimeout(() => setSnackbar(null), 3000);
+        setConfirmModal(null);
+      } catch (error) {
+        logError('Failed to delete deduction:', error);
+        const errorMessage = error instanceof Error ? error.message : '控除項目の削除に失敗しました';
+        setSnackbar({ message: errorMessage, type: 'error' });
+        setTimeout(() => setSnackbar(null), 3000);
+      }
     }
   };
 
@@ -134,7 +169,11 @@ export const DeductionMaster: React.FC = () => {
           isMobile={isMobile}
         />
       )}
-      <h2 style={{ marginBottom: isMobile ? '1rem' : '1.4rem', fontSize: isMobile ? '1.25rem' : '1.05rem' }}>
+      <h2 style={{ 
+        marginBottom: isMobile ? '1rem' : '1.4rem', 
+        marginTop: isMobile ? '0.5rem' : '0.75rem',
+        fontSize: isMobile ? '1.25rem' : '1.05rem' 
+      }}>
         控除マスタ
       </h2>
       <div style={{ 
@@ -171,7 +210,14 @@ export const DeductionMaster: React.FC = () => {
                 required
               />
             </div>
-            <div style={{ display: 'flex', gap: '1rem', flexDirection: isMobile ? 'column' : 'row' }}>
+            <div style={{ display: 'flex', gap: '1rem', flexDirection: isMobile ? 'column-reverse' : 'row' }}>
+              {editingId && (
+                <CancelButton
+                  fullWidth
+                  type="button"
+                  onClick={handleCancel}
+                />
+              )}
               {editingId ? (
                 <UpdateButton
                   fullWidth
@@ -181,13 +227,6 @@ export const DeductionMaster: React.FC = () => {
                 <RegisterButton
                   fullWidth
                   type="submit"
-                />
-              )}
-              {editingId && (
-                <CancelButton
-                  fullWidth
-                  type="button"
-                  onClick={handleCancel}
                 />
               )}
             </div>

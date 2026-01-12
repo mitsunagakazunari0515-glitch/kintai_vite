@@ -13,11 +13,16 @@
 import { useState, useEffect } from 'react';
 import { formatTime, formatDate } from '../../utils/formatters';
 import { fontSizes } from '../../config/fontSizes';
-import { Button, RegisterButton, CancelButton, EditButton } from '../../components/Button';
+import { Button, RegisterButton, CancelButton, EditButton, SearchButton, ClearButton } from '../../components/Button';
 import { Snackbar } from '../../components/Snackbar';
-import { dummyAttendanceLogs } from '../../data/dummyData';
 import { useSort } from '../../hooks/useSort';
 import { ChevronDownIcon, ChevronUpIcon } from '../../components/Icons';
+import { getAttendanceList, updateAttendance, updateAttendanceMemo, AttendanceLog as ApiAttendanceLog, Break as ApiBreak, BreakRequest } from '../../utils/attendanceApi';
+import { getEmployees } from '../../utils/employeeApi';
+import { error as logError } from '../../utils/logger';
+import { translateApiError } from '../../utils/apiErrorTranslator';
+import { getAttendanceStatusLabel, getAttendanceStatusStyle } from '../../utils/codeTranslator';
+import { ProgressBar } from '../../components/ProgressBar';
 
 /**
  * 休憩時間を表すインターフェース。
@@ -51,6 +56,10 @@ interface AttendanceLog {
   status: '未出勤' | '出勤中' | '休憩中' | '退勤済み';
   /** メモ。 */
   memo?: string | null;
+  /** 更新者。 */
+  updatedBy?: string;
+  /** 更新日時。 */
+  updatedAt?: string;
 }
 
 /**
@@ -63,15 +72,8 @@ interface AttendanceLog {
 export const AttendanceList: React.FC = () => {
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const [snackbar, setSnackbar] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
-  const [attendanceLogs, setAttendanceLogs] = useState<AttendanceLog[]>(
-    dummyAttendanceLogs.map(log => ({
-      ...log,
-      employeeId: log.employeeId || '',
-      employeeName: log.employeeName || '',
-      status: log.status as '未出勤' | '出勤中' | '休憩中' | '退勤済み',
-      memo: log.memo || ''
-    }))
-  );
+  const [attendanceLogs, setAttendanceLogs] = useState<AttendanceLog[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
   // 今週の開始日（月曜日）と終了日（日曜日）を計算
   const getThisWeekDates = () => {
     const today = new Date();
@@ -91,10 +93,19 @@ export const AttendanceList: React.FC = () => {
   const thisWeek = getThisWeekDates();
   const [startDate, setStartDate] = useState(thisWeek.start);
   const [endDate, setEndDate] = useState(thisWeek.end);
+  // 検索条件を保存するためのstate
+  const [searchStartDate, setSearchStartDate] = useState(thisWeek.start);
+  const [searchEndDate, setSearchEndDate] = useState(thisWeek.end);
   const [showModal, setShowModal] = useState(false);
-  const [editingLog, setEditingLog] = useState<AttendanceLog | null>(null);
-  const [memo, setMemo] = useState('');
   const [isSearchExpanded, setIsSearchExpanded] = useState<boolean>(false); // モバイル時の検索条件の展開状態
+  const [editingMemoLogId, setEditingMemoLogId] = useState<string | null>(null); // メモ編集中のログID
+  const [editingMemo, setEditingMemo] = useState<string>(''); // 編集中のメモ
+  const [editingAttendanceLogId, setEditingAttendanceLogId] = useState<string | null>(null); // 勤務情報編集中のログID
+  const [editingAttendanceData, setEditingAttendanceData] = useState<{
+    clockIn: string | null;
+    clockOut: string | null;
+    breaks: Break[];
+  } | null>(null); // 編集中の勤務情報
 
   useEffect(() => {
     const handleResize = () => {
@@ -104,11 +115,116 @@ export const AttendanceList: React.FC = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  const filteredLogs = attendanceLogs.filter(log => {
-    const matchesStartDate = !startDate || log.date >= startDate;
-    const matchesEndDate = !endDate || log.date <= endDate;
-    return matchesStartDate && matchesEndDate;
-  });
+  // APIのAttendanceLogをUI用のAttendanceLogに変換
+  const convertApiLogToUiLog = (apiLog: ApiAttendanceLog): AttendanceLog => {
+    // APIのclockIn/clockOutはISO 8601形式なので、時刻部分のみ抽出
+    const extractTime = (isoString: string | null): string | null => {
+      if (!isoString) return null;
+      try {
+        const date = new Date(isoString);
+        const hours = String(date.getHours()).padStart(2, '0');
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+        return `${hours}:${minutes}`;
+      } catch {
+        return null;
+      }
+    };
+
+    // APIのbreaksをUI用のbreaksに変換
+    const convertBreaks = (apiBreaks: ApiBreak[]): Break[] => {
+      return apiBreaks.map(apiBreak => ({
+        start: extractTime(apiBreak.start) || '',
+        end: apiBreak.end ? extractTime(apiBreak.end) : null
+      }));
+    };
+
+    // APIから返される英語コード（not_started, working, on_break, completed）を日本語に変換
+    // UI側では日本語のステータス（'未出勤' | '出勤中' | '休憩中' | '退勤済み'）を使用
+    const convertStatus = (apiStatus: string): '未出勤' | '出勤中' | '休憩中' | '退勤済み' => {
+      return getAttendanceStatusLabel(apiStatus) as '未出勤' | '出勤中' | '休憩中' | '退勤済み';
+    };
+
+    return {
+      id: apiLog.attendanceId, // APIレスポンスのattendanceIdをidにマッピング
+      employeeId: apiLog.employeeId || '',
+      employeeName: apiLog.employeeName || '', // APIレスポンスのemployeeNameを使用
+      date: apiLog.workDate, // APIレスポンスのworkDateをdateにマッピング
+      clockIn: extractTime(apiLog.clockIn),
+      clockOut: extractTime(apiLog.clockOut),
+      breaks: convertBreaks(apiLog.breaks),
+      status: convertStatus(apiLog.status),
+      memo: apiLog.memo || null,
+      updatedBy: apiLog.updatedBy,
+      updatedAt: apiLog.updatedAt
+    };
+  };
+
+  // APIから勤怠データを取得
+  const fetchAttendanceList = async (start: string, end: string) => {
+    setIsLoading(true);
+    try {
+      // 管理者はemployeeIdを指定しないことで全従業員のデータを取得
+      const response = await getAttendanceList(undefined, start, end);
+      
+      // 従業員一覧を取得して、従業員IDから従業員名をマッピング
+      let employeeNameMap: Record<string, string> = {};
+      try {
+        const employees = await getEmployees();
+        employees.forEach(emp => {
+          employeeNameMap[emp.id] = `${emp.firstName} ${emp.lastName}`;
+        });
+      } catch (error) {
+        logError('Failed to fetch employees for name mapping:', error);
+        // 従業員名の取得に失敗しても、勤怠データは表示する
+      }
+      
+      // APIレスポンスをUI用の形式に変換（従業員名をマッピング）
+      const convertedLogs = response.logs.map(apiLog => {
+        const uiLog = convertApiLogToUiLog(apiLog);
+        // 従業員名を設定
+        if (uiLog.employeeId && employeeNameMap[uiLog.employeeId]) {
+          uiLog.employeeName = employeeNameMap[uiLog.employeeId];
+        }
+        return uiLog;
+      });
+      setAttendanceLogs(convertedLogs);
+    } catch (error) {
+      logError('Failed to fetch attendance list:', error);
+      const errorMessage = translateApiError(error);
+      setSnackbar({ message: errorMessage, type: 'error' });
+      setTimeout(() => setSnackbar(null), 5000);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // 初期表示時に今週のデータを取得
+  useEffect(() => {
+    fetchAttendanceList(searchStartDate, searchEndDate);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // 初期表示時のみ実行
+
+  // APIでフィルタリング済みのため、フィルタリングは不要
+  // 検索結果は既にattendanceLogsに含まれている
+  const filteredLogs = attendanceLogs;
+
+  // 検索条件をクリア
+  const handleClearSearch = async () => {
+    setStartDate(thisWeek.start);
+    setEndDate(thisWeek.end);
+    setSearchStartDate(thisWeek.start);
+    setSearchEndDate(thisWeek.end);
+    // 今週のデータを取得
+    await fetchAttendanceList(thisWeek.start, thisWeek.end);
+  };
+
+  // 検索実行
+  const handleSearch = async () => {
+    setSearchStartDate(startDate);
+    setSearchEndDate(endDate);
+    // 検索条件でAPIを呼び出す
+    await fetchAttendanceList(startDate, endDate);
+  };
 
   // ソート機能を共通フックから取得
   const { handleSort, getSortIcon, sortedData: sortedLogs } = useSort<AttendanceLog>(
@@ -175,35 +291,90 @@ export const AttendanceList: React.FC = () => {
     };
   };
 
-  // 編集ボタンクリック時の処理
-  const handleEdit = (log: AttendanceLog) => {
-    setEditingLog(log);
-    setMemo(log.memo || '');
-    setShowModal(true);
-  };
-
   // モーダルを閉じる
   const handleCancel = () => {
     setShowModal(false);
-    setEditingLog(null);
-    setMemo('');
+    setEditingAttendanceLogId(null);
+    setEditingAttendanceData(null);
   };
 
-  // メモを保存
-  const handleSave = () => {
-    if (!editingLog) return;
-    
-    setAttendanceLogs(prevLogs =>
-      prevLogs.map(log =>
-        log.id === editingLog.id ? { ...log, memo } : log
-      )
-    );
-    
-    setShowModal(false);
-    setEditingLog(null);
-    setMemo('');
-    setSnackbar({ message: 'メモを保存しました', type: 'success' });
+  // 時刻文字列をISO 8601形式に変換（date文字列と時刻文字列から）
+  const convertTimeToISO = (timeStr: string | null, dateStr: string): string | null => {
+    if (!timeStr) return null;
+    try {
+      const [hours, minutes] = timeStr.split(':').map(Number);
+      const date = new Date(dateStr);
+      date.setHours(hours, minutes, 0, 0);
+      return date.toISOString();
+    } catch {
+      return null;
+    }
   };
+
+  // UI用のBreakをAPI用のBreakRequestに変換（idは不要）
+  const convertBreakToApiFormat = (breaks: Break[], dateStr: string): BreakRequest[] => {
+    return breaks.map(breakItem => ({
+      start: convertTimeToISO(breakItem.start, dateStr) || '',
+      end: breakItem.end ? convertTimeToISO(breakItem.end, dateStr) : null
+    }));
+  };
+
+  // 勤務情報を保存
+  const handleSaveAttendance = async () => {
+    if (!editingAttendanceLogId || !editingAttendanceData) return;
+    
+    try {
+      const log = attendanceLogs.find(l => l.id === editingAttendanceLogId);
+      if (!log) return;
+
+      if (!log.employeeId) {
+        throw new Error('従業員IDが取得できませんでした');
+      }
+
+      // UI用の時刻形式（HH:mm）をAPI用のISO 8601形式に変換
+      const apiClockIn = convertTimeToISO(editingAttendanceData.clockIn, log.date);
+      const apiClockOut = convertTimeToISO(editingAttendanceData.clockOut, log.date);
+      const apiBreaks = convertBreakToApiFormat(editingAttendanceData.breaks, log.date);
+
+      // API呼び出し
+      const updatedApiLog = await updateAttendance({
+        employeeId: log.employeeId,
+        workDate: log.date,
+        clockIn: apiClockIn,
+        clockOut: apiClockOut,
+        breaks: apiBreaks
+      });
+      
+      // APIレスポンスをUI用の形式に変換してローカル状態を更新
+      const updatedLog = convertApiLogToUiLog(updatedApiLog);
+      setAttendanceLogs(prevLogs =>
+        prevLogs.map(log => 
+          log.id === editingAttendanceLogId ? { ...updatedLog, employeeName: log.employeeName } : log
+        )
+      );
+    
+      setShowModal(false);
+      setEditingAttendanceLogId(null);
+      setEditingAttendanceData(null);
+      setSnackbar({ message: '勤務情報を更新しました', type: 'success' });
+      setTimeout(() => setSnackbar(null), 3000);
+    } catch (error) {
+      logError('勤務情報の更新に失敗しました', error);
+      const errorMessage = translateApiError(error);
+      setSnackbar({ message: errorMessage, type: 'error' });
+      setTimeout(() => setSnackbar(null), 3000);
+    }
+  };
+
+  // ローディング中の表示
+  if (isLoading) {
+    return (
+      <>
+        <ProgressBar isLoading={true} />
+        <div style={{ height: '100vh', backgroundColor: '#fff' }} />
+      </>
+    );
+  }
 
   return (
     <div>
@@ -214,7 +385,11 @@ export const AttendanceList: React.FC = () => {
           onClose={() => setSnackbar(null)}
         />
       )}
-      <h2 style={{ marginBottom: isMobile ? '1rem' : '1.4rem', fontSize: isMobile ? '1.25rem' : '1.05rem' }}>
+      <h2 style={{ 
+        marginBottom: isMobile ? '1rem' : '1.4rem', 
+        marginTop: isMobile ? '0.5rem' : '0.75rem',
+        fontSize: isMobile ? '1.25rem' : '1.05rem' 
+      }}>
         勤怠情報一覧
       </h2>
 
@@ -313,6 +488,16 @@ export const AttendanceList: React.FC = () => {
                 }}>
                   検索結果: {filteredLogs.length}件
                 </div>
+                <div style={{ minWidth: '100%', display: 'flex', gap: '0.5rem' }}>
+                  <SearchButton
+                    onClick={handleSearch}
+                    fullWidth
+                  />
+                  <ClearButton
+                    onClick={handleClearSearch}
+                    fullWidth
+                  />
+                </div>
               </div>
             )}
           </>
@@ -373,6 +558,14 @@ export const AttendanceList: React.FC = () => {
           }}>
             検索結果: {filteredLogs.length}件
           </div>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <SearchButton
+              onClick={handleSearch}
+            />
+            <ClearButton
+              onClick={handleClearSearch}
+            />
+          </div>
           </div>
         )}
       </div>
@@ -431,11 +624,104 @@ export const AttendanceList: React.FC = () => {
                   );
                 })()}
                 <div style={{ fontSize: fontSizes.medium, color: '#6b7280', marginBottom: '0.25rem' }}>
-                  メモ: {log.memo || '-'}
+                  更新者: {log.updatedBy || '-'}
+                </div>
+                <div style={{ fontSize: fontSizes.medium, color: '#6b7280', marginBottom: '0.25rem' }}>
+                  更新日時: {log.updatedAt ? new Date(log.updatedAt).toLocaleString('ja-JP', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                  }) : '-'}
+                </div>
+                <div style={{ fontSize: fontSizes.medium, color: '#6b7280', marginBottom: '0.25rem' }}>
+                  メモ: {editingMemoLogId === log.id ? (
+                    <textarea
+                      value={editingMemo}
+                      onChange={(e) => setEditingMemo(e.target.value)}
+                      onBlur={async () => {
+                        try {
+                          if (!log.employeeId) {
+                            throw new Error('従業員IDが取得できませんでした');
+                          }
+                          await updateAttendanceMemo({
+                            employeeId: log.employeeId,
+                            workDate: log.date,
+                            memo: editingMemo || null
+                          });
+                          setAttendanceLogs(prevLogs => prevLogs.map(l => 
+                            l.id === log.id ? { ...l, memo: editingMemo || null } : l
+                          ));
+                          setEditingMemoLogId(null);
+                          setEditingMemo('');
+                          setSnackbar({ message: 'メモを保存しました', type: 'success' });
+                          setTimeout(() => setSnackbar(null), 3000);
+                        } catch (error) {
+                          logError('メモの保存に失敗しました', error);
+                          const errorMessage = translateApiError(error);
+                          setSnackbar({ message: errorMessage, type: 'error' });
+                          setTimeout(() => setSnackbar(null), 3000);
+                          setEditingMemoLogId(null);
+                          setEditingMemo('');
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Escape') {
+                          setEditingMemoLogId(null);
+                          setEditingMemo('');
+                        }
+                      }}
+                      autoFocus
+                      rows={3}
+                      style={{
+                        width: '100%',
+                        padding: '0.25rem 0.5rem',
+                        border: '1px solid #2563eb',
+                        borderRadius: '4px',
+                        fontSize: fontSizes.input,
+                        resize: 'vertical',
+                        fontFamily: 'inherit'
+                      }}
+                    />
+                  ) : (
+                    <span
+                      onClick={() => {
+                        setEditingMemoLogId(log.id);
+                        setEditingMemo(log.memo || '');
+                      }}
+                      style={{
+                        cursor: 'pointer',
+                        padding: '0.25rem 0.5rem',
+                        borderRadius: '4px',
+                        border: '1px solid transparent',
+                        transition: 'background-color 0.2s',
+                        whiteSpace: 'pre-wrap'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = '#f3f4f6';
+                        e.currentTarget.style.borderColor = '#d1d5db';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = 'transparent';
+                        e.currentTarget.style.borderColor = 'transparent';
+                      }}
+                    >
+                      {log.memo || '（クリックして編集）'}
+                    </span>
+                  )}
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
                   <EditButton
-                    onClick={() => handleEdit(log)}
+                    onClick={() => {
+                      setEditingAttendanceLogId(log.id);
+                      setEditingAttendanceData({
+                        clockIn: log.clockIn,
+                        clockOut: log.clockOut,
+                        breaks: log.breaks || []
+                      });
+                      setShowModal(true);
+                    }}
                     size="small"
                   />
                 </div>
@@ -490,6 +776,8 @@ export const AttendanceList: React.FC = () => {
                   <th style={{ padding: '0.75rem', textAlign: 'left' }}>深夜時間</th>
                   <th style={{ padding: '0.75rem', textAlign: 'left' }}>休憩時間</th>
                   <th style={{ padding: '0.75rem', textAlign: 'left' }}>メモ</th>
+                  <th style={{ padding: '0.75rem', textAlign: 'left' }}>更新者</th>
+                  <th style={{ padding: '0.75rem', textAlign: 'left' }}>更新日時</th>
                   <th style={{ padding: '0.75rem', textAlign: 'center' }}>編集</th>
                 </tr>
               </thead>
@@ -507,27 +795,120 @@ export const AttendanceList: React.FC = () => {
                       <td style={{ padding: '0.75rem' }}>{times.overtime}</td>
                       <td style={{ padding: '0.75rem' }}>{times.lateNight}</td>
                       <td style={{ padding: '0.75rem' }}>{times.breakTime}</td>
-                      <td style={{ padding: '0.75rem', maxWidth: '200px' }}>
-                        <div style={{ 
+                      <td style={{ padding: '0.75rem', minWidth: '150px' }}>
+                        {editingMemoLogId === log.id ? (
+                          <textarea
+                            value={editingMemo}
+                            onChange={(e) => setEditingMemo(e.target.value)}
+                            onBlur={async () => {
+                              try {
+                                await updateAttendanceMemo({
+                                  attendanceId: log.id,
+                                  memo: editingMemo || null
+                                });
+                                setAttendanceLogs(prevLogs => prevLogs.map(l => 
+                                  l.id === log.id ? { ...l, memo: editingMemo || null } : l
+                                ));
+                                setEditingMemoLogId(null);
+                                setEditingMemo('');
+                                setSnackbar({ message: 'メモを保存しました', type: 'success' });
+                                setTimeout(() => setSnackbar(null), 3000);
+                              } catch (error) {
+                                logError('メモの保存に失敗しました', error);
+                                const errorMessage = translateApiError(error);
+                                setSnackbar({ message: errorMessage, type: 'error' });
+                                setTimeout(() => setSnackbar(null), 3000);
+                                setEditingMemoLogId(null);
+                                setEditingMemo('');
+                              }
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Escape') {
+                                setEditingMemoLogId(null);
+                                setEditingMemo('');
+                              }
+                            }}
+                            autoFocus
+                            rows={3}
+                            style={{
+                              width: '100%',
+                              padding: '0.25rem 0.5rem',
+                              border: '1px solid #2563eb',
+                              borderRadius: '4px',
+                              fontSize: fontSizes.input,
+                              resize: 'vertical',
+                              fontFamily: 'inherit'
+                            }}
+                          />
+                        ) : (
+                          <div
+                            onClick={() => {
+                              setEditingMemoLogId(log.id);
+                              setEditingMemo(log.memo || '');
+                            }}
+                            style={{
+                              cursor: 'pointer',
+                              padding: '0.25rem 0.5rem',
+                              borderRadius: '4px',
+                              minHeight: '1.5rem',
+                              whiteSpace: 'pre-wrap',
+                              border: '1px solid transparent',
+                              transition: 'background-color 0.2s',
                           fontSize: fontSizes.medium, 
-                          color: '#6b7280',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap'
-                        }}>
-                          {log.memo || '-'}
+                              color: '#6b7280'
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.backgroundColor = '#f3f4f6';
+                              e.currentTarget.style.borderColor = '#d1d5db';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.backgroundColor = 'transparent';
+                              e.currentTarget.style.borderColor = 'transparent';
+                            }}
+                            title={log.memo || '（クリックして編集）'}
+                          >
+                            {log.memo || '（クリックして編集）'}
                         </div>
+                        )}
+                      </td>
+                      <td style={{ padding: '0.75rem' }}>
+                        {log.updatedBy || '-'}
+                      </td>
+                      <td style={{ padding: '0.75rem' }}>
+                        {log.updatedAt ? new Date(log.updatedAt).toLocaleString('ja-JP', {
+                          year: 'numeric',
+                          month: '2-digit',
+                          day: '2-digit',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        }) : '-'}
                       </td>
                       <td style={{ padding: '0.75rem', textAlign: 'center' }}>
                         {isMobile ? (
                           <EditButton
-                            onClick={() => handleEdit(log)}
+                            onClick={() => {
+                              setEditingAttendanceLogId(log.id);
+                              setEditingAttendanceData({
+                                clockIn: log.clockIn,
+                                clockOut: log.clockOut,
+                                breaks: log.breaks || []
+                              });
+                              setShowModal(true);
+                            }}
                             size="small"
                           />
                         ) : (
                           <Button
                             variant="icon-edit"
-                            onClick={() => handleEdit(log)}
+                            onClick={() => {
+                              setEditingAttendanceLogId(log.id);
+                              setEditingAttendanceData({
+                                clockIn: log.clockIn,
+                                clockOut: log.clockOut,
+                                breaks: log.breaks || []
+                              });
+                              setShowModal(true);
+                            }}
                             title="編集"
                           />
                         )}
@@ -541,8 +922,8 @@ export const AttendanceList: React.FC = () => {
         )}
       </div>
 
-      {/* メモ編集モーダル */}
-      {showModal && editingLog && (
+      {/* 勤務情報編集モーダル */}
+      {showModal && editingAttendanceLogId && editingAttendanceData && (
         <div style={{
           position: 'fixed',
           top: 0,
@@ -572,37 +953,153 @@ export const AttendanceList: React.FC = () => {
             onClick={(e) => e.stopPropagation()}
           >
             <h3 style={{ marginBottom: '1.05rem', fontSize: isMobile ? fontSizes.h3.mobile : fontSizes.h3.desktop }}>
-              メモ編集
+              勤務情報編集
             </h3>
+            {(() => {
+              const log = attendanceLogs.find(l => l.id === editingAttendanceLogId);
+              if (!log) return null;
+              
+              return (
+                <>
             <div style={{ marginBottom: '1rem' }}>
               <div style={{ marginBottom: '0.5rem', fontSize: fontSizes.medium, color: '#6b7280' }}>
-                <strong>従業員:</strong> {editingLog.employeeName} ({editingLog.employeeId})
+                      <strong>従業員:</strong> {log.employeeName} ({log.employeeId})
               </div>
               <div style={{ marginBottom: '0.5rem', fontSize: fontSizes.medium, color: '#6b7280' }}>
-                <strong>日付:</strong> {formatDate(editingLog.date)}
+                      <strong>日付:</strong> {formatDate(log.date)}
               </div>
             </div>
+                  
+                  <div style={{ marginBottom: '1rem' }}>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold', fontSize: fontSizes.label }}>
+                      出勤時刻
+                    </label>
+                    <input
+                      type="time"
+                      value={editingAttendanceData.clockIn || ''}
+                      onChange={(e) => setEditingAttendanceData({
+                        ...editingAttendanceData,
+                        clockIn: e.target.value || null
+                      })}
+                      style={{
+                        width: '100%',
+                        padding: '0.75rem',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '4px',
+                        fontSize: fontSizes.input,
+                        boxSizing: 'border-box'
+                      }}
+                    />
+                  </div>
+                  
             <div style={{ marginBottom: '1rem' }}>
               <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold', fontSize: fontSizes.label }}>
-                メモ
+                      退勤時刻
               </label>
-              <textarea
-                value={memo}
-                onChange={(e) => setMemo(e.target.value)}
-                placeholder="メモを入力してください"
-                rows={5}
+                    <input
+                      type="time"
+                      value={editingAttendanceData.clockOut || ''}
+                      onChange={(e) => setEditingAttendanceData({
+                        ...editingAttendanceData,
+                        clockOut: e.target.value || null
+                      })}
                 style={{
                   width: '100%',
                   padding: '0.75rem',
                   border: '1px solid #d1d5db',
                   borderRadius: '4px',
-                  fontSize: fontSizes.textarea,
-                  boxSizing: 'border-box',
-                  fontFamily: 'inherit',
-                  resize: 'vertical'
+                        fontSize: fontSizes.input,
+                        boxSizing: 'border-box'
                 }}
               />
             </div>
+                  
+                  <div style={{ marginBottom: '1rem' }}>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold', fontSize: fontSizes.label }}>
+                      休憩時間
+                    </label>
+                    {editingAttendanceData.breaks.map((breakItem, index) => (
+                      <div key={index} style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', alignItems: 'center' }}>
+                        <input
+                          type="time"
+                          value={breakItem.start || ''}
+                          onChange={(e) => {
+                            const newBreaks = [...editingAttendanceData.breaks];
+                            newBreaks[index] = { ...newBreaks[index], start: e.target.value };
+                            setEditingAttendanceData({ ...editingAttendanceData, breaks: newBreaks });
+                          }}
+                          style={{
+                            flex: 1,
+                            padding: '0.5rem',
+                            border: '1px solid #d1d5db',
+                            borderRadius: '4px',
+                            fontSize: fontSizes.input,
+                            boxSizing: 'border-box'
+                          }}
+                          placeholder="開始時刻"
+                        />
+                        <span style={{ fontSize: fontSizes.medium }}>〜</span>
+                        <input
+                          type="time"
+                          value={breakItem.end || ''}
+                          onChange={(e) => {
+                            const newBreaks = [...editingAttendanceData.breaks];
+                            newBreaks[index] = { ...newBreaks[index], end: e.target.value || null };
+                            setEditingAttendanceData({ ...editingAttendanceData, breaks: newBreaks });
+                          }}
+                          style={{
+                            flex: 1,
+                            padding: '0.5rem',
+                            border: '1px solid #d1d5db',
+                            borderRadius: '4px',
+                            fontSize: fontSizes.input,
+                            boxSizing: 'border-box'
+                          }}
+                          placeholder="終了時刻"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const newBreaks = editingAttendanceData.breaks.filter((_, i) => i !== index);
+                            setEditingAttendanceData({ ...editingAttendanceData, breaks: newBreaks });
+                          }}
+                          style={{
+                            padding: '0.5rem 1rem',
+                            backgroundColor: '#ef4444',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            fontSize: fontSizes.button
+                          }}
+                        >
+                          削除
+                        </button>
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingAttendanceData({
+                          ...editingAttendanceData,
+                          breaks: [...editingAttendanceData.breaks, { start: '', end: null }]
+                        });
+                      }}
+                      style={{
+                        padding: '0.5rem 1rem',
+                        backgroundColor: '#2563eb',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        fontSize: fontSizes.button,
+                        marginTop: '0.5rem'
+                      }}
+                    >
+                      + 休憩時間を追加
+                    </button>
+                  </div>
+                  
             <div style={{ display: 'flex', gap: '1rem', flexDirection: isMobile ? 'column-reverse' : 'row', justifyContent: 'flex-end' }}>
               <CancelButton
                 fullWidth
@@ -612,9 +1109,12 @@ export const AttendanceList: React.FC = () => {
               <RegisterButton
                 fullWidth
                 type="button"
-                onClick={handleSave}
+                      onClick={handleSaveAttendance}
               />
             </div>
+                </>
+              );
+            })()}
           </div>
         </div>
       )}

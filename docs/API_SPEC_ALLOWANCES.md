@@ -44,6 +44,7 @@ GET /allowances
       "id": "allowance001",
       "name": "資格手当",
       "color": "#3b82f6",
+      "includeInOvertime": false,
       "createdAt": "2024-01-01T10:00:00Z",
       "updatedAt": "2024-01-01T10:00:00Z"
     },
@@ -51,6 +52,7 @@ GET /allowances
       "id": "allowance002",
       "name": "役職手当",
       "color": "#10b981",
+      "includeInOvertime": true,
       "createdAt": "2024-01-01T10:00:00Z",
       "updatedAt": "2024-01-01T10:00:00Z"
     }
@@ -103,6 +105,7 @@ GET /allowances/allowance001
   "id": "allowance001",
   "name": "資格手当",
   "color": "#3b82f6",
+  "includeInOvertime": false,
   "createdAt": "2024-01-01T10:00:00Z",
   "updatedAt": "2024-01-01T10:00:00Z"
 }
@@ -136,7 +139,8 @@ POST /allowances
 ```json
 {
   "name": "資格手当",
-  "color": "#3b82f6"
+  "color": "#3b82f6",
+  "includeInOvertime": false
 }
 ```
 
@@ -146,6 +150,7 @@ POST /allowances
 |------------|-----|------|------|
 | name | string | はい | 手当名（最大100文字、重複不可） |
 | color | string | はい | 手当の表示色（16進数カラーコード、例: "#3b82f6"） |
+| includeInOvertime | boolean | いいえ | 残業代に含むかどうか（デフォルト: false） |
 
 ### レスポンス
 
@@ -156,6 +161,7 @@ POST /allowances
   "id": "allowance001",
   "name": "資格手当",
   "color": "#3b82f6",
+  "includeInOvertime": false,
   "createdAt": "2024-01-01T10:00:00Z",
   "updatedAt": "2024-01-01T10:00:00Z"
 }
@@ -210,7 +216,8 @@ PUT /allowances/{allowanceId}
 ```json
 {
   "name": "資格手当（更新）",
-  "color": "#10b981"
+  "color": "#10b981",
+  "includeInOvertime": true
 }
 ```
 
@@ -227,6 +234,7 @@ PUT /allowances/{allowanceId}
   "id": "allowance001",
   "name": "資格手当（更新）",
   "color": "#10b981",
+  "includeInOvertime": true,
   "createdAt": "2024-01-01T10:00:00Z",
   "updatedAt": "2024-01-15T11:00:00Z"
 }
@@ -310,11 +318,12 @@ DELETE /allowances/allowance001
 
 ```typescript
 interface Allowance {
-  id: string;          // 手当ID（UUID形式推奨）
-  name: string;        // 手当名
-  color: string;       // 手当の表示色（16進数カラーコード）
-  createdAt: string;   // 作成日時（ISO 8601）
-  updatedAt: string;   // 更新日時（ISO 8601）
+  id: string;                    // 手当ID（UUID形式推奨）
+  name: string;                  // 手当名
+  color: string;                 // 手当の表示色（16進数カラーコード）
+  includeInOvertime: boolean;    // 残業代に含むかどうか
+  createdAt: string;             // 作成日時（ISO 8601）
+  updatedAt: string;             // 更新日時（ISO 8601）
 }
 ```
 
@@ -330,4 +339,5 @@ interface Allowance {
    - 手当名が空でないことを確認
 4. **削除制限**: 給与明細で使用されている手当は削除不可（外部キー制約の確認）
 5. **エラーハンドリング**: 適切なHTTPステータスコードとエラーメッセージを返却
+
 

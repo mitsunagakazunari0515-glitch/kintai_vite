@@ -390,33 +390,28 @@ POST /attendance/{attendanceId}/break/{breakId}/end
 
 ---
 
-## 7. 勤怠記録更新（管理者用）
+## 7. 勤怠記録更新
 
 ### エンドポイント
 
 ```
-PUT /attendance/{attendanceId}
+PUT /attendance
 ```
 
 ### リクエスト
-
-#### パスパラメータ
-
-| パラメータ名 | 型 | 必須 | 説明 |
-|------------|-----|------|------|
-| attendanceId | string | はい | 勤怠記録ID |
 
 #### リクエストボディ
 
 ```json
 {
-  "clockIn": "2024-01-15T09:00:00Z",
-  "clockOut": "2024-01-15T18:00:00Z",
+  "employeeId": "1",
+  "workDate": "2024-01-01",
+  "clockIn": "2024-01-01T09:00:00.000Z",
+  "clockOut": "2024-01-01T18:00:00.000Z",
   "breaks": [
     {
-      "id": "break001",
-      "start": "2024-01-15T12:00:00Z",
-      "end": "2024-01-15T13:00:00Z"
+      "start": "2024-01-01T12:00:00.000Z",
+      "end": "2024-01-01T13:00:00.000Z"
     }
   ]
 }
@@ -424,11 +419,25 @@ PUT /attendance/{attendanceId}
 
 #### リクエストボディのスキーマ
 
-| フィールド名 | 型 | 必須 | 説明 |
-|------------|-----|------|------|
-| clockIn | string \| null | いいえ | 出勤時刻（ISO 8601形式） |
-| clockOut | string \| null | いいえ | 退勤時刻（ISO 8601形式） |
-| breaks | Break[] | いいえ | 休憩時間の配列 |
+| パラメータ名 | 必須 | 型 | 説明 |
+|------------|------|-----|------|
+| employeeId | Yes | string | 従業員ID |
+| workDate | Yes | string | 修正日付（YYYY-MM-DD形式） |
+| clockIn | No | string \| null | 出勤時刻（ISO 8601形式、nullでクリア） |
+| clockOut | No | string \| null | 退勤時刻（ISO 8601形式、nullでクリア） |
+| breaks | No | array | 休憩情報の配列（指定がない場合は既存の休憩記録をそのまま保持） |
+
+**breaks配列の項目**
+
+| パラメータ名 | 必須 | 型 | 説明 |
+|------------|------|-----|------|
+| start | Yes | string | 休憩開始時刻（ISO 8601形式） |
+| end | Yes | string \| null | 休憩終了時刻（ISO 8601形式、null可） |
+
+**注意事項**:
+- `breaks`配列が指定された場合、既存の休憩記録は論理削除（`isActive = false`）され、配列で送られてきたデータが有効なデータとして登録されます
+- `breaks`が空配列`[]`の場合は、すべての休憩記録が論理削除されます
+- `breaks`が指定されない場合は、既存の休憩記録はそのまま保持されます
 
 ### レスポンス
 
@@ -467,6 +476,85 @@ PUT /attendance/{attendanceId}
 
 ---
 
+## 8. 勤怠記録メモ更新
+
+### エンドポイント
+
+```
+PATCH /attendance/memo
+```
+
+### リクエスト
+
+#### リクエストボディ
+
+```json
+{
+  "employeeId": "1",
+  "workDate": "2024-01-01",
+  "memo": "備考情報をここに入力"
+}
+```
+
+#### リクエストボディパラメータ
+
+| パラメータ名 | 必須 | 型 | 説明 |
+|------------|------|-----|------|
+| employeeId | Yes | string | 従業員ID |
+| workDate | Yes | string | 修正日付（YYYY-MM-DD形式） |
+| memo | No | string \| null | メモ（nullの場合はメモを削除） |
+
+#### リクエスト例
+
+```bash
+PATCH /attendance/memo
+Content-Type: application/json
+Authorization: Bearer {access_token}
+
+{
+  "employeeId": "1",
+  "workDate": "2024-01-01",
+  "memo": "備考情報をここに入力"
+}
+```
+
+### レスポンス
+
+#### 成功時（200 OK）
+
+```json
+{
+  "statusCode": 200,
+  "message": "success"
+}
+```
+
+#### エラーレスポンス
+
+**404 Not Found**
+
+```json
+{
+  "error": "NotFound",
+  "message": "指定された勤怠記録が見つかりません"
+}
+```
+
+**403 Forbidden**
+
+```json
+{
+  "error": "Forbidden",
+  "message": "勤怠記録のメモを更新する権限がありません"
+}
+```
+
+**注意事項**:
+- 管理者のみ実行可能
+- `memo`フィールドに`null`を指定すると、メモを削除します
+
+---
+
 ## データモデル
 
 ### AttendanceLog
@@ -480,8 +568,10 @@ interface AttendanceLog {
   clockOut: string | null;       // 退勤時刻（ISO 8601、nullの場合は未退勤）
   breaks: Break[];               // 休憩時間の配列
   status: '未出勤' | '出勤中' | '休憩中' | '退勤済み';  // 勤怠ステータス
+  memo?: string | null;          // メモ（オプション）
   createdAt: string;             // 作成日時（ISO 8601）
   updatedAt: string;             // 更新日時（ISO 8601）
+  updatedBy?: string;            // 更新者（オプション）
 }
 
 interface Break {
@@ -503,4 +593,5 @@ interface Break {
    - 休憩時間が勤務時間内であることを確認
 4. **ステータス管理**: 打刻に応じて自動的にステータスを更新
 5. **エラーハンドリング**: 適切なHTTPステータスコードとエラーメッセージを返却
+
 

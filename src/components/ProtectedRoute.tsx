@@ -1,4 +1,4 @@
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
 /**
@@ -20,31 +20,49 @@ interface ProtectedRouteProps {
  */
 export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requiredRole }) => {
   const { isAuthenticated, userRole, isLoading } = useAuth();
+  const location = useLocation();
 
   // 認証状態の復元中は何も表示しない（リダイレクトしない）
   if (isLoading) {
     return null; // またはローディングスピナーを表示
   }
 
-  if (!isAuthenticated) {
+  // 認証されていない、またはuserRoleがnullの場合はログイン画面にリダイレクト
+  // 認証が成功するまで（APIから200レスポンスが返ってくるまで）ログイン画面に留まる
+  if (!isAuthenticated || !userRole) {
     return <Navigate to="/login" replace />;
   }
 
-  // userRoleがnullの場合は、localStorageからloginUserTypeを取得（ログイン直後の一時的な対応）
-  const loginUserType = localStorage.getItem('loginUserType') as 'admin' | 'employee' | null;
-  const effectiveRole = userRole || loginUserType;
-
-  if (requiredRole && effectiveRole !== requiredRole) {
-    // ロールが一致しない場合は、localStorageのloginUserTypeをクリアしてログインページにリダイレクト
-    localStorage.removeItem('loginUserType');
-    return <Navigate to="/login" replace />;
+  // ロールチェック
+  // 注意: フロントエンドでのロールチェックのみ。APIでの権限チェックは別途行われる
+  // 管理者（admin）は常に全画面にアクセス可能（従業員画面を含む）
+  // 従業員（employee）は従業員画面のみアクセス可能、管理者画面にはアクセス不可
+  if (requiredRole) {
+    if (userRole === 'admin') {
+      // 管理者は全画面にアクセス可能
+      // permissionDeniedをクリア（以前に設定されていた場合でも）
+      const permissionDenied = localStorage.getItem('permissionDenied');
+      if (permissionDenied) {
+        console.log('ProtectedRoute: Clearing permissionDenied for admin user');
+        localStorage.removeItem('permissionDenied');
+      }
+      // Googleログインのフラグは、App.tsxでリダイレクト処理が完了するまで削除しない
+      // 注意: loginUserTypeとgoogleLoginInProgressは、App.tsxでリダイレクト処理が完了するまで保持する必要がある
+    } else if (userRole === 'employee' && requiredRole !== 'employee') {
+      // 従業員が管理者画面にアクセスしようとした場合
+      const permissionDenied = localStorage.getItem('permissionDenied');
+      if (!permissionDenied) {
+        localStorage.setItem('permissionDenied', JSON.stringify({
+          message: 'アクセス権限がありません。管理者権限が必要です。',
+          attemptedPath: location.pathname
+        }));
+      }
+      return <Navigate to="/login" replace />;
+    }
+    // 従業員が従業員画面にアクセスする場合は、そのまま許可
   }
 
-  // ロールチェックが成功したら、loginUserTypeをクリア（userRoleが正しく設定された後）
-  if (userRole && localStorage.getItem('loginUserType')) {
-    localStorage.removeItem('loginUserType');
-  }
-
+  console.log('ProtectedRoute: Access granted. userRole:', userRole, 'requiredRole:', requiredRole, 'path:', location.pathname);
   return <>{children}</>;
 };
 

@@ -610,3 +610,60 @@ export const ViewIcon: React.FC<IconProps> = ({ size = 24, color = '#6b7280' }) 
   );
 };
 
+/**
+ * 警告アイコンコンポーネント。
+ * 警告・注意を表すアイコンを表示します。
+ *
+ * @param {IconProps} props - アイコンのプロパティ。
+ * @returns {JSX.Element} 警告アイコンコンポーネント。
+ */
+export const WarningIcon: React.FC<IconProps> = ({ size = 20, color = '#f59e0b' }) => {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      style={{ display: 'block' }}
+    >
+      <path
+        d="M12 9v4M12 17h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+};
+
+/**
+ * 情報アイコンコンポーネント。
+ * 情報を表すアイコンを表示します。
+ *
+ * @param {IconProps} props - アイコンのプロパティ。
+ * @returns {JSX.Element} 情報アイコンコンポーネント。
+ */
+export const InfoIcon: React.FC<IconProps> = ({ size = 20, color = '#3b82f6' }) => {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      style={{ display: 'block' }}
+    >
+      <circle cx="12" cy="12" r="10" stroke={color} strokeWidth="2" />
+      <path
+        d="M12 16v-4M12 8h.01"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+};
+

@@ -43,10 +43,44 @@ export const getAmplifyConfigPath = (): string => {
 };
 
 /**
+ * Amplify outputsからAPIエンドポイントを取得
+ */
+let cachedApiEndpoint: string | null = null;
+
+export const getAmplifyApiEndpoint = (): string | null => {
+  if (cachedApiEndpoint) {
+    return cachedApiEndpoint;
+  }
+  
+  try {
+    // amplify_outputs.jsonが既に読み込まれている場合、そこから取得
+    // 注意: これは同期的に取得できないため、非同期で取得する必要がある
+    // ここではキャッシュされた値を返すのみ
+    return cachedApiEndpoint;
+  } catch (error) {
+    return null;
+  }
+};
+
+/**
+ * Amplify outputsからAPIエンドポイントを設定
+ */
+export const setAmplifyApiEndpoint = (endpoint: string): void => {
+  cachedApiEndpoint = endpoint;
+};
+
+/**
  * 既存のAPI Gatewayエンドポイントを取得
  * 環境に応じて異なるエンドポイントを使用できます
+ * 優先順位: amplify_outputs.json > VITE_API_ENDPOINT
  */
 export const getApiEndpoint = (): string => {
+  // まず、amplify_outputs.jsonから取得を試みる
+  const amplifyEndpoint = getAmplifyApiEndpoint();
+  if (amplifyEndpoint) {
+    return amplifyEndpoint;
+  }
+  
   const env = getAmplifyEnvironment();
   
   // 環境固有のエンドポイントがある場合はそれを使用
@@ -63,8 +97,10 @@ export const getApiEndpoint = (): string => {
     return endpoint;
   }
   
-  // エンドポイントが設定されていない場合の警告
-  warn('VITE_API_ENDPOINT is not set. Please configure in .env file.');
+  // エンドポイントが設定されていない場合の警告（開発環境のみ）
+  if (env === 'development') {
+    warn('VITE_API_ENDPOINT is not set. Please configure in .env file or run "npx ampx sandbox" to generate amplify_outputs.json.');
+  }
   return '';
 };
 

@@ -10,17 +10,21 @@
  *   - 管理者フラグ、基本給の管理
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Snackbar } from '../../components/Snackbar';
 import { Button, NewRegisterButton, CancelButton, RegisterButton, UpdateButton, EditButton } from '../../components/Button';
 import { ViewIcon } from '../../components/Icons';
 import { formatDate, formatCurrency } from '../../utils/formatters';
 import { fontSizes } from '../../config/fontSizes';
-import { getEmploymentTypes } from '../../config/masterData';
-import { dummyEmployees, dummyAllowances } from '../../data/dummyData';
+import { getEmploymentTypes, getEmploymentTypeLabel } from '../../config/masterData';
+import { dummyAllowances } from '../../data/dummyData';
 import { useSort } from '../../hooks/useSort';
 import { ChevronDownIcon, ChevronUpIcon } from '../../components/Icons';
+import { createEmployee, updateEmployee, getEmployees, CreateEmployeeRequest } from '../../utils/employeeApi';
+import { getAllowances } from '../../utils/allowanceApi';
+import { error as logError } from '../../utils/logger';
+import { translateApiError } from '../../utils/apiErrorTranslator';
 
 /**
  * 手当を表すインターフェース。
@@ -32,6 +36,8 @@ interface Allowance {
   name: string;
   /** 手当の表示色（16進数カラーコード）。 */
   color: string;
+  /** 残業代に含むかどうか。 */
+  includeInOvertime: boolean;
 }
 
 /**
@@ -40,10 +46,12 @@ interface Allowance {
 interface Employee {
   /** 従業員ID。 */
   id: string;
-  /** 従業員名。 */
-  name: string;
-  /** 雇用形態。 */
-  employmentType: '正社員' | 'パート';
+  /** 苗字（姓）。 */
+  firstName: string;
+  /** 名前（名）。 */
+  lastName: string;
+  /** 雇用形態コード。 */
+  employmentType: 'FULL_TIME' | 'PART_TIME';
   /** メールアドレス。 */
   email: string;
   /** 入社日。 */
@@ -56,10 +64,17 @@ interface Employee {
   isAdmin: boolean;
   /** 基本給（時給）。 */
   baseSalary: number;
-  /** 有給日数。 */
-  paidLeaveDays: number;
+  /** 基本休憩時間（分）。 */
+  defaultBreakTime: number;
+  /** 有給情報の配列。 */
+  paidLeaves: Array<{
+    grantDate: string;  // 有給付与日（YYYY-MM-DD）
+    days: number;       // 付与された有給日数
+  }>;
   /** 更新日時。 */
   updatedAt?: string;
+  /** 更新者。 */
+  updatedBy?: string;
 }
 
 /**
@@ -72,30 +87,226 @@ export const EmployeeList: React.FC = () => {
   const navigate = useNavigate();
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const employmentTypes = getEmploymentTypes();
-  const [employees, setEmployees] = useState<Employee[]>(
-    dummyEmployees.map(emp => ({
-      ...emp,
-      employmentType: emp.employmentType as '正社員' | 'パート'
-    }))
-  );
-  const [allowances] = useState<Allowance[]>(dummyAllowances);
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [isLoadingEmployees, setIsLoadingEmployees] = useState<boolean>(false);
+  const [snackbar, setSnackbar] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [allowances, setAllowances] = useState<Allowance[]>(dummyAllowances);
   const [filterEmploymentTypes, setFilterEmploymentTypes] = useState<string[]>(employmentTypes.map(t => t.code));
   const [showActiveOnly, setShowActiveOnly] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
-  const [snackbar, setSnackbar] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const hasFetchedRef = useRef<boolean>(false); // 既にAPI呼び出しを行ったかどうかのフラグ
+  const isMountedRef = useRef<boolean>(true); // コンポーネントがマウントされているかどうかのフラグ
+  const cleanupCalledRef = useRef<boolean>(false); // クリーンアップ関数が呼ばれたかどうかのフラグ
+
+  // 従業員一覧をAPIから取得
+  useEffect(() => {
+    // 既にAPI呼び出しを行った場合は、再実行しない
+    // React Strict Modeによる2回目の実行を防ぐ
+    if (hasFetchedRef.current) {
+      console.log('EmployeeList: hasFetchedRef is true, skipping API call');
+      return;
+    }
+
+    // 即座にフラグを設定して、2回目の実行（React Strict Mode）を防ぐ
+    // これにより、fetchEmployees()が非同期でも、useEffectの2回目の実行時には既にtrueになっている
+    hasFetchedRef.current = true;
+    isMountedRef.current = true;
+    cleanupCalledRef.current = false; // クリーンアップフラグをリセット
+    console.log('EmployeeList: Starting fetchEmployees, hasFetchedRef set to true');
+
+    const fetchEmployees = async () => {
+      // マウント状態をチェック（コンポーネントがアンマウントされた場合は処理をスキップ）
+      if (!isMountedRef.current) {
+        console.warn('EmployeeList: Component unmounted before fetchEmployees');
+        return;
+      }
+
+      console.log('EmployeeList: fetchEmployees started, isMountedRef.current:', isMountedRef.current);
+      setIsLoadingEmployees(true);
+      
+      try {
+        console.log('EmployeeList: About to call getEmployees()');
+        const fetchedEmployees = await getEmployees();
+        console.log('EmployeeList: getEmployees() completed');
+        console.log('EmployeeList: Fetched employees:', fetchedEmployees);
+        console.log('EmployeeList: fetchedEmployees is array?', Array.isArray(fetchedEmployees));
+        console.log('EmployeeList: Number of employees:', fetchedEmployees?.length || 0);
+        console.log('EmployeeList: isMountedRef.current after fetch:', isMountedRef.current);
+        console.log('EmployeeList: cleanupCalledRef.current after fetch:', cleanupCalledRef.current);
+        
+        // 従業員データをマッピング（データが取得できた場合は、クリーンアップが呼ばれていても状態を更新する）
+        // React Strict Modeでは、再マウント/アンマウントサイクルが発生するが、
+        // 実際にコンポーネントが再マウントされる場合は、新しいインスタンスが作成されるため、
+        // 状態を更新しても問題ない
+        console.log('EmployeeList: Starting to map employees...');
+        const mappedEmployees = fetchedEmployees.map(emp => {
+          console.log('EmployeeList: Mapping employee:', emp.id, emp.firstName, emp.lastName);
+          return {
+            ...emp,
+            employmentType: emp.employmentType as 'FULL_TIME' | 'PART_TIME'
+          };
+        });
+        console.log('EmployeeList: Mapped employees:', mappedEmployees);
+        console.log('EmployeeList: Mapped employees length:', mappedEmployees.length);
+        console.log('EmployeeList: Current employees state before setEmployees:', employees.length);
+        console.log('EmployeeList: cleanupCalledRef.current before setEmployees:', cleanupCalledRef.current);
+        console.log('EmployeeList: isMountedRef.current before setEmployees:', isMountedRef.current);
+        
+        // クリーンアップが呼ばれていない場合、またはクリーンアップが呼ばれていてもデータが取得できた場合は状態を更新
+        // React Strict Modeでは、クリーンアップが先に実行されることがあるが、
+        // データが取得できた場合は状態を更新する（再マウント時に正しく表示される）
+        if (!cleanupCalledRef.current || (cleanupCalledRef.current && mappedEmployees.length > 0)) {
+          console.log('EmployeeList: Calling setEmployees with', mappedEmployees.length, 'items');
+          console.log('EmployeeList: mappedEmployees data:', JSON.stringify(mappedEmployees, null, 2));
+          setEmployees(mappedEmployees);
+          console.log('EmployeeList: setEmployees called successfully');
+        } else {
+          console.warn('EmployeeList: Cleanup called and no data, skipping state update');
+        }
+        
+        // 従業員一覧API取得成功後、手当マスタAPIを呼び出す
+        try {
+          console.log('EmployeeList: About to call getAllowances()');
+          const allowanceResponse = await getAllowances();
+          console.log('EmployeeList: getAllowances() completed');
+          console.log('EmployeeList: Fetched allowances:', allowanceResponse);
+          
+          // 手当マスタを状態に設定
+          const fetchedAllowances: Allowance[] = allowanceResponse.allowances.map(allowance => ({
+            id: allowance.id,
+            name: allowance.name,
+            color: allowance.color,
+            includeInOvertime: allowance.includeInOvertime
+          }));
+          
+          if (isMountedRef.current) {
+            console.log('EmployeeList: Setting allowances:', fetchedAllowances.length, 'items');
+            setAllowances(fetchedAllowances);
+            
+            // localStorageに手当マスタを保存（従業員登録・更新画面で使用）
+            try {
+              localStorage.setItem('allowances', JSON.stringify(fetchedAllowances));
+              console.log('EmployeeList: Allowances saved to localStorage');
+            } catch (storageError) {
+              console.warn('EmployeeList: Failed to save allowances to localStorage:', storageError);
+            }
+          }
+        } catch (allowanceError: any) {
+          // 手当マスタ取得エラーは警告として記録するが、従業員一覧の表示は続行する
+          console.warn('EmployeeList: Failed to fetch allowances:', allowanceError);
+          logError('Failed to fetch allowances:', allowanceError);
+          // エラー時はダミーデータを使用する（既に初期値として設定済み）
+        }
+      } catch (error: any) {
+        // エラーログを出力
+        console.error('EmployeeList: Error in fetchEmployees:', error);
+        logError('Failed to fetch employees:', error);
+        const errorMessage = translateApiError(error);
+        
+        // すべてのエラー（403エラーを含む）をスナックバーで表示
+        // 注意: roleがadminの場合でも、既存のLambda関数（別リポジトリ）が403を返す可能性がある
+        // これはAPI側の権限チェックロジックの問題の可能性があるため、エラーメッセージを表示して画面に留まる
+        // リダイレクトしない（roleがadminの場合、権限エラーではないため）
+        
+        // コンポーネントがマウントされている場合のみ状態を更新
+        if (isMountedRef.current) {
+          setSnackbar({ message: errorMessage, type: 'error' });
+          
+          // エラー時は空配列を設定
+          setEmployees([]);
+          
+          // エラー時はhasFetchedRefをリセットして、次回のマウント時に再取得できるようにする
+          // ただし、これは無限ループを引き起こす可能性があるため、慎重に実装する
+          // 現在は、エラー時もリセットしない（ユーザーが手動で再読み込みするか、ページを再読み込みする必要がある）
+          // hasFetchedRef.current = false; // コメントアウト: 無限ループを防ぐため
+          
+          // 5秒後にスナックバーを閉じる
+          setTimeout(() => {
+            if (isMountedRef.current) {
+              setSnackbar(null);
+            }
+          }, 5000); // 5秒間表示
+        }
+      } finally {
+        // コンポーネントがマウントされている場合のみ状態を更新
+        console.log('EmployeeList: finally block, isMountedRef.current:', isMountedRef.current);
+        if (isMountedRef.current) {
+          setIsLoadingEmployees(false);
+          console.log('EmployeeList: setIsLoadingEmployees(false) called');
+        } else {
+          console.warn('EmployeeList: Component unmounted in finally block, skipping setIsLoadingEmployees');
+        }
+      }
+    };
+
+    // fetchEmployeesを実行
+    console.log('EmployeeList: About to call fetchEmployees()');
+    const fetchPromise = fetchEmployees();
+    
+    // クリーンアップ関数: コンポーネントがアンマウントされた場合、クリーンアップフラグを設定
+    // 注意: React Strict Modeでは、再マウント/アンマウントサイクルが発生するため、
+    // isMountedRefを即座にfalseに設定せず、cleanupCalledRefでクリーンアップが呼ばれたことを記録する
+    // これにより、非同期処理中にクリーンアップが呼ばれても、データが取得できた場合は状態を更新できる
+    return () => {
+      console.log('EmployeeList: useEffect cleanup called');
+      console.log('EmployeeList: cleanup - hasFetchedRef.current:', hasFetchedRef.current);
+      console.log('EmployeeList: cleanup - isMountedRef.current before:', isMountedRef.current);
+      console.log('EmployeeList: cleanup - cleanupCalledRef.current before:', cleanupCalledRef.current);
+      
+      // クリーンアップフラグを設定（isMountedRefは後で設定）
+      cleanupCalledRef.current = true;
+      
+      // 注意: isMountedRefを即座にfalseに設定しない
+      // React Strict Modeでは、再マウントが発生する可能性があるため、
+      // クリーンアップが呼ばれたことを記録するだけで、isMountedRefは後で設定する
+      // 非同期処理が完了するまで待つため、少し遅延させてからisMountedRefをfalseに設定
+      
+      // クリーンアップが呼ばれた後、非同期処理が完了するまで少し待ってからisMountedRefをfalseに設定
+      // これにより、非同期処理中にクリーンアップが呼ばれても、データが取得できた場合は状態を更新できる
+      // 500ms待ってからisMountedRefをfalseに設定（API呼び出しが完了するまでの時間を考慮）
+      setTimeout(() => {
+        if (cleanupCalledRef.current) {
+          isMountedRef.current = false;
+          console.log('EmployeeList: cleanup - isMountedRef.current set to false after delay');
+        }
+      }, 500); // 500ms待ってからisMountedRefをfalseに設定
+      
+      console.log('EmployeeList: cleanup - cleanupCalledRef.current after:', cleanupCalledRef.current);
+      
+      // 注意: hasFetchedRefはリセットしない（コンポーネントが再マウントされた場合でも、API呼び出しを1回のみ実行するため）
+      // コンポーネントが完全にアンマウントされ、再マウントされた場合は、新しいコンポーネントインスタンスが作成されるため、hasFetchedRefは自動的にリセットされる
+      
+      // fetchPromiseがまだ実行中の場合は、エラーハンドリングを追加
+      fetchPromise.catch((error) => {
+        console.error('EmployeeList: Unhandled error in fetchEmployees (cleanup):', error);
+        logError('Unhandled error in fetchEmployees (cleanup):', error);
+      });
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // 依存配列を空にして、マウント時のみ実行（React Strict Modeによる2回目の実行はhasFetchedRefで防ぐ）
+  
+  // デバッグログ: employeesステートの変更を監視
+  useEffect(() => {
+    console.log('EmployeeList: employees state changed:', employees.length, 'items');
+    if (employees.length > 0) {
+      console.log('EmployeeList: First employee:', employees[0]);
+    }
+  }, [employees]);
   const [isSearchExpanded, setIsSearchExpanded] = useState<boolean>(false); // モバイル時の検索条件の展開状態
   const [formData, setFormData] = useState<Employee>({
     id: '',
-    name: '',
-    employmentType: (employmentTypes[0]?.code || '正社員') as '正社員' | 'パート',
+    firstName: '',
+    lastName: '',
+    employmentType: (employmentTypes[0]?.code || 'FULL_TIME') as 'FULL_TIME' | 'PART_TIME',
     email: '',
     joinDate: '',
     leaveDate: null,
     allowances: [],
     isAdmin: false,
     baseSalary: 0,
-    paidLeaveDays: 0,
+    defaultBreakTime: 60,
+    paidLeaves: [],
     updatedAt: new Date().toISOString()
   });
 
@@ -112,44 +323,54 @@ export const EmployeeList: React.FC = () => {
   };
 
 
+  // デバッグログ: employeesステートの変更を監視
+  console.log('EmployeeList: employees state:', employees.length, 'items');
+  console.log('EmployeeList: filterEmploymentTypes:', filterEmploymentTypes);
+  console.log('EmployeeList: showActiveOnly:', showActiveOnly);
+  
   const filteredEmployees = employees.filter(emp => {
     const matchType = filterEmploymentTypes.length === 0 || filterEmploymentTypes.includes(emp.employmentType);
     const matchActive = !showActiveOnly || !emp.leaveDate;
-    return matchType && matchActive;
+    const result = matchType && matchActive;
+    
+    // デバッグログ: すべての従業員についてフィルター結果を確認
+    console.log('EmployeeList: Filtering employee:', {
+      id: emp.id,
+      name: `${emp.firstName} ${emp.lastName}`, // 姓・名の順序で表示（firstName = 苗字/姓, lastName = 名前/名）
+      employmentType: emp.employmentType,
+      leaveDate: emp.leaveDate,
+      matchType,
+      matchActive,
+      result,
+      filterEmploymentTypes,
+      showActiveOnly
+    });
+    
+    return result;
   });
+  
+  console.log('EmployeeList: Filtered employees:', filteredEmployees.length, 'out of', employees.length);
 
   // ソート機能を共通フックから取得
   const { handleSort, getSortIcon, sortedData: sortedEmployees } = useSort<Employee>(
     filteredEmployees
   );
 
-  // 従業員IDの自動採番関数
-  const generateEmployeeId = (): string => {
-    // 既存の従業員IDから最大の番号を取得
-    const existingIds = employees
-      .map(emp => {
-        const match = emp.id.match(/^EMP(\d+)$/);
-        return match ? parseInt(match[1], 10) : 0;
-      })
-      .filter(num => num > 0);
-    
-    const maxNum = existingIds.length > 0 ? Math.max(...existingIds) : 0;
-    const nextNum = maxNum + 1;
-    return `EMP${String(nextNum).padStart(3, '0')}`;
-  };
 
   const handleNewEmployee = () => {
     setFormData({
-      id: generateEmployeeId(),
-      name: '',
-      employmentType: (employmentTypes[0]?.code || '正社員') as '正社員' | 'パート',
+      id: '', // 登録時はIDは空（サーバー側で自動採番）
+      firstName: '',
+      lastName: '',
+      employmentType: (employmentTypes[0]?.code || 'FULL_TIME') as 'FULL_TIME' | 'PART_TIME',
       email: '',
       joinDate: '',
       leaveDate: null,
       allowances: [],
       isAdmin: false,
       baseSalary: 0,
-      paidLeaveDays: 0
+      defaultBreakTime: 60,
+      paidLeaves: []
     });
     setEditingEmployee(null);
     setShowModal(true);
@@ -161,34 +382,51 @@ export const EmployeeList: React.FC = () => {
     setShowModal(true);
   };
 
-  const handleSave = () => {
-    if (!formData.id || !formData.name || !formData.email || !formData.joinDate) {
+  const handleSave = async () => {
+    if (!formData.firstName || !formData.lastName || !formData.email || !formData.joinDate) {
       setSnackbar({ message: '必須項目を入力してください', type: 'error' });
       return;
     }
 
-    if (editingEmployee) {
-      // 更新
-      setEmployees(employees.map(emp =>
-        emp.id === editingEmployee.id ? { ...formData, updatedAt: new Date().toISOString() } : emp
-      ));
-      setSnackbar({ message: '従業員情報を更新しました', type: 'success' });
-    } else {
-      // 新規登録
-      // IDの重複チェック（念のため）
-      if (employees.some(emp => emp.id === formData.id)) {
-        // 重複している場合は新しいIDを生成
-        const newId = generateEmployeeId();
-        setFormData({ ...formData, id: newId });
-        setEmployees([...employees, { ...formData, id: newId, updatedAt: new Date().toISOString() }]);
-      } else {
-        setEmployees([...employees, { ...formData, updatedAt: new Date().toISOString() }]);
-      }
-      setSnackbar({ message: '従業員を登録しました', type: 'success' });
-    }
+    try {
+      const payload: CreateEmployeeRequest = {
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        employmentType: formData.employmentType,
+        email: formData.email,
+        joinDate: formData.joinDate,
+        leaveDate: formData.leaveDate || null,
+        allowances: formData.allowances,
+        isAdmin: formData.isAdmin,
+        baseSalary: formData.baseSalary,
+        defaultBreakTime: formData.defaultBreakTime,
+        paidLeaves: formData.paidLeaves
+      };
 
-    setShowModal(false);
-    setEditingEmployee(null);
+      if (editingEmployee) {
+        // 更新
+        await updateEmployee(editingEmployee.id, payload);
+        setSnackbar({ message: '従業員情報を更新しました', type: 'success' });
+      } else {
+        // 新規登録
+        await createEmployee(payload);
+        setSnackbar({ message: '従業員を登録しました', type: 'success' });
+      }
+
+      // 一覧を再取得
+      const updatedEmployees = await getEmployees();
+      setEmployees(updatedEmployees.map(emp => ({
+        ...emp,
+        employmentType: emp.employmentType as 'FULL_TIME' | 'PART_TIME'
+      })));
+
+      setShowModal(false);
+      setEditingEmployee(null);
+    } catch (error) {
+      logError('Failed to save employee:', error);
+      const errorMessage = translateApiError(error);
+      setSnackbar({ message: errorMessage, type: 'error' });
+    }
   };
 
   const handleCancel = () => {
@@ -217,7 +455,7 @@ export const EmployeeList: React.FC = () => {
       <div style={{
         display: 'flex',
         justifyContent: 'space-between',
-        alignItems: 'center',
+        alignItems: 'flex-start',
         marginBottom: isMobile ? '1rem' : '1.4rem',
         marginTop: isMobile ? '0.5rem' : '0.75rem',
         flexWrap: 'wrap',
@@ -483,7 +721,7 @@ export const EmployeeList: React.FC = () => {
                   <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
                       <span style={{ fontWeight: 'bold', fontSize: '1.125rem' }}>
-                        {isMobile && emp.isAdmin ? `${emp.name}(管理者)` : emp.name}
+                        {isMobile && emp.isAdmin ? `${emp.firstName} ${emp.lastName}(管理者)` : `${emp.firstName} ${emp.lastName}`}
                       </span>
                       {!isMobile && emp.isAdmin && (
                         <span style={{
@@ -517,7 +755,7 @@ export const EmployeeList: React.FC = () => {
                       }}
                     >
                       <ViewIcon size={16} color="#2563eb" />
-                      給与明細
+                      明細
                     </Button>
                     {isMobile ? (
                       <EditButton
@@ -557,11 +795,11 @@ export const EmployeeList: React.FC = () => {
                 }}>
                   <div>
                     <span style={{ color: '#6b7280' }}>雇用形態:</span>{' '}
-                    <span style={{ fontWeight: 'bold' }}>{emp.employmentType}</span>
+                    <span style={{ fontWeight: 'bold' }}>{getEmploymentTypeLabel(emp.employmentType)}</span>
                   </div>
                   <div>
                     <span style={{ color: '#6b7280' }}>基本給:</span>{' '}
-                    <span style={{ fontWeight: 'bold' }}>{formatCurrency(emp.baseSalary)}{emp.employmentType === '正社員' ? '/月' : '/時'}</span>
+                    <span style={{ fontWeight: 'bold' }}>{formatCurrency(emp.baseSalary)}{emp.employmentType === 'FULL_TIME' ? '/月' : '/時'}</span>
                   </div>
                   <div>
                     <span style={{ color: '#6b7280' }}>入社日:</span>{' '}
@@ -579,7 +817,7 @@ export const EmployeeList: React.FC = () => {
                   )}
                   <div>
                     <span style={{ color: '#6b7280' }}>有給日数:</span>{' '}
-                    <span style={{ fontWeight: 'bold' }}>{emp.paidLeaveDays}日</span>
+                    <span style={{ fontWeight: 'bold' }}>{emp.paidLeaves.reduce((sum, pl) => sum + pl.days, 0)}日</span>
                   </div>
                 </div>
                 {emp.allowances.length > 0 && (
@@ -639,9 +877,9 @@ export const EmployeeList: React.FC = () => {
                   </th>
                   <th 
                     style={{ padding: '0.75rem', textAlign: 'left', cursor: 'pointer', userSelect: 'none' }}
-                    onClick={() => handleSort('name')}
+                    onClick={() => handleSort('firstName')}
                   >
-                    {getSortIcon('name')} 氏名
+                    {getSortIcon('firstName')} 氏名
                   </th>
                   <th 
                     style={{ padding: '0.75rem', textAlign: 'left', cursor: 'pointer', userSelect: 'none' }}
@@ -675,11 +913,12 @@ export const EmployeeList: React.FC = () => {
                   </th>
                   <th 
                     style={{ padding: '0.75rem', textAlign: 'left', cursor: 'pointer', userSelect: 'none' }}
-                    onClick={() => handleSort('paidLeaveDays')}
+                    onClick={() => {}}
                   >
-                    {getSortIcon('paidLeaveDays')} 有給日数
+                    有給合計日数
                   </th>
                   <th style={{ padding: '0.75rem', textAlign: 'left' }}>手当</th>
+                  <th style={{ padding: '0.75rem', textAlign: 'left' }}>更新者</th>
                   <th 
                     style={{ padding: '0.75rem', textAlign: 'left', cursor: 'pointer', userSelect: 'none' }}
                     onClick={() => handleSort('updatedAt')}
@@ -696,7 +935,7 @@ export const EmployeeList: React.FC = () => {
                     <td style={{ padding: '0.75rem' }}>{emp.id}</td>
                     <td style={{ padding: '0.75rem' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <span style={{ fontWeight: 'bold' }}>{emp.name}</span>
+                        <span style={{ fontWeight: 'bold' }}>{emp.firstName} {emp.lastName}</span>
                         {emp.isAdmin && (
                           <span style={{
                             padding: '0.125rem 0.5rem',
@@ -720,11 +959,11 @@ export const EmployeeList: React.FC = () => {
                         fontSize: fontSizes.input,
                         fontWeight: 'bold'
                       }}>
-                        {emp.employmentType}
+                        {getEmploymentTypeLabel(emp.employmentType)}
                       </span>
                     </td>
                     <td style={{ padding: '0.75rem', fontWeight: 'bold' }}>
-                      {formatCurrency(emp.baseSalary)}{emp.employmentType === '正社員' ? '/月' : '/時'}
+                      {formatCurrency(emp.baseSalary)}{emp.employmentType === 'FULL_TIME' ? '/月' : '/時'}
                     </td>
                     <td style={{ padding: '0.75rem' }}>{emp.email}</td>
                     <td style={{ padding: '0.75rem' }}>
@@ -734,7 +973,7 @@ export const EmployeeList: React.FC = () => {
                       {emp.leaveDate ? formatDate(emp.leaveDate) : '-'}
                     </td>
                     <td style={{ padding: '0.75rem', fontWeight: 'bold' }}>
-                      {emp.paidLeaveDays}日
+                      {emp.paidLeaves.reduce((sum, pl) => sum + pl.days, 0)}日
                     </td>
                     <td style={{ padding: '0.75rem' }}>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
@@ -760,6 +999,9 @@ export const EmployeeList: React.FC = () => {
                         })}
                         {emp.allowances.length === 0 && <span style={{ color: '#9ca3af' }}>-</span>}
                       </div>
+                    </td>
+                    <td style={{ padding: '0.75rem' }}>
+                      {emp.updatedBy || '-'}
                     </td>
                     <td style={{ padding: '0.75rem' }}>
                       {emp.updatedAt ? new Date(emp.updatedAt).toLocaleString('ja-JP', {
@@ -871,20 +1113,48 @@ export const EmployeeList: React.FC = () => {
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
                   氏名 *
                 </label>
-                <input
-                  type="text"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  style={{
-                    width: '100%',
-                    padding: '0.75rem',
-                    border: '1px solid #d1d5db',
-                    borderRadius: '4px',
-                    fontSize: fontSizes.input,
-                    boxSizing: 'border-box'
-                  }}
-                  required
-                />
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '0.75rem' }}>
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: fontSizes.medium, color: '#6b7280' }}>
+                      姓
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.firstName}
+                      onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
+                      maxLength={50}
+                      style={{
+                        width: '100%',
+                        padding: '0.75rem',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '4px',
+                        fontSize: fontSizes.input,
+                        boxSizing: 'border-box'
+                      }}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: fontSizes.medium, color: '#6b7280' }}>
+                      名
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.lastName}
+                      onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
+                      maxLength={50}
+                      style={{
+                        width: '100%',
+                        padding: '0.75rem',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '4px',
+                        fontSize: fontSizes.input,
+                        boxSizing: 'border-box'
+                      }}
+                      required
+                    />
+                  </div>
+                </div>
               </div>
 
               <div style={{ marginBottom: '1rem' }}>
@@ -906,7 +1176,7 @@ export const EmployeeList: React.FC = () => {
                       <input
                         type="radio"
                         checked={formData.employmentType === type.code}
-                        onChange={() => setFormData({ ...formData, employmentType: type.code as '正社員' | 'パート' })}
+                        onChange={() => setFormData({ ...formData, employmentType: type.code as 'FULL_TIME' | 'PART_TIME' })}
                         style={{ marginRight: '0.5rem' }}
                       />
                       {type.label}
@@ -917,39 +1187,89 @@ export const EmployeeList: React.FC = () => {
 
               <div style={{ marginBottom: '1rem' }}>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
-                  基本給{formData.employmentType === '正社員' ? '（月給）' : '（時給）'} *
+                  給与 *
                 </label>
-                <input
-                  type="number"
-                  value={formData.baseSalary}
-                  onChange={(e) => setFormData({ ...formData, baseSalary: Number(e.target.value) })}
-                  min="0"
-                  step="100"
-                  style={{
-                    width: '100%',
-                    padding: '0.75rem',
-                    border: '1px solid #d1d5db',
-                    borderRadius: '4px',
-                    fontSize: fontSizes.input,
-                    boxSizing: 'border-box'
-                  }}
-                  required
-                />
-                <div style={{ fontSize: fontSizes.medium, color: '#6b7280', marginTop: '0.25rem' }}>
-                  現在の値: {formatCurrency(formData.baseSalary)}{formData.employmentType === '正社員' ? '/月' : '/時'}
-                </div>
+                {formData.employmentType === 'FULL_TIME' ? (
+                  <>
+                    <div style={{ marginBottom: '0.75rem' }}>
+                      <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: fontSizes.medium, color: '#6b7280' }}>
+                        基本給（月給）
+                      </label>
+                      <input
+                        type="number"
+                        value={formData.baseSalary || ''}
+                        onChange={(e) => setFormData({ ...formData, baseSalary: Number(e.target.value) })}
+                        min="0"
+                        step="1000"
+                        style={{
+                          width: '100%',
+                          padding: '0.75rem',
+                          border: '1px solid #d1d5db',
+                          borderRadius: '4px',
+                          fontSize: fontSizes.input,
+                          boxSizing: 'border-box'
+                        }}
+                        required
+                      />
+                    </div>
+                    <div style={{
+                      padding: '0.75rem',
+                      backgroundColor: '#f9fafb',
+                      borderRadius: '4px',
+                      border: '1px solid #e5e7eb'
+                    }}>
+                      <div style={{ marginBottom: '0.5rem' }}>
+                        <span style={{ fontSize: fontSizes.medium, color: '#6b7280' }}>日給: </span>
+                        <span style={{ fontWeight: 'bold' }}>
+                          {formatCurrency(Math.round(formData.baseSalary / 20.5))}円
+                        </span>
+                        <span style={{ fontSize: fontSizes.medium, color: '#6b7280', marginLeft: '0.5rem' }}>
+                          （基本給 ÷ 20.5）
+                        </span>
+                      </div>
+                      <div>
+                        <span style={{ fontSize: fontSizes.medium, color: '#6b7280' }}>時給: </span>
+                        <span style={{ fontWeight: 'bold' }}>
+                          {formatCurrency(Math.round((formData.baseSalary / 20.5) / 7.5))}円
+                        </span>
+                        <span style={{ fontSize: fontSizes.medium, color: '#6b7280', marginLeft: '0.5rem' }}>
+                          （日給 ÷ 7.5）
+                        </span>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: fontSizes.medium, color: '#6b7280' }}>
+                      時給
+                    </label>
+                    <input
+                      type="number"
+                      value={formData.baseSalary || ''}
+                      onChange={(e) => setFormData({ ...formData, baseSalary: Number(e.target.value) })}
+                      min="0"
+                      step="10"
+                      style={{
+                        width: '100%',
+                        padding: '0.75rem',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '4px',
+                        fontSize: fontSizes.input,
+                        boxSizing: 'border-box'
+                      }}
+                      required
+                    />
+                  </div>
+                )}
               </div>
 
               <div style={{ marginBottom: '1rem' }}>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
-                  有給日数
+                  基本休憩時間
                 </label>
-                <input
-                  type="number"
-                  value={formData.paidLeaveDays}
-                  onChange={(e) => setFormData({ ...formData, paidLeaveDays: Number(e.target.value) })}
-                  min="0"
-                  step="0.5"
+                <select
+                  value={formData.defaultBreakTime}
+                  onChange={(e) => setFormData({ ...formData, defaultBreakTime: Number(e.target.value) })}
                   style={{
                     width: '100%',
                     padding: '0.75rem',
@@ -958,9 +1278,143 @@ export const EmployeeList: React.FC = () => {
                     fontSize: fontSizes.input,
                     boxSizing: 'border-box'
                   }}
-                />
-                <div style={{ fontSize: fontSizes.medium, color: '#6b7280', marginTop: '0.25rem' }}>
-                  現在の値: {formData.paidLeaveDays}日
+                >
+                  <option value={0}>なし</option>
+                  <option value={30}>30分</option>
+                  <option value={60}>60分</option>
+                  <option value={90}>90分</option>
+                </select>
+              </div>
+
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
+                  有給情報
+                </label>
+                <div style={{
+                  padding: '1rem',
+                  backgroundColor: 'white',
+                  borderRadius: '4px',
+                  border: '1px solid #d1d5db'
+                }}>
+                  {formData.paidLeaves.length === 0 ? (
+                    <p style={{ color: '#6b7280', fontSize: fontSizes.medium, margin: 0 }}>
+                      有給情報が登録されていません
+                    </p>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                      {formData.paidLeaves.map((paidLeave, index) => (
+                        <div key={index} style={{
+                          display: 'grid',
+                          gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr auto',
+                          gap: '0.75rem',
+                          alignItems: 'end',
+                          padding: '0.75rem',
+                          backgroundColor: '#f9fafb',
+                          borderRadius: '4px',
+                          border: '1px solid #e5e7eb'
+                        }}>
+                          <div>
+                            <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: fontSizes.medium, color: '#6b7280' }}>
+                              有給付与日
+                            </label>
+                            <input
+                              type="date"
+                              value={paidLeave.grantDate}
+                              onChange={(e) => {
+                                const newPaidLeaves = [...formData.paidLeaves];
+                                newPaidLeaves[index] = { ...paidLeave, grantDate: e.target.value };
+                                setFormData({ ...formData, paidLeaves: newPaidLeaves });
+                              }}
+                              style={{
+                                width: '100%',
+                                padding: '0.75rem',
+                                border: '1px solid #d1d5db',
+                                borderRadius: '4px',
+                                fontSize: fontSizes.input,
+                                boxSizing: 'border-box'
+                              }}
+                              required
+                            />
+                          </div>
+                          <div>
+                            <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: fontSizes.medium, color: '#6b7280' }}>
+                              日数
+                            </label>
+                            <input
+                              type="number"
+                              value={paidLeave.days}
+                              onChange={(e) => {
+                                const newPaidLeaves = [...formData.paidLeaves];
+                                newPaidLeaves[index] = { ...paidLeave, days: Number(e.target.value) };
+                                setFormData({ ...formData, paidLeaves: newPaidLeaves });
+                              }}
+                              min="0"
+                              step="0.5"
+                              style={{
+                                width: '100%',
+                                padding: '0.75rem',
+                                border: '1px solid #d1d5db',
+                                borderRadius: '4px',
+                                fontSize: fontSizes.input,
+                                boxSizing: 'border-box'
+                              }}
+                              required
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newPaidLeaves = formData.paidLeaves.filter((_, i) => i !== index);
+                              setFormData({ ...formData, paidLeaves: newPaidLeaves });
+                            }}
+                            style={{
+                              padding: '0.75rem 1rem',
+                              backgroundColor: '#ef4444',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '4px',
+                              fontSize: fontSizes.button,
+                              cursor: 'pointer',
+                              whiteSpace: 'nowrap',
+                              boxShadow: 'none',
+                              minHeight: 'auto',
+                              minWidth: 'auto'
+                            }}
+                          >
+                            削除
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFormData({
+                        ...formData,
+                        paidLeaves: [...formData.paidLeaves, { grantDate: '', days: 0 }]
+                      });
+                    }}
+                    style={{
+                      marginTop: '0.75rem',
+                      padding: '0.5rem 1rem',
+                      backgroundColor: '#10b981',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      fontSize: fontSizes.button,
+                      cursor: 'pointer',
+                      width: '100%',
+                      boxShadow: 'none',
+                      minHeight: 'auto',
+                      minWidth: 'auto'
+                    }}
+                  >
+                    + 有給情報を追加
+                  </button>
+                  <div style={{ marginTop: '0.5rem', fontSize: fontSizes.medium, color: '#6b7280' }}>
+                    合計: {formData.paidLeaves.reduce((sum, pl) => sum + pl.days, 0)}日
+                  </div>
                 </div>
               </div>
 
@@ -1094,7 +1548,12 @@ export const EmployeeList: React.FC = () => {
                 </div>
               </div>
 
-              <div style={{ display: 'flex', gap: '1rem', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'flex-end' }}>
+              <div style={{ display: 'flex', gap: '1rem', flexDirection: isMobile ? 'column-reverse' : 'row', justifyContent: 'flex-end' }}>
+                <CancelButton
+                  fullWidth
+                  type="button"
+                  onClick={handleCancel}
+                />
                 {editingEmployee ? (
                   <UpdateButton
                     fullWidth
@@ -1106,11 +1565,6 @@ export const EmployeeList: React.FC = () => {
                     type="submit"
                   />
                 )}
-                <CancelButton
-                  fullWidth
-                  type="button"
-                  onClick={handleCancel}
-                />
               </div>
             </form>
           </div>

@@ -270,15 +270,16 @@ POST /payroll
 | paidLeave | number | いいえ | 有給休暇日数（デフォルト: 0） |
 | paidLeaveRemaining | number | いいえ | 有給残日数 |
 | paidLeaveRemainingDate | string | いいえ | 有給残の時点（YYYY-MM-DD） |
-| normalOvertime | number | いいえ | 普通残業時間（デフォルト: 0） |
-| lateNightOvertime | number | いいえ | 深夜残業時間（デフォルト: 0） |
-| baseSalary | number | はい | 基本給 |
-| overtimeAllowance | number | いいえ | 時間外手当（デフォルト: 0） |
-| lateNightAllowance | number | いいえ | 深夜手当（デフォルト: 0） |
+| normalOvertime | number | いいえ | 普通残業時間（時間単位、後方互換性のため残す、デフォルト: 0） |
+| lateNightOvertime | number | いいえ | 深夜残業時間（時間単位、後方互換性のため残す、デフォルト: 0） |
+| baseSalary | number | はい | 基本給（正社員: 月給、パート: 時給） |
+| overtimeAllowance | number | いいえ | 時間外手当（合計、円単位、デフォルト: 0）<br>※残業代計算により自動計算される |
+| lateNightAllowance | number | いいえ | 深夜手当（後方互換性のため残す、デフォルト: 0） |
 | mealAllowance | number | いいえ | 食事手当（デフォルト: 0） |
 | commutingAllowance | number | いいえ | 交通費（デフォルト: 0） |
 | housingAllowance | number | いいえ | 住宅手当（デフォルト: 0） |
 | allowances | object | いいえ | 手当IDをキーとした金額のマップ |
+| overtimeCalculation | OvertimeCalculation | いいえ | 残業代計算結果（監査用、オプション）<br>※詳細は[OVERTIME_CALCULATION_SPEC.md](./OVERTIME_CALCULATION_SPEC.md)を参照 |
 | totalEarnings | number | はい | 総支給額 |
 | socialInsurance | number | いいえ | 社会保険料（デフォルト: 0） |
 | employeePension | number | いいえ | 厚生年金保険料（デフォルト: 0） |
@@ -492,6 +493,253 @@ DELETE /payroll/pr001
 
 ---
 
+## 6. 給与明細メモ更新
+
+### エンドポイント
+
+```
+PATCH /payroll/{payrollId}/memo
+```
+
+### リクエスト
+
+#### パスパラメータ
+
+| パラメータ名 | 型 | 必須 | 説明 |
+|------------|-----|------|------|
+| payrollId | string | はい | 給与明細ID |
+
+#### リクエストボディ
+
+```json
+{
+  "memo": "備考情報をここに入力"
+}
+```
+
+#### リクエストボディのスキーマ
+
+| フィールド名 | 型 | 必須 | 説明 |
+|------------|-----|------|------|
+| memo | string \| null | いいえ | メモ（nullの場合はメモを削除） |
+
+#### リクエスト例
+
+```bash
+PATCH /payroll/pr001/memo
+Content-Type: application/json
+Authorization: Bearer {access_token}
+
+{
+  "memo": "備考情報をここに入力"
+}
+```
+
+### レスポンス
+
+#### 成功時（200 OK）
+
+```json
+{
+  "id": "pr001",
+  "employeeId": "emp001",
+  "employeeName": "山田 太郎",
+  "companyName": "株式会社A・1インテリア",
+  "period": "2024年 1月",
+  "memo": "備考情報をここに入力",
+  "detail": {
+    "workingDays": 22,
+    "holidayWork": 0,
+    "paidLeave": 2,
+    "paidLeaveRemaining": 18,
+    "paidLeaveRemainingDate": "2024-01-31",
+    "normalOvertime": 10,
+    "lateNightOvertime": 2,
+    "baseSalary": 300000,
+    "overtimeAllowance": 50000,
+    "lateNightAllowance": 10000,
+    "mealAllowance": 5000,
+    "commutingAllowance": 15000,
+    "housingAllowance": 20000,
+    "allowances": {
+      "allowance001": 10000,
+      "allowance002": 5000
+    },
+    "totalEarnings": 405000,
+    "socialInsurance": 50000,
+    "employeePension": 40000,
+    "employmentInsurance": 2000,
+    "municipalTax": 15000,
+    "incomeTax": 10000,
+    "deductions": {
+      "deduction001": 3000
+    },
+    "totalDeductions": 120000,
+    "netPay": 285000
+  },
+  "createdAt": "2024-02-01T10:00:00Z",
+  "updatedAt": "2024-02-01T10:30:00Z"
+}
+```
+
+#### エラーレスポンス
+
+**404 Not Found**
+
+```json
+{
+  "error": "NotFound",
+  "message": "指定された給与明細が見つかりません"
+}
+```
+
+**403 Forbidden**
+
+```json
+{
+  "error": "Forbidden",
+  "message": "給与明細のメモを更新する権限がありません"
+}
+```
+
+**注意事項**:
+- 管理者のみが給与明細のメモを更新可能
+- 従業員は自分の給与明細のメモのみ更新可能（将来的に権限を拡張する場合を考慮）
+- `memo`フィールドに`null`を指定すると、メモを削除します
+
+---
+
+## 7. 残業代計算
+
+### エンドポイント
+
+```
+POST /payroll/calculate-overtime
+```
+
+### リクエスト
+
+#### ヘッダー
+
+```
+Authorization: Bearer {access_token}
+Content-Type: application/json
+```
+
+#### リクエストボディ
+
+```json
+{
+  "employeeId": "emp001",
+  "startDateTime": "2025-12-15T09:00:00Z",
+  "endDateTime": "2025-12-15T20:30:00Z",
+  "breakMinutes": 90,
+  "workDate": "2025-12-15"
+}
+```
+
+#### リクエストボディのスキーマ
+
+| フィールド名 | 型 | 必須 | 説明 |
+|------------|-----|------|------|
+| employeeId | string | はい | 従業員ID |
+| startDateTime | string | はい | 出勤日時（ISO 8601形式） |
+| endDateTime | string | はい | 退勤日時（ISO 8601形式） |
+| breakMinutes | number | はい | 休憩時間（分単位） |
+| workDate | string | はい | 勤務日（YYYY-MM-DD形式、開始日の日付） |
+
+#### リクエスト例
+
+```bash
+POST /payroll/calculate-overtime
+Content-Type: application/json
+Authorization: Bearer {access_token}
+
+{
+  "employeeId": "emp001",
+  "startDateTime": "2025-12-15T09:00:00Z",
+  "endDateTime": "2025-12-15T20:30:00Z",
+  "breakMinutes": 90,
+  "workDate": "2025-12-15"
+}
+```
+
+### レスポンス
+
+#### 成功時（200 OK）
+
+```json
+{
+  "overtimeByTimeSlot": {
+    "05:00-08:44": 0,
+    "18:16-21:59": 134,
+    "22:00-04:59": 0
+  },
+  "overtimeAllowanceByTimeSlot": {
+    "05:00-08:44": 0,
+    "18:16-21:59": 43542,
+    "22:00-04:59": 0
+  },
+  "overtimeRate": 15610,
+  "totalOvertimeAllowance": 43542,
+  "totalWorkMinutes": 600,
+  "prescribedWorkMinutes": 450,
+  "overtimeMinutes": 150
+}
+```
+
+#### レスポンスボディのスキーマ
+
+| フィールド名 | 型 | 説明 |
+|------------|-----|------|
+| overtimeByTimeSlot | object | 時間帯別の残業時間（分単位） |
+| overtimeByTimeSlot["05:00-08:44"] | number | 05:00-08:44時間帯の残業時間（分） |
+| overtimeByTimeSlot["18:16-21:59"] | number | 18:16-21:59時間帯の残業時間（分） |
+| overtimeByTimeSlot["22:00-04:59"] | number | 22:00-04:59時間帯の残業時間（分） |
+| overtimeAllowanceByTimeSlot | object | 時間帯別の残業代（円単位、切り上げ済み） |
+| overtimeAllowanceByTimeSlot["05:00-08:44"] | number | 05:00-08:44時間帯の残業代（円） |
+| overtimeAllowanceByTimeSlot["18:16-21:59"] | number | 18:16-21:59時間帯の残業代（円） |
+| overtimeAllowanceByTimeSlot["22:00-04:59"] | number | 22:00-04:59時間帯の残業代（円） |
+| overtimeRate | number | 残業単価（円/時間、正社員の場合のみ） |
+| totalOvertimeAllowance | number | 合計残業代（円単位、切り上げ済み） |
+| totalWorkMinutes | number | 実労働時間（分単位、休憩時間除く） |
+| prescribedWorkMinutes | number | 所定労働時間（分単位、正社員: 450分、パート: 個人ごとに異なる） |
+| overtimeMinutes | number | 残業時間（分単位、正社員の場合のみ、パートは0） |
+
+#### エラーレスポンス
+
+**400 Bad Request**
+
+```json
+{
+  "error": "BadRequest",
+  "message": "必須項目が不足しています",
+  "details": [
+    {
+      "field": "employeeId",
+      "message": "従業員IDは必須です"
+    }
+  ]
+}
+```
+
+**404 Not Found**
+
+```json
+{
+  "error": "NotFound",
+  "message": "指定された従業員が見つかりません"
+}
+```
+
+**注意事項**:
+- 残業代の計算は全てAPI側で実施します（クライアント側の時刻の誤差を防ぐため）
+- 詳細な計算ルールは[OVERTIME_CALCULATION_SPEC.md](./OVERTIME_CALCULATION_SPEC.md)を参照してください
+- パートの場合は、残業判定を行わず、実労働時間 × 基本給（時給）で計算します
+- `overtimeRate`は正社員の場合のみ返却されます（パートの場合は`null`）
+
+---
+
 ## データモデル
 
 ### PayrollRecord
@@ -503,9 +751,33 @@ interface PayrollRecord {
   employeeName: string;          // 従業員名
   companyName: string;           // 会社名
   period: string;                // 給与期間（例: "2024年 1月"）
+  memo?: string | null;          // メモ（オプション）
   detail: PayrollDetail;         // 給与明細の詳細情報
   createdAt: string;             // 作成日時（ISO 8601）
   updatedAt: string;             // 更新日時（ISO 8601）
+  updatedBy?: string;            // 更新者（オプション）
+}
+
+interface OvertimeCalculation {
+  // 時間帯別の残業時間（分単位）
+  overtimeByTimeSlot: {
+    "05:00-08:44": number;      // 平日・土曜: 1.25倍、日曜: 1.50倍
+    "18:16-21:59": number;      // 1.25倍（全曜日）
+    "22:00-04:59": number;      // 1.50倍（全曜日）
+  };
+  
+  // 時間帯別の残業代（円単位、切り上げ済み）
+  overtimeAllowanceByTimeSlot: {
+    "05:00-08:44": number;
+    "18:16-21:59": number;
+    "22:00-04:59": number;
+  };
+  
+  // 残業単価（正社員の場合のみ、円/時間）
+  overtimeRate?: number;
+  
+  // 合計残業代（円単位、切り上げ済み）
+  totalOvertimeAllowance: number;
 }
 
 interface PayrollDetail {
@@ -514,15 +786,16 @@ interface PayrollDetail {
   paidLeave: number;             // 有給休暇日数
   paidLeaveRemaining: number;    // 有給残日数
   paidLeaveRemainingDate: string; // 有給残の時点（YYYY-MM-DD）
-  normalOvertime: number;        // 普通残業時間
-  lateNightOvertime: number;     // 深夜残業時間
-  baseSalary: number;            // 基本給
-  overtimeAllowance: number;     // 時間外手当
-  lateNightAllowance: number;    // 深夜手当
+  normalOvertime: number;        // 普通残業時間（時間単位、後方互換性のため残す）
+  lateNightOvertime: number;     // 深夜残業時間（時間単位、後方互換性のため残す）
+  baseSalary: number;            // 基本給（正社員: 月給、パート: 時給）
+  overtimeAllowance: number;     // 時間外手当（合計、円単位）
+  lateNightAllowance: number;    // 深夜手当（後方互換性のため残す）
   mealAllowance: number;         // 食事手当
   commutingAllowance: number;    // 交通費
   housingAllowance: number;      // 住宅手当
   allowances: { [key: string]: number };  // 手当IDをキーとした金額のマップ
+  overtimeCalculation?: OvertimeCalculation;  // 残業代計算結果（監査用、オプション）
   totalEarnings: number;         // 総支給額
   socialInsurance: number;       // 社会保険料
   employeePension: number;       // 厚生年金保険料
@@ -552,6 +825,11 @@ interface PayrollDetail {
    - `totalDeductions` = 各種控除の合計
    - `netPay` = `totalEarnings` - `totalDeductions`
    - 計算値の自動計算と検証を実装
+   - **残業代計算**: 残業代の計算は[OVERTIME_CALCULATION_SPEC.md](./OVERTIME_CALCULATION_SPEC.md)に従って実施
+     - 正社員: 所定労働時間（7.5時間/日）を超えた時間のみ残業として計算
+     - パート: 残業判定なし（実労働時間 × 基本給（時給））
+     - 残業代計算結果は`overtimeCalculation`フィールドに保存（監査用）
 5. **トランザクション**: RDSでの更新処理は適切にトランザクション管理
 6. **エラーハンドリング**: 適切なHTTPステータスコードとエラーメッセージを返却
+
 

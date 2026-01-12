@@ -2,61 +2,86 @@
   "employees": [
     {
       "id": "EMP001",
-      "name": "山田太郎",
-      "employmentType": "正社員",
+      "firstName": "山田",
+      "lastName": "太郎",
+      "employmentType": "FULL_TIME",
       "email": "yamada@example.com",
       "joinDate": "2020-04-01",
       "leaveDate": null,
       "allowances": ["allowance1", "allowance2"],
       "isAdmin": true,
       "baseSalary": 2500,
-      "paidLeaveDays": 10,
+      "paidLeaves": [
+        {
+          "grantDate": "2024-04-01",
+          "days": 10
+        }
+      ],
       "createdAt": "2020-04-01T00:00:00.000Z",
       "updatedAt": "2024-12-15T10:30:00.000Z"
     },
     {
       "id": "EMP002",
-      "name": "佐藤花子",
-      "employmentType": "パート",
+      "firstName": "佐藤",
+      "lastName": "花子",
+      "employmentType": "PART_TIME",
       "email": "sato@example.com",
       "joinDate": "2021-06-15",
       "leaveDate": null,
       "allowances": ["allowance1"],
       "isAdmin": false,
       "baseSalary": 1200,
-      "paidLeaveDays": 5,
+      "paidLeaves": [
+        {
+          "grantDate": "2024-04-01",
+          "days": 5
+        }
+      ],
       "createdAt": "2021-06-15T00:00:00.000Z",
       "updatedAt": "2024-12-14T14:20:00.000Z"
     },
     {
       "id": "EMP003",
-      "name": "鈴木一郎",
-      "employmentType": "正社員",
+      "firstName": "鈴木",
+      "lastName": "一郎",
+      "employmentType": "FULL_TIME",
       "email": "suzuki@example.com",
       "joinDate": "2019-03-01",
       "leaveDate": null,
       "allowances": ["allowance1", "allowance3"],
       "isAdmin": false,
       "baseSalary": 2800,
-      "paidLeaveDays": 15,
+      "paidLeaves": [
+        {
+          "grantDate": "2024-04-01",
+          "days": 15
+        }
+      ],
       "createdAt": "2019-03-01T00:00:00.000Z",
       "updatedAt": "2024-12-10T09:15:00.000Z"
     },
     {
       "id": "EMP004",
-      "name": "田中次郎",
-      "employmentType": "パート",
+      "firstName": "田中",
+      "lastName": "次郎",
+      "employmentType": "PART_TIME",
       "email": "tanaka@example.com",
       "joinDate": "2022-09-01",
       "leaveDate": null,
       "allowances": [],
       "isAdmin": false,
       "baseSalary": 1100,
-      "paidLeaveDays": 3,
+      "paidLeaves": [
+        {
+          "grantDate": "2024-04-01",
+          "days": 3
+        }
+      ],
       "createdAt": "2022-09-01T00:00:00.000Z",
       "updatedAt": "2024-12-12T11:00:00.000Z"
     }
   ]
 }
+
 
 

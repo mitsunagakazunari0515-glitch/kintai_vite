@@ -11,7 +11,19 @@
 
 ## API一覧
 
-### 1. 従業員API
+### 1. 認証認可API
+
+Cognitoでの認証後、従業員情報を取得してロール（管理者/従業員）を判定するAPIです。
+
+- [認証認可API IF仕様書](./API_SPEC_AUTH.md)
+
+**エンドポイント一覧**:
+- `GET /auth/authorize` - 認可情報取得
+- `POST /auth/refresh-authorization` - 認可情報更新（トークンリフレッシュ時）
+
+---
+
+### 2. 従業員API
 
 従業員情報の取得、作成、更新、削除を行うAPIです。
 
@@ -26,7 +38,7 @@
 
 ---
 
-### 2. 勤怠API
+### 3. 勤怠API
 
 従業員の出勤・退勤打刻、勤怠記録の取得・更新を行うAPIです。
 
@@ -40,10 +52,11 @@
 - `POST /attendance/{attendanceId}/break/start` - 休憩開始
 - `POST /attendance/{attendanceId}/break/{breakId}/end` - 休憩終了
 - `PUT /attendance/{attendanceId}` - 勤怠記録更新（管理者用）
+- `PATCH /attendance/{attendanceId}/memo` - 勤怠記録メモ更新
 
 ---
 
-### 3. 休暇申請API
+### 4. 休暇申請API
 
 従業員の休暇申請の作成、取得、更新、承認・却下を行うAPIです。
 
@@ -60,7 +73,7 @@
 
 ---
 
-### 4. 打刻修正申請API
+### 5. 打刻修正申請API
 
 従業員の勤怠打刻修正申請の作成、取得、承認・却下を行うAPIです。
 
@@ -77,7 +90,7 @@
 
 ---
 
-### 5. 給与明細API
+### 6. 給与明細API
 
 給与明細の作成、取得、更新、削除を行うAPIです。
 
@@ -89,10 +102,15 @@
 - `POST /payroll` - 給与明細作成
 - `PUT /payroll/{payrollId}` - 給与明細更新
 - `DELETE /payroll/{payrollId}` - 給与明細削除
+- `PATCH /payroll/{payrollId}/memo` - 給与明細メモ更新
+- `POST /payroll/calculate-overtime` - 残業代計算
+
+**関連仕様書**:
+- [残業代計算仕様書](./OVERTIME_CALCULATION_SPEC.md)
 
 ---
 
-### 6. 手当マスタAPI
+### 7. 手当マスタAPI
 
 従業員に付与する手当のマスタデータを管理するAPIです。
 
@@ -107,7 +125,7 @@
 
 ---
 
-### 7. 控除マスタAPI
+### 8. 控除マスタAPI
 
 給与明細で使用する控除項目のマスタデータを管理するAPIです。
 
@@ -200,4 +218,5 @@ Authorization: Bearer {access_token}
 - `deductions` - 控除マスタテーブル
 
 詳細なスキーマ設計は別途資料を参照してください。
+
 

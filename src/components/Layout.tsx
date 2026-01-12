@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Header } from './Header';
 import { Navigation } from './Navigation';
@@ -20,8 +21,14 @@ interface LayoutProps {
  */
 export const Layout: React.FC<LayoutProps> = ({ children }) => {
   const { userRole } = useAuth();
+  const location = useLocation();
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const [pendingRequestCount, setPendingRequestCount] = useState(0);
+
+  // 従業員画面（/employee/*）にアクセスしている場合は、常に従業員として扱う
+  // 管理者であっても、従業員画面内では従業員権限で動作する
+  const isEmployeeScreen = location.pathname.startsWith('/employee/');
+  const displayRole = isEmployeeScreen ? 'employee' : (userRole || 'employee');
 
   useEffect(() => {
     const handleResize = () => {
@@ -32,10 +39,12 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
   }, []);
 
   // 未対応申請数を計算（ダミーデータから）
+  // 従業員画面では申請数は表示しない（管理者画面のみ）
   useEffect(() => {
     // 実際の実装では、APIから取得するか、グローバルな状態管理を使用
     // ここでは申請確認画面と同じダミーデータを使用
-    if (userRole === 'admin') {
+    // 従業員画面では申請数は0にする
+    if (displayRole === 'admin' && !isEmployeeScreen) {
       const leaveRequests = [
         { id: 'leave-1', status: '申請中' },
         { id: 'leave-2', status: '申請中' },
@@ -50,8 +59,10 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
       const pendingLeaveCount = leaveRequests.filter(req => req.status === '申請中').length;
       const pendingAttendanceCount = attendanceRequests.filter(req => req.status === '申請中').length;
       setPendingRequestCount(pendingLeaveCount + pendingAttendanceCount);
+    } else {
+      setPendingRequestCount(0);
     }
-  }, [userRole]);
+  }, [displayRole, isEmployeeScreen]);
 
   // ヘッダーとナビゲーションの高さを計算
   const headerHeight = isMobile ? 60 : 60; // モバイル: 約60px, PC: 約60px
@@ -67,13 +78,13 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     }}>
       <Header 
         isMobile={isMobile} 
-        userRole={userRole || 'employee'} 
+        userRole={displayRole} 
         pendingRequestCount={pendingRequestCount}
       />
       {!isMobile && (
         <Navigation 
           isMobile={isMobile} 
-          userRole={userRole || 'employee'} 
+          userRole={displayRole} 
           pendingRequestCount={pendingRequestCount}
         />
       )}

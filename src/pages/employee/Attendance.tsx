@@ -16,8 +16,24 @@ import { Button, CancelButton, RegisterButton, DeleteButton, EditButton } from '
 import { Snackbar } from '../../components/Snackbar';
 import { formatDate, formatTime } from '../../utils/formatters';
 import { fontSizes } from '../../config/fontSizes';
-import { dummyEmployeeAttendanceLogs } from '../../data/dummyData';
-import { PlusIcon } from '../../components/Icons';
+import { PlusIcon, WarningIcon } from '../../components/Icons';
+import { 
+  clockIn, 
+  clockOut, 
+  startBreak,
+  endBreak,
+  updateAttendance,
+  getAttendanceList,
+  getAttendanceMyRecords,
+  AttendanceLog as ApiAttendanceLog,
+  Break as ApiBreak,
+  BreakRequest,
+  AttendanceSummary
+} from '../../utils/attendanceApi';
+import { error as logError } from '../../utils/logger';
+import { translateApiError } from '../../utils/apiErrorTranslator';
+import { getAttendanceStatusLabel, getAttendanceStatusStyle } from '../../utils/codeTranslator';
+import { getUserInfo } from '../../config/apiConfig';
 
 /**
  * 休憩時間を表すインターフェース。
@@ -27,6 +43,10 @@ interface Break {
   start: string;
   /** 休憩終了時刻。nullの場合は休憩中。 */
   end: string | null;
+  /** 休憩開始時刻（ISO 8601形式）。「翌朝」表示に使用。 */
+  startIso: string;
+  /** 休憩終了時刻（ISO 8601形式）。nullの場合は休憩中。「翌朝」表示に使用。 */
+  endIso: string | null;
 }
 
 /**
@@ -41,11 +61,195 @@ interface AttendanceLog {
   clockIn: string | null;
   /** 退勤時刻。nullの場合は未退勤。 */
   clockOut: string | null;
+  /** 出勤時刻（ISO 8601形式）。日付をまたぐ判定に使用。 */
+  clockInIso: string | null;
+  /** 退勤時刻（ISO 8601形式）。日付をまたぐ判定と「翌朝」表示に使用。 */
+  clockOutIso: string | null;
   /** 休憩時間の配列（複数回の休憩に対応）。 */
   breaks: Break[];
   /** 勤怠ステータス。 */
   status: '未出勤' | '出勤中' | '休憩中' | '退勤済み';
 }
+
+/**
+ * APIのAttendanceLogをUI用のAttendanceLogに変換
+ */
+const convertApiLogToUiLog = (apiLog: ApiAttendanceLog): AttendanceLog => {
+  // APIのclockIn/clockOutはISO 8601形式（UTC形式）
+  // Dateオブジェクトを使ってUTC→JSTに変換する（UTC+9時間）
+  const extractTime = (isoString: string | null): string | null => {
+    if (!isoString) return null;
+    try {
+      // ISO 8601形式（UTC）をDateオブジェクトに変換
+      const date = new Date(isoString);
+      // JST時刻を取得（getHours/getMinutesはローカルタイムゾーンで取得される）
+      const hours = date.getHours();
+      const minutes = date.getMinutes();
+      return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+    } catch {
+      return null;
+    }
+  };
+
+  // APIのbreaksをUI用のbreaksに変換
+  const convertBreaks = (apiBreaks: ApiBreak[]): Break[] => {
+    return apiBreaks.map(apiBreak => ({
+      start: extractTime(apiBreak.start) || '',
+      end: apiBreak.end ? extractTime(apiBreak.end) : null,
+      startIso: apiBreak.start, // ISO 8601形式を保持（「翌朝」表示に使用）
+      endIso: apiBreak.end || null // ISO 8601形式を保持（「翌朝」表示に使用）
+      // 注意: UI用のBreakインターフェースにはidフィールドがないため、マッピングしない
+    }));
+  };
+
+  // APIから返される英語コード（not_started, working, on_break, completed）を日本語に変換
+  // UI側では日本語のステータス（'未出勤' | '出勤中' | '休憩中' | '退勤済み'）を使用
+  const convertStatus = (apiStatus: string): '未出勤' | '出勤中' | '休憩中' | '退勤済み' => {
+    const statusMap: Record<string, '未出勤' | '出勤中' | '休憩中' | '退勤済み'> = {
+      'not_started': '未出勤',
+      'working': '出勤中',
+      'on_break': '休憩中',
+      'completed': '退勤済み'
+    };
+    return statusMap[apiStatus] || '未出勤';
+  };
+
+  return {
+    id: apiLog.attendanceId, // APIレスポンスのattendanceIdをidにマッピング
+    date: apiLog.workDate, // APIレスポンスのworkDateをdateにマッピング
+    clockIn: extractTime(apiLog.clockIn),
+    clockOut: extractTime(apiLog.clockOut),
+    clockInIso: apiLog.clockIn, // ISO 8601形式を保持（日付をまたぐ判定に使用）
+    clockOutIso: apiLog.clockOut, // ISO 8601形式を保持（日付をまたぐ判定と「翌朝」表示に使用）
+    breaks: convertBreaks(apiLog.breaks),
+    status: convertStatus(apiLog.status)
+  };
+};
+
+/**
+ * UI用の時刻文字列をISO 8601形式に変換
+ */
+const convertTimeToIso = (date: string, time: string): string => {
+  return `${date}T${time}:00`;
+};
+
+/**
+ * 分をHH:MM形式に変換
+ */
+const formatMinutesToTime = (minutes: number): string => {
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+};
+
+/**
+ * 時刻を表示用に変換します（5時未満の場合は「翌朝」を付与）
+ * TIME_CALCULATION_GUIDE.mdに基づく実装
+ * 出勤時刻、退勤時刻、休憩時間すべてに適用
+ * APIレスポンスの時刻はISO 8601形式（UTC形式）
+ * Dateオブジェクトを使ってUTC→JSTに変換する（UTC+9時間）
+ * @param timeIso 時刻（ISO 8601形式、UTC）
+ * @returns 表示用の文字列（例: "08:00" または "翌朝04:00"）
+ */
+const formatTimeWithNextDay = (timeIso: string | null): string => {
+  if (!timeIso) {
+    return '-';
+  }
+  
+  try {
+    // ISO 8601形式（UTC）をDateオブジェクトに変換
+    const date = new Date(timeIso);
+    // JST時刻を取得（getHours/getMinutesはローカルタイムゾーンで取得される）
+    const hours = date.getHours();
+    const minutes = date.getMinutes();
+    
+    // 5時未満（0時〜4時59分59秒）の場合は「翌朝」を付与
+    if (hours < 5) {
+      return `翌朝${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+    }
+    
+    // 5時以降の場合は通常の時刻表記
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+  } catch {
+    return '-';
+  }
+};
+
+/**
+ * 勤怠ログから実働時間を計算
+ * TIME_CALCULATION_GUIDE.mdに基づく実装（日付をまたぐ勤務に対応）
+ * @param log 勤怠ログ
+ * @returns 実働時間（HH:MM形式、計算できない場合は'-'）
+ */
+const calculateWorkTime = (log: AttendanceLog): string => {
+  if (!log.clockInIso || !log.clockOutIso) {
+    return '-';
+  }
+
+  try {
+    // APIレスポンスの時刻はISO 8601形式（UTC形式）
+    // Dateオブジェクトを使ってUTC→JSTに変換する（UTC+9時間）
+    const clockInDate = new Date(log.clockInIso);
+    const clockOutDate = new Date(log.clockOutIso);
+    
+    // JST時刻を取得（getHours/getMinutes/getDateはローカルタイムゾーンで取得される）
+    const clockInHour = clockInDate.getHours();
+    const clockInMinute = clockInDate.getMinutes();
+    const clockInDay = clockInDate.getDate();
+    const clockOutHour = clockOutDate.getHours();
+    const clockOutMinute = clockOutDate.getMinutes();
+    const clockOutDay = clockOutDate.getDate();
+    
+    // 日時を分に変換
+    const inMinutes = clockInHour * 60 + clockInMinute;
+    let outMinutes = clockOutHour * 60 + clockOutMinute;
+    
+    // 日付をまたぐ場合の判定
+    // 同じ日付内で退勤時刻が出勤時刻より前の場合は日付をまたぐ（例: 23時出勤→翌朝4時退勤）
+    // または、退勤日の日付が出勤日の日付より後（または1日後）の場合は日付をまたぐ
+    if (clockOutDay > clockInDay || (clockOutDay === clockInDay && outMinutes < inMinutes)) {
+      // 退勤時刻に24時間（1440分）を加算
+      outMinutes += 24 * 60;
+    }
+
+    // 休憩時間を計算
+    let breakMinutes = 0;
+    if (log.breaks && log.breaks.length > 0) {
+      log.breaks.forEach(breakItem => {
+        if (breakItem.start && breakItem.end) {
+          try {
+            // 休憩時間も時刻文字列から分に変換
+            const [bStartHour, bStartMinute] = breakItem.start.split(':').map(Number);
+            const [bEndHour, bEndMinute] = breakItem.end.split(':').map(Number);
+            const bStartMinutes = bStartHour * 60 + bStartMinute;
+            let bEndMinutes = bEndHour * 60 + bEndMinute;
+            
+            // 休憩が日付をまたぐ場合（終了時刻が開始時刻より前の場合）
+            if (bEndMinutes < bStartMinutes) {
+              bEndMinutes += 24 * 60;
+            }
+            
+            breakMinutes += Math.max(0, bEndMinutes - bStartMinutes);
+          } catch {
+            // エラーが発生した場合はスキップ
+          }
+        }
+      });
+    }
+
+    // 実働時間を計算（退勤時刻 - 出勤時刻 - 休憩時間）
+    const workMinutes = outMinutes - inMinutes - breakMinutes;
+    if (workMinutes < 0) {
+      return '-';
+    }
+
+    const workHours = Math.floor(workMinutes / 60);
+    const workMins = workMinutes % 60;
+    return `${String(workHours).padStart(2, '0')}:${String(workMins).padStart(2, '0')}`;
+  } catch {
+    return '-';
+  }
+};
 
 /**
  * 表示モードを表す型。
@@ -60,6 +264,11 @@ type ViewMode = 'stamp' | 'edit' | 'list';
  */
 export const Attendance: React.FC = () => {
   const { userId } = useAuth();
+  // 認可APIから取得したemployeeIdを使用（userIdはCognitoのユーザーIDで、APIが期待するemployeeIdとは異なる）
+  const getEmployeeId = (): string | null => {
+    const userInfo = getUserInfo();
+    return userInfo.employeeId;
+  };
   // 昨日の日付を取得（退勤時刻未登録エラーのテスト用）
   const getYesterdayDate = () => {
     const yesterday = new Date();
@@ -74,32 +283,8 @@ export const Attendance: React.FC = () => {
     return dayBeforeYesterday.toISOString().split('T')[0];
   };
 
-  const [logs, setLogs] = useState<AttendanceLog[]>(
-    [
-      // 退勤時刻未登録のテスト用ダミーデータ（昨日の日付で出勤打刻のみ）
-      {
-        id: 'test-missing-clockout-yesterday',
-        date: getYesterdayDate(),
-        clockIn: '09:00',
-        clockOut: null,
-        breaks: [{ start: '12:00', end: '13:00' }],
-        status: '出勤中'
-      },
-      // 退勤時刻未登録のテスト用ダミーデータ（一昨日の日付で出勤打刻のみ）
-      {
-        id: 'test-missing-clockout-day-before-yesterday',
-        date: getDayBeforeYesterdayDate(),
-        clockIn: '09:15',
-        clockOut: null,
-        breaks: [{ start: '12:15', end: '13:15' }],
-        status: '出勤中'
-      },
-      ...dummyEmployeeAttendanceLogs.map(log => ({
-        ...log,
-        status: log.status as '未出勤' | '出勤中' | '休憩中' | '退勤済み'
-      }))
-    ]
-  );
+  const [logs, setLogs] = useState<AttendanceLog[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(false); // 初期表示時はAPIを呼ばないため、falseに変更
   const [todayLog, setTodayLog] = useState<AttendanceLog | null>(null);
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const [viewMode, setViewMode] = useState<ViewMode>('stamp');
@@ -109,8 +294,10 @@ export const Attendance: React.FC = () => {
   const [editBreaks, setEditBreaks] = useState<Break[]>([]);
   const [selectedLog, setSelectedLog] = useState<AttendanceLog | null>(null);
   const [now, setNow] = useState<Date>(new Date());
-  const [selectedYear, setSelectedYear] = useState<number>(2025);
-  const [selectedMonth, setSelectedMonth] = useState<number>(11);
+  const currentDate = new Date();
+  const [selectedYear, setSelectedYear] = useState<number>(currentDate.getFullYear());
+  const [selectedMonth, setSelectedMonth] = useState<number>(currentDate.getMonth() + 1);
+  const [summary, setSummary] = useState<AttendanceSummary | null>(null);
   const [showSummary, setShowSummary] = useState<boolean>(false);
   const [missingClockOutError, setMissingClockOutError] = useState<{ date: string; clockIn: string } | null>(null);
   const [snackbar, setSnackbar] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -158,6 +345,110 @@ export const Attendance: React.FC = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  // 打刻タブ：本日の日付で勤怠記録一覧取得APIを呼び出す
+  useEffect(() => {
+    const fetchTodayAttendance = async () => {
+      if (viewMode !== 'stamp') {
+        return; // 打刻タブでない場合は実行しない
+      }
+
+      const employeeId = getEmployeeId();
+      if (!employeeId) {
+        logError('Employee ID is not available. Please ensure you are logged in and authorized.');
+        setSnackbar({ message: '従業員IDが取得できませんでした。ログインし直してください。', type: 'error' });
+        setTimeout(() => setSnackbar(null), 5000);
+        return;
+      }
+
+      try {
+        setIsLoading(true);
+        const today = getTodayDate();
+
+        // 本日の日付のみでAPIを呼び出し
+        const response = await getAttendanceList(employeeId, today, today);
+        
+        // APIレスポンスをUI用の形式に変換
+        const convertedLogs = response.logs.map(apiLog => convertApiLogToUiLog(apiLog));
+
+        // 本日の勤怠データを取得（まず今日の日付で検索）
+        let todayLogData = convertedLogs.find(log => log.date === today);
+        // 今日の日付で見つからない場合は、レスポンスにデータがある場合は最初のログを使用
+        if (!todayLogData && convertedLogs.length > 0) {
+          todayLogData = convertedLogs[0];
+        }
+        if (todayLogData) {
+          setTodayLog(todayLogData);
+        } else {
+          // データがない場合はnullに設定
+          setTodayLog(null);
+        }
+      } catch (error) {
+        logError('Failed to fetch today attendance:', error);
+        console.error('❌ fetchTodayAttendance - Error:', error);
+        
+        // エラーメッセージを表示（ログイン画面へのリダイレクトは行わない）
+        const errorMessage = translateApiError(error);
+        setSnackbar({ message: errorMessage, type: 'error' });
+        setTimeout(() => setSnackbar(null), 5000);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchTodayAttendance();
+  }, [viewMode]); // viewModeが'stamp'の時に実行
+
+  // 出勤簿タブ：検索年月で勤怠記録一覧取得APIを呼び出す
+  useEffect(() => {
+    const fetchMonthAttendance = async () => {
+      if (viewMode !== 'list') {
+        return; // 出勤簿タブでない場合は実行しない
+      }
+
+      const employeeId = getEmployeeId();
+      if (!employeeId) {
+        logError('Employee ID is not available. Please ensure you are logged in and authorized.');
+        setSnackbar({ message: '従業員IDが取得できませんでした。ログインし直してください。', type: 'error' });
+        setTimeout(() => setSnackbar(null), 5000);
+        return;
+      }
+
+      try {
+        setIsLoading(true);
+
+        // 出勤簿一覧APIを呼び出し（year, month, employeeIdを使用）
+        const year = String(selectedYear);
+        const month = String(selectedMonth).padStart(2, '0');
+        const response = await getAttendanceMyRecords(year, month, employeeId);
+        
+        // サマリー情報を設定
+        setSummary(response.summary);
+        
+        // APIレスポンスをUI用の形式に変換
+        const convertedLogs = response.logs.map(apiLog => convertApiLogToUiLog(apiLog));
+        setLogs(convertedLogs);
+
+        // 本日の勤怠データも更新（もし本日が選択された月に含まれる場合）
+        const today = getTodayDate();
+        const todayLogData = convertedLogs.find(log => log.date === today);
+        if (todayLogData) {
+          setTodayLog(todayLogData);
+        }
+      } catch (error) {
+        logError('Failed to fetch attendance list:', error);
+        
+        // エラーメッセージを表示（ログイン画面へのリダイレクトは行わない）
+        const errorMessage = translateApiError(error);
+        setSnackbar({ message: errorMessage, type: 'error' });
+        setTimeout(() => setSnackbar(null), 5000);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchMonthAttendance();
+  }, [viewMode, selectedYear, selectedMonth]); // viewModeが'list'の時、またはselectedYear/selectedMonthが変更された時に実行
+
   useEffect(() => {
     const timer = setInterval(() => {
       setNow(new Date());
@@ -165,10 +456,11 @@ export const Attendance: React.FC = () => {
     return () => clearInterval(timer);
   }, []);
 
-  // 退勤打刻がされていない日付を取得
+  // 退勤打刻がされていない日付を取得（過去日付で出勤のみのデータも含む）
   const getMissingClockOutDates = (): string[] => {
     const now = new Date();
     const currentHour = now.getHours();
+    const today = now.toISOString().split('T')[0];
     const missingDates: string[] = [];
     
     // 現在時刻が5時以降の場合、昨日以降のログをチェック
@@ -194,6 +486,20 @@ export const Attendance: React.FC = () => {
         // 29時（翌日の5時）を過ぎた日付かチェック
         if (daysDiff >= 1 && now.getHours() >= 5) {
           missingDates.push(log.date);
+        }
+      }
+    });
+    
+    // 過去日付（今日より前）で出勤のみのデータを検出
+    logs.forEach(log => {
+      if (log.clockIn && !log.clockOut) {
+        const logDate = log.date;
+        // 今日より前の日付で、出勤のみ（退勤なし）のデータ
+        if (logDate < today) {
+          // 既に追加されていない場合のみ追加
+          if (!missingDates.includes(logDate)) {
+            missingDates.push(logDate);
+          }
         }
       }
     });
@@ -275,7 +581,12 @@ export const Attendance: React.FC = () => {
   const missingClockOutDates = getMissingClockOutDates();
 
   const getTodayDate = () => {
-    return new Date().toISOString().split('T')[0];
+    // ローカル時刻で本日の日付を取得（変換不要）
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   };
 
   const getCurrentTime = () => {
@@ -285,35 +596,98 @@ export const Attendance: React.FC = () => {
   // 日付を統一フォーマットに変換（YYYY年MM月DD日）
   // 日付フォーマット関数（yyyy/mm/dd形式）
 
-  const handleClockIn = () => {
+  // 打刻API呼び出し後に最新の勤怠データを取得して反映する共通関数
+  const refreshAttendanceData = async () => {
     const today = getTodayDate();
-    const time = getCurrentTime();
-    const newLog: AttendanceLog = {
-      id: Date.now().toString(),
-      date: today,
-      clockIn: time,
-      clockOut: null,
-      breaks: [],
-      status: '出勤中'
-    };
-    setTodayLog(newLog);
-    setLogs([newLog, ...logs.filter(log => log.date !== today)]);
-  };
-
-  const handleClockOut = () => {
-    if (!todayLog) {
+    const employeeId = getEmployeeId();
+    if (!employeeId) {
       return;
     }
-    const time = getCurrentTime();
-    const updatedLog: AttendanceLog = {
-      ...todayLog,
-      clockOut: time,
-      status: '退勤済み'
-    };
-    setTodayLog(updatedLog);
-    setLogs(logs.map(log => 
-      log.date === getTodayDate() ? updatedLog : log
-    ));
+
+    try {
+      // 今日のデータを取得
+      const response = await getAttendanceList(employeeId, today, today);
+      const convertedLogs = response.logs.map(apiLog => convertApiLogToUiLog(apiLog));
+      // 本日の勤怠データを取得（まず今日の日付で検索）
+      let todayLogData = convertedLogs.find(log => log.date === today);
+      // 今日の日付で見つからない場合は、レスポンスにデータがある場合は最初のログを使用
+      if (!todayLogData && convertedLogs.length > 0) {
+        todayLogData = convertedLogs[0];
+      }
+      if (todayLogData) {
+        setTodayLog(todayLogData);
+      }
+
+      // 現在の日付が選択された月に含まれている場合、logsも更新
+      const todayDate = new Date(today);
+      if (todayDate.getFullYear() === selectedYear && todayDate.getMonth() + 1 === selectedMonth) {
+        // 選択された月のデータを再取得
+        const startDate = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-01`;
+        const lastDay = new Date(selectedYear, selectedMonth, 0).getDate();
+        const endDate = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+        const monthResponse = await getAttendanceList(employeeId, startDate, endDate);
+        const convertedMonthLogs = monthResponse.logs.map(apiLog => convertApiLogToUiLog(apiLog));
+        setLogs(convertedMonthLogs);
+      }
+    } catch (error) {
+      logError('Failed to refresh attendance data:', error);
+    }
+  };
+
+  const handleClockIn = async () => {
+    try {
+      const employeeId = getEmployeeId();
+      if (!employeeId) {
+        setSnackbar({ message: '従業員IDが取得できませんでした。', type: 'error' });
+        setTimeout(() => setSnackbar(null), 3000);
+        return;
+      }
+
+      // API仕様書に基づき、リクエストボディは不要です（日付と時刻はサーバー側で自動的に取得されます）
+      await clockIn();
+
+      // 最新の勤怠データを取得して反映
+      await refreshAttendanceData();
+
+      setSnackbar({ message: '出勤打刻を記録しました', type: 'success' });
+      setTimeout(() => setSnackbar(null), 3000);
+    } catch (error) {
+      logError('Failed to clock in:', error);
+      const errorMessage = error instanceof Error ? error.message : '出勤打刻に失敗しました';
+      setSnackbar({ message: errorMessage, type: 'error' });
+      setTimeout(() => setSnackbar(null), 3000);
+    }
+  };
+
+  const handleClockOut = async () => {
+    if (!todayLog) {
+      setSnackbar({ message: '出勤打刻がされていません', type: 'error' });
+      setTimeout(() => setSnackbar(null), 3000);
+      return;
+    }
+
+    try {
+      const employeeId = getEmployeeId();
+      if (!employeeId) {
+        setSnackbar({ message: '従業員IDが取得できませんでした。', type: 'error' });
+        setTimeout(() => setSnackbar(null), 3000);
+        return;
+      }
+
+      // API仕様書に基づき、リクエストボディは不要です（日付と時刻はサーバー側で自動的に取得されます）
+      await clockOut();
+
+      // 最新の勤怠データを取得して反映
+      await refreshAttendanceData();
+
+      setSnackbar({ message: '退勤打刻を記録しました', type: 'success' });
+      setTimeout(() => setSnackbar(null), 3000);
+    } catch (error) {
+      logError('Failed to clock out:', error);
+      const errorMessage = error instanceof Error ? error.message : '退勤打刻に失敗しました';
+      setSnackbar({ message: errorMessage, type: 'error' });
+      setTimeout(() => setSnackbar(null), 3000);
+    }
   };
 
   const handleEdit = (log: AttendanceLog) => {
@@ -325,46 +699,57 @@ export const Attendance: React.FC = () => {
     setViewMode('edit');
   };
 
-  const handleSaveEdit = () => {
-    if (!editDate || !editClockIn) {
+  const handleSaveEdit = async () => {
+    if (!editDate || !editClockIn || !selectedLog) {
+      setSnackbar({ message: '必須項目を入力してください', type: 'error' });
+      setTimeout(() => setSnackbar(null), 3000);
       return;
     }
 
-    let status: AttendanceLog['status'] = '未出勤';
-    if (editClockOut) {
-      status = '退勤済み';
-    } else if (editBreaks.some(b => b.start && !b.end)) {
-      status = '休憩中';
-    } else if (editClockIn) {
-      status = '出勤中';
-    }
+    try {
+      const employeeId = getEmployeeId();
+      if (!employeeId) {
+        setSnackbar({ message: '従業員IDを取得できませんでした', type: 'error' });
+        setTimeout(() => setSnackbar(null), 3000);
+        return;
+      }
 
-    const updatedLog: AttendanceLog = {
-      id: selectedLog?.id || Date.now().toString(),
-      date: editDate,
-      clockIn: editClockIn,
-      clockOut: editClockOut || null,
-      breaks: editBreaks,
-      status
-    };
+      // UI用のbreaksをAPI用のbreaksに変換（idは不要）
+      const apiBreaks: BreakRequest[] = editBreaks.map(breakItem => ({
+        start: convertTimeToIso(editDate, breakItem.start),
+        end: breakItem.end ? convertTimeToIso(editDate, breakItem.end) : null
+      }));
 
-    if (selectedLog) {
+      const apiLog = await updateAttendance({
+        employeeId,
+        workDate: editDate,
+        clockIn: editClockIn ? convertTimeToIso(editDate, editClockIn) : null,
+        clockOut: editClockOut ? convertTimeToIso(editDate, editClockOut) : null,
+        breaks: apiBreaks
+      });
+
+      const updatedLog = convertApiLogToUiLog(apiLog);
+
       setLogs(logs.map(log => log.id === selectedLog.id ? updatedLog : log));
-    } else {
-      setLogs([...logs, updatedLog]);
-    }
 
-    if (editDate === getTodayDate()) {
-      setTodayLog(updatedLog);
-    }
+      if (editDate === getTodayDate()) {
+        setTodayLog(updatedLog);
+      }
 
-    setSnackbar({ message: selectedLog ? '打刻を更新しました' : '打刻を登録しました', type: 'success' });
-    setViewMode('list');
-    setSelectedLog(null);
-    setEditDate('');
-    setEditClockIn('');
-    setEditClockOut('');
-    setEditBreaks([]);
+      setSnackbar({ message: '打刻を更新しました', type: 'success' });
+      setTimeout(() => setSnackbar(null), 3000);
+      setViewMode('list');
+      setSelectedLog(null);
+      setEditDate('');
+      setEditClockIn('');
+      setEditClockOut('');
+      setEditBreaks([]);
+    } catch (error) {
+      logError('Failed to update attendance:', error);
+      const errorMessage = error instanceof Error ? error.message : '打刻の更新に失敗しました';
+      setSnackbar({ message: errorMessage, type: 'error' });
+      setTimeout(() => setSnackbar(null), 3000);
+    }
   };
 
   const handleCancelEdit = () => {
@@ -453,35 +838,75 @@ export const Attendance: React.FC = () => {
     const absenceDays = 0; // 欠勤日数（実装が必要な場合は追加）
 
     // 実労働時間と実残業時間を計算
+    // calculateWorkTime関数を使用して一貫性を保つ（日付をまたぐ勤務に対応）
     let totalWorkMinutes = 0;
     let totalOvertimeMinutes = 0;
     monthLogs.forEach(log => {
-      if (log.clockIn && log.clockOut) {
-        const [inHour, inMinute] = log.clockIn.split(':').map(Number);
-        const [outHour, outMinute] = log.clockOut.split(':').map(Number);
-        const inMinutes = inHour * 60 + inMinute;
-        const outMinutes = outHour * 60 + outMinute;
-        
-        let breakMinutes = 0;
-        if (log.breaks && log.breaks.length > 0) {
-          log.breaks.forEach(breakItem => {
-            if (breakItem.start && breakItem.end) {
-              const [bStartHour, bStartMinute] = breakItem.start.split(':').map(Number);
-              const [bEndHour, bEndMinute] = breakItem.end.split(':').map(Number);
-              const bStartMinutes = bStartHour * 60 + bStartMinute;
-              const bEndMinutes = bEndHour * 60 + bEndMinute;
-              breakMinutes += Math.max(0, bEndMinutes - bStartMinutes);
+      if (log.clockInIso && log.clockOutIso) {
+        try {
+          // APIレスポンスの時刻はISO 8601形式（UTC形式）
+          // Dateオブジェクトを使ってUTC→JSTに変換する（UTC+9時間）
+          const clockInDate = new Date(log.clockInIso);
+          const clockOutDate = new Date(log.clockOutIso);
+          
+          // JST時刻を取得（getHours/getMinutes/getDateはローカルタイムゾーンで取得される）
+          const clockInHour = clockInDate.getHours();
+          const clockInMinute = clockInDate.getMinutes();
+          const clockInDay = clockInDate.getDate();
+          const clockOutHour = clockOutDate.getHours();
+          const clockOutMinute = clockOutDate.getMinutes();
+          const clockOutDay = clockOutDate.getDate();
+          
+          // 日時を分に変換
+          const inMinutes = clockInHour * 60 + clockInMinute;
+          let outMinutes = clockOutHour * 60 + clockOutMinute;
+          
+          // 日付をまたぐ場合の判定
+          // 同じ日付内で退勤時刻が出勤時刻より前の場合は日付をまたぐ（例: 23時出勤→翌朝4時退勤）
+          // または、退勤日の日付が出勤日の日付より後（または1日後）の場合は日付をまたぐ
+          if (clockOutDay > clockInDay || (clockOutDay === clockInDay && outMinutes < inMinutes)) {
+            // 退勤時刻に24時間（1440分）を加算
+            outMinutes += 24 * 60;
+          }
+
+          // 休憩時間を計算
+          let breakMinutes = 0;
+          if (log.breaks && log.breaks.length > 0) {
+            log.breaks.forEach(breakItem => {
+              if (breakItem.start && breakItem.end) {
+                try {
+                  // 休憩時間も時刻文字列から分に変換
+                  const [bStartHour, bStartMinute] = breakItem.start.split(':').map(Number);
+                  const [bEndHour, bEndMinute] = breakItem.end.split(':').map(Number);
+                  const bStartMinutes = bStartHour * 60 + bStartMinute;
+                  let bEndMinutes = bEndHour * 60 + bEndMinute;
+                  
+                  // 休憩が日付をまたぐ場合（終了時刻が開始時刻より前の場合）
+                  if (bEndMinutes < bStartMinutes) {
+                    bEndMinutes += 24 * 60;
+                  }
+                  
+                  breakMinutes += Math.max(0, bEndMinutes - bStartMinutes);
+                } catch {
+                  // エラーが発生した場合はスキップ
+                }
+              }
+            });
+          }
+          
+          // 実働時間を計算（退勤時刻 - 出勤時刻 - 休憩時間）
+          const workMinutes = outMinutes - inMinutes - breakMinutes;
+          if (workMinutes >= 0) {
+            totalWorkMinutes += workMinutes;
+            
+            // 残業時間（8時間を超える分）
+            const standardWorkMinutes = 8 * 60;
+            if (workMinutes > standardWorkMinutes) {
+              totalOvertimeMinutes += workMinutes - standardWorkMinutes;
             }
-          });
-        }
-        
-        const workMinutes = outMinutes - inMinutes - breakMinutes;
-        totalWorkMinutes += workMinutes;
-        
-        // 残業時間（8時間を超える分）
-        const standardWorkMinutes = 8 * 60;
-        if (workMinutes > standardWorkMinutes) {
-          totalOvertimeMinutes += workMinutes - standardWorkMinutes;
+          }
+        } catch {
+          // エラーが発生した場合はスキップ
         }
       }
     });
@@ -515,10 +940,21 @@ export const Attendance: React.FC = () => {
 
   const statistics = calculateStatistics();
 
+  // 本日の日付を取得（変換不要）
   const today = getTodayDate();
+  
+  // 現在時刻を取得して5時を過ぎたかどうかを判定
+  const currentTime = now;
+  const currentHour = currentTime.getHours();
+  const isNewWorkday = currentHour >= 5; // 5時以降は新しい勤務日
+  
+  // APIから取得したtodayLogを優先的に使用（todayLogがある場合は表示する）
+  // todayLogがない場合は、logsから今日の日付で検索
   const currentLog = todayLog || logs.find(log => log.date === today);
-  const currentStatus: AttendanceLog['status'] =
-    currentLog?.status || '未出勤';
+  
+  // ステータスはcurrentLogのstatusを優先（currentLogが存在しない場合のみ「未出勤」）
+  // 5時以降でも、既に退勤済みの場合は「退勤済み」と表示する
+  const currentStatus: AttendanceLog['status'] = currentLog?.status || '未出勤';
 
   // ステータスに応じたメッセージと色を取得
   const getStatusMessage = (status: AttendanceLog['status']): string => {
@@ -608,26 +1044,6 @@ export const Attendance: React.FC = () => {
           }}
         >
           打刻
-          {missingClockOutDates.length > 0 && (
-            <span style={{
-              position: 'absolute',
-              top: '0.25rem',
-              right: '0.25rem',
-              backgroundColor: '#dc2626',
-              color: '#ffffff',
-              borderRadius: '50%',
-              width: '1.25rem',
-              height: '1.25rem',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: fontSizes.badge,
-              fontWeight: 'bold',
-              lineHeight: '1'
-            }}>
-              !
-            </span>
-          )}
         </button>
         <button
           onClick={() => setViewMode('list')}
@@ -746,8 +1162,7 @@ export const Attendance: React.FC = () => {
               fontSize: isMobile ? '1.5rem' : '2rem', 
               fontWeight: 'bold',
               color: (() => {
-                const dateStr = now.toISOString().split('T')[0];
-                const date = new Date(dateStr);
+                const date = new Date(today);
                 const dayOfWeek = date.getDay();
                 if (dayOfWeek === 0) return '#dc2626'; // 日曜日→赤色
                 if (dayOfWeek === 6) return '#2563eb'; // 土曜日→青色
@@ -755,9 +1170,8 @@ export const Attendance: React.FC = () => {
               })()
             }}>
               {(() => {
-                const dateStr = now.toISOString().split('T')[0];
-                const formattedDate = formatDate(dateStr);
-                const date = new Date(dateStr);
+                const formattedDate = formatDate(today);
+                const date = new Date(today);
                 const dayNames = ['日', '月', '火', '水', '木', '金', '土'];
                 const dayName = dayNames[date.getDay()];
                 return `${formattedDate}(${dayName})`;
@@ -781,16 +1195,16 @@ export const Attendance: React.FC = () => {
           }}>
             <button
               onClick={handleClockIn}
-              disabled={currentLog?.clockIn !== null && currentLog?.clockIn !== undefined}
+              disabled={currentStatus !== '未出勤'}
               onMouseEnter={(e) => {
-                if (!currentLog?.clockIn) {
+                if (currentStatus === '未出勤') {
                   e.currentTarget.style.backgroundColor = '#059669';
                   e.currentTarget.style.transform = 'scale(1.02)';
                   e.currentTarget.style.cursor = 'pointer';
                 }
               }}
               onMouseLeave={(e) => {
-                if (!currentLog?.clockIn) {
+                if (currentStatus === '未出勤') {
                   e.currentTarget.style.backgroundColor = '#10b981';
                   e.currentTarget.style.transform = 'scale(1)';
                   e.currentTarget.style.cursor = 'pointer';
@@ -799,14 +1213,14 @@ export const Attendance: React.FC = () => {
               style={{
                 width: isMobile ? '100%' : 'auto',
                 padding: '1rem 2rem',
-                backgroundColor: currentLog?.clockIn ? '#9ca3af' : '#10b981',
+                backgroundColor: currentStatus === '未出勤' ? '#10b981' : '#9ca3af',
                 color: 'white',
                 border: 'none',
                 borderRadius: '8px',
                 fontSize: '1.125rem',
                 fontWeight: 'bold',
-                cursor: currentLog?.clockIn ? 'not-allowed' : 'pointer',
-                opacity: currentLog?.clockIn ? 0.6 : 1,
+                cursor: currentStatus === '未出勤' ? 'pointer' : 'not-allowed',
+                opacity: currentStatus === '未出勤' ? 1 : 0.6,
                 transition: 'background-color 0.2s, transform 0.2s'
               }}
             >
@@ -814,16 +1228,16 @@ export const Attendance: React.FC = () => {
             </button>
             <button
               onClick={handleClockOut}
-              disabled={!currentLog?.clockIn || currentLog?.clockOut !== null || currentStatus === '休憩中'}
+              disabled={currentStatus !== '出勤中'}
               onMouseEnter={(e) => {
-                if (currentLog?.clockIn && !currentLog?.clockOut && currentStatus !== '休憩中') {
+                if (currentStatus === '出勤中') {
                   e.currentTarget.style.backgroundColor = '#dc2626';
                   e.currentTarget.style.transform = 'scale(1.02)';
                   e.currentTarget.style.cursor = 'pointer';
                 }
               }}
               onMouseLeave={(e) => {
-                if (currentLog?.clockIn && !currentLog?.clockOut && currentStatus !== '休憩中') {
+                if (currentStatus === '出勤中') {
                   e.currentTarget.style.backgroundColor = '#ef4444';
                   e.currentTarget.style.transform = 'scale(1)';
                   e.currentTarget.style.cursor = 'pointer';
@@ -832,21 +1246,21 @@ export const Attendance: React.FC = () => {
               style={{
                 width: isMobile ? '100%' : 'auto',
                 padding: '1rem 2rem',
-                backgroundColor: (!currentLog?.clockIn || currentLog?.clockOut || currentStatus === '休憩中') ? '#9ca3af' : '#ef4444',
+                backgroundColor: currentStatus === '出勤中' ? '#ef4444' : '#9ca3af',
                 color: 'white',
                 border: 'none',
                 borderRadius: '8px',
                 fontSize: '1.125rem',
                 fontWeight: 'bold',
-                cursor: (!currentLog?.clockIn || currentLog?.clockOut || currentStatus === '休憩中') ? 'not-allowed' : 'pointer',
-                opacity: (!currentLog?.clockIn || currentLog?.clockOut || currentStatus === '休憩中') ? 0.6 : 1,
+                cursor: currentStatus === '出勤中' ? 'pointer' : 'not-allowed',
+                opacity: currentStatus === '出勤中' ? 1 : 0.6,
                 transition: 'background-color 0.2s, transform 0.2s'
               }}
             >
               退勤
             </button>
             <button
-              onClick={() => {
+              onClick={async () => {
                 if (!currentLog?.clockIn) {
                   return;
                 }
@@ -860,36 +1274,39 @@ export const Attendance: React.FC = () => {
                 if (lastBreak && !lastBreak.end) {
                   return; // 最後の休憩が終了していない場合は新しい休憩を開始できない
                 }
-                const time = getCurrentTime();
-                const updated: AttendanceLog = {
-                  ...(currentLog as AttendanceLog),
-                  breaks: [...(currentLog.breaks || []), { start: time, end: null }],
-                  status: '休憩中'
-                };
-                setTodayLog(updated);
-                setLogs(logs.map(log => log.id === updated.id ? updated : log));
+                try {
+                  // API仕様書に基づき、リクエストボディは不要です（日付と時刻はサーバー側で自動的に取得されます）
+                  const employeeId = getEmployeeId();
+                  if (!employeeId) {
+                    setSnackbar({ message: '従業員IDが取得できませんでした。', type: 'error' });
+                    setTimeout(() => setSnackbar(null), 3000);
+                    return;
+                  }
+
+                  await startBreak();
+
+                  // 最新の勤怠データを取得して反映
+                  await refreshAttendanceData();
+
+                  setSnackbar({ message: '休憩開始を記録しました', type: 'success' });
+                  setTimeout(() => setSnackbar(null), 3000);
+                } catch (error) {
+                  logError('Failed to start break:', error);
+                  const errorMessage = error instanceof Error ? error.message : '休憩開始に失敗しました';
+                  setSnackbar({ message: errorMessage, type: 'error' });
+                  setTimeout(() => setSnackbar(null), 3000);
+                }
               }}
-              disabled={!currentLog || !currentLog.clockIn || !!currentLog.clockOut || 
-                (currentLog.breaks && currentLog.breaks.length > 0 && 
-                 currentLog.breaks[currentLog.breaks.length - 1] && 
-                 !currentLog.breaks[currentLog.breaks.length - 1].end)}
+              disabled={currentStatus !== '出勤中'}
               onMouseEnter={(e) => {
-                const isDisabled = !currentLog || !currentLog.clockIn || !!currentLog.clockOut || 
-                  (currentLog.breaks && currentLog.breaks.length > 0 && 
-                   currentLog.breaks[currentLog.breaks.length - 1] && 
-                   !currentLog.breaks[currentLog.breaks.length - 1].end);
-                if (!isDisabled) {
+                if (currentStatus === '出勤中') {
                   e.currentTarget.style.backgroundColor = '#d97706';
                   e.currentTarget.style.transform = 'scale(1.02)';
                   e.currentTarget.style.cursor = 'pointer';
                 }
               }}
               onMouseLeave={(e) => {
-                const isDisabled = !currentLog || !currentLog.clockIn || !!currentLog.clockOut || 
-                  (currentLog.breaks && currentLog.breaks.length > 0 && 
-                   currentLog.breaks[currentLog.breaks.length - 1] && 
-                   !currentLog.breaks[currentLog.breaks.length - 1].end);
-                if (!isDisabled) {
+                if (currentStatus === '出勤中') {
                   e.currentTarget.style.backgroundColor = '#f59e0b';
                   e.currentTarget.style.transform = 'scale(1)';
                   e.currentTarget.style.cursor = 'pointer';
@@ -898,69 +1315,57 @@ export const Attendance: React.FC = () => {
               style={{
                 width: isMobile ? '100%' : 'auto',
                 padding: '1rem 2rem',
-                backgroundColor: (!currentLog || !currentLog.clockIn || currentLog.clockOut || 
-                  (currentLog.breaks && currentLog.breaks.length > 0 && 
-                   currentLog.breaks[currentLog.breaks.length - 1] && 
-                   !currentLog.breaks[currentLog.breaks.length - 1].end)) ? '#9ca3af' : '#f59e0b',
+                backgroundColor: currentStatus === '出勤中' ? '#f59e0b' : '#9ca3af',
                 color: 'white',
                 border: 'none',
                 borderRadius: '8px',
                 fontSize: '1.125rem',
                 fontWeight: 'bold',
-                cursor: (!currentLog || !currentLog.clockIn || currentLog.clockOut || 
-                  (currentLog.breaks && currentLog.breaks.length > 0 && 
-                   currentLog.breaks[currentLog.breaks.length - 1] && 
-                   !currentLog.breaks[currentLog.breaks.length - 1].end)) ? 'not-allowed' : 'pointer',
-                opacity: (!currentLog || !currentLog.clockIn || currentLog.clockOut || 
-                  (currentLog.breaks && currentLog.breaks.length > 0 && 
-                   currentLog.breaks[currentLog.breaks.length - 1] && 
-                   !currentLog.breaks[currentLog.breaks.length - 1].end)) ? 0.6 : 1,
+                cursor: currentStatus === '出勤中' ? 'pointer' : 'not-allowed',
+                opacity: currentStatus === '出勤中' ? 1 : 0.6,
                 transition: 'background-color 0.2s, transform 0.2s'
               }}
             >
               休憩開始
             </button>
             <button
-              onClick={() => {
-                if (!currentLog?.breaks || currentLog.breaks.length === 0) {
+              onClick={async () => {
+                if (currentStatus !== '休憩中') {
                   return;
                 }
-                const lastBreak = currentLog.breaks[currentLog.breaks.length - 1];
-                if (lastBreak.end) {
-                  return; // すでに終了している
+                try {
+                  // API仕様書に基づき、リクエストボディは不要です（日付と時刻はサーバー側で自動的に取得されます）
+                  const employeeId = getEmployeeId();
+                  if (!employeeId) {
+                    setSnackbar({ message: '従業員IDが取得できませんでした。', type: 'error' });
+                    setTimeout(() => setSnackbar(null), 3000);
+                    return;
+                  }
+
+                  await endBreak();
+
+                  // 最新の勤怠データを取得して反映
+                  await refreshAttendanceData();
+
+                  setSnackbar({ message: '休憩終了を記録しました', type: 'success' });
+                  setTimeout(() => setSnackbar(null), 3000);
+                } catch (error) {
+                  logError('Failed to end break:', error);
+                  const errorMessage = error instanceof Error ? error.message : '休憩終了に失敗しました';
+                  setSnackbar({ message: errorMessage, type: 'error' });
+                  setTimeout(() => setSnackbar(null), 3000);
                 }
-                const time = getCurrentTime();
-                const updatedBreaks = [...currentLog.breaks];
-                updatedBreaks[updatedBreaks.length - 1] = { ...lastBreak, end: time };
-                const updated: AttendanceLog = {
-                  ...(currentLog as AttendanceLog),
-                  breaks: updatedBreaks,
-                  status: '出勤中'
-                };
-                setTodayLog(updated);
-                setLogs(logs.map(log => log.id === updated.id ? updated : log));
               }}
-              disabled={!currentLog || !currentLog.breaks || currentLog.breaks.length === 0 || 
-                !!(currentLog.breaks[currentLog.breaks.length - 1] && 
-                 currentLog.breaks[currentLog.breaks.length - 1].end) || 
-                !!currentLog.clockOut}
+              disabled={currentStatus !== '休憩中'}
               onMouseEnter={(e) => {
-                const isDisabled = !currentLog || !currentLog.breaks || currentLog.breaks.length === 0 || 
-                  !!(currentLog.breaks[currentLog.breaks.length - 1] && 
-                   currentLog.breaks[currentLog.breaks.length - 1].end) || 
-                  !!currentLog.clockOut;
-                if (!isDisabled) {
+                if (currentStatus === '休憩中') {
                   e.currentTarget.style.backgroundColor = '#ea580c';
                   e.currentTarget.style.transform = 'scale(1.02)';
                   e.currentTarget.style.cursor = 'pointer';
                 }
               }}
               onMouseLeave={(e) => {
-                const isDisabled = !currentLog || !currentLog.breaks || currentLog.breaks.length === 0 || 
-                  !!(currentLog.breaks[currentLog.breaks.length - 1] && 
-                   currentLog.breaks[currentLog.breaks.length - 1].end) || 
-                  !!currentLog.clockOut;
-                if (!isDisabled) {
+                if (currentStatus === '休憩中') {
                   e.currentTarget.style.backgroundColor = '#f97316';
                   e.currentTarget.style.transform = 'scale(1)';
                   e.currentTarget.style.cursor = 'pointer';
@@ -969,23 +1374,14 @@ export const Attendance: React.FC = () => {
               style={{
                 width: isMobile ? '100%' : 'auto',
                 padding: '1rem 2rem',
-                backgroundColor: (!currentLog || !currentLog.breaks || currentLog.breaks.length === 0 || 
-                  (currentLog.breaks[currentLog.breaks.length - 1] && 
-                   currentLog.breaks[currentLog.breaks.length - 1].end) || 
-                  currentLog.clockOut) ? '#9ca3af' : '#f97316',
+                backgroundColor: currentStatus === '休憩中' ? '#f97316' : '#9ca3af',
                 color: 'white',
                 border: 'none',
                 borderRadius: '8px',
                 fontSize: '1.125rem',
                 fontWeight: 'bold',
-                cursor: (!currentLog || !currentLog.breaks || currentLog.breaks.length === 0 || 
-                  (currentLog.breaks[currentLog.breaks.length - 1] && 
-                   currentLog.breaks[currentLog.breaks.length - 1].end) || 
-                  currentLog.clockOut) ? 'not-allowed' : 'pointer',
-                opacity: (!currentLog || !currentLog.breaks || currentLog.breaks.length === 0 || 
-                  (currentLog.breaks[currentLog.breaks.length - 1] && 
-                   currentLog.breaks[currentLog.breaks.length - 1].end) || 
-                  currentLog.clockOut) ? 0.6 : 1,
+                cursor: currentStatus === '休憩中' ? 'pointer' : 'not-allowed',
+                opacity: currentStatus === '休憩中' ? 1 : 0.6,
                 transition: 'background-color 0.2s, transform 0.2s'
               }}
             >
@@ -1014,22 +1410,26 @@ export const Attendance: React.FC = () => {
                     border: '1px solid #e5e7eb'
                   }}
                 >
-                  <div style={{ marginBottom: '0.5rem', fontWeight: 'bold' }}>{formatDate(currentLog.date)}</div>
+                  <div style={{ marginBottom: '0.5rem', fontWeight: 'bold' }}>{formatDate(today)}</div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                    <div><strong>出勤:</strong> {formatTime(currentLog.clockIn)}</div>
-                    <div><strong>退勤:</strong> {formatTime(currentLog.clockOut)}</div>
+                    <div><strong>出勤時刻:</strong> {formatTimeWithNextDay(currentLog.clockInIso)}</div>
+                    <div><strong>退勤時刻:</strong> {formatTimeWithNextDay(currentLog.clockOutIso)}</div>
                   </div>
                   {currentLog.breaks && currentLog.breaks.length > 0 && (
                     <div style={{ marginBottom: '0.5rem' }}>
-                      <strong>休憩:</strong>
+                      <strong>休憩時間:</strong>
                       {currentLog.breaks.map((breakItem, index) => (
                         <div key={index} style={{ fontSize: fontSizes.medium, marginLeft: '0.5rem' }}>
-                          {formatTime(breakItem.start)} - {breakItem.end ? formatTime(breakItem.end) : '休憩中'}
+                          {formatTimeWithNextDay(breakItem.startIso)} - {breakItem.endIso ? formatTimeWithNextDay(breakItem.endIso) : '休憩中'}
                         </div>
                       ))}
                     </div>
                   )}
+                  <div style={{ marginBottom: '0.5rem' }}>
+                    <strong>実働時間:</strong> {calculateWorkTime(currentLog)}
+                  </div>
                   <div>
+                    <strong>ステータス:</strong>{' '}
                     <span style={{
                       padding: '0.25rem 0.5rem',
                       borderRadius: '4px',
@@ -1069,29 +1469,31 @@ export const Attendance: React.FC = () => {
                       boxShadow: '0 2px 2px -1px rgba(0, 0, 0, 0.1)'
                     }}>
                     <th style={{ padding: '0.75rem', textAlign: 'left' }}>日付</th>
-                    <th style={{ padding: '0.75rem', textAlign: 'left' }}>出勤</th>
-                    <th style={{ padding: '0.75rem', textAlign: 'left' }}>退勤</th>
-                    <th style={{ padding: '0.75rem', textAlign: 'left' }}>休憩</th>
-                    <th style={{ padding: '0.75rem', textAlign: 'left' }}>状態</th>
+                    <th style={{ padding: '0.75rem', textAlign: 'left' }}>出勤時刻</th>
+                    <th style={{ padding: '0.75rem', textAlign: 'left' }}>退勤時刻</th>
+                    <th style={{ padding: '0.75rem', textAlign: 'left' }}>休憩時間</th>
+                    <th style={{ padding: '0.75rem', textAlign: 'left' }}>実働時間</th>
+                    <th style={{ padding: '0.75rem', textAlign: 'left' }}>ステータス</th>
                   </tr>
                 </thead>
                 <tbody>
                   {currentLog && (
                     <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
-                      <td style={{ padding: '0.75rem' }}>{formatDate(currentLog.date)}</td>
-                      <td style={{ padding: '0.75rem' }}>{formatTime(currentLog.clockIn)}</td>
-                      <td style={{ padding: '0.75rem' }}>{formatTime(currentLog.clockOut)}</td>
+                      <td style={{ padding: '0.75rem' }}>{formatDate(today)}</td>
+                      <td style={{ padding: '0.75rem' }}>{formatTimeWithNextDay(currentLog.clockInIso)}</td>
+                      <td style={{ padding: '0.75rem' }}>{formatTimeWithNextDay(currentLog.clockOutIso)}</td>
                       <td style={{ padding: '0.75rem' }}>
                         {currentLog.breaks && currentLog.breaks.length > 0 ? (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                             {currentLog.breaks.map((breakItem, index) => (
                               <div key={index} style={{ fontSize: fontSizes.medium }}>
-                                {formatTime(breakItem.start)} - {breakItem.end ? formatTime(breakItem.end) : '休憩中'}
+                                {formatTimeWithNextDay(breakItem.startIso)} - {breakItem.endIso ? formatTimeWithNextDay(breakItem.endIso) : '休憩中'}
                               </div>
                             ))}
                           </div>
                         ) : '-'}
                       </td>
+                      <td style={{ padding: '0.75rem' }}>{calculateWorkTime(currentLog)}</td>
                       <td style={{ padding: '0.75rem' }}>
                         <span style={{
                           padding: '0.25rem 0.5rem',
@@ -1209,7 +1611,7 @@ export const Attendance: React.FC = () => {
               </label>
               <Button
                 variant="primary"
-                onClick={() => setEditBreaks([...editBreaks, { start: '', end: null }])}
+                onClick={() => setEditBreaks([...editBreaks, { start: '', end: null, startIso: '', endIso: null }])}
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',
@@ -1484,11 +1886,11 @@ export const Attendance: React.FC = () => {
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ fontSize: fontSizes.medium, color: '#6b7280' }}>氏名:</span>
-                  <span style={{ fontSize: fontSizes.medium, fontWeight: 'bold' }}>{userId || 'ゲスト'}</span>
+                  <span style={{ fontSize: fontSizes.medium, fontWeight: 'bold' }}>{summary?.employeeName || userId || 'ゲスト'}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ fontSize: fontSizes.medium, color: '#6b7280' }}>所定労働日数:</span>
-                  <span style={{ fontSize: fontSizes.medium, fontWeight: 'bold' }}>{statistics.prescribedWorkingDays}日</span>
+                  <span style={{ fontSize: fontSizes.medium, fontWeight: 'bold' }}>{summary?.scheduledWorkDays ?? statistics.prescribedWorkingDays}日</span>
                 </div>
               </div>
             </div>
@@ -1511,19 +1913,19 @@ export const Attendance: React.FC = () => {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ fontSize: fontSizes.medium, color: '#6b7280' }}>実働日数:</span>
-                  <span style={{ fontSize: fontSizes.medium, fontWeight: 'bold' }}>{statistics.workingDays}</span>
+                  <span style={{ fontSize: fontSizes.medium, fontWeight: 'bold' }}>{summary?.actualWorkDays ?? statistics.workingDays}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ fontSize: fontSizes.medium, color: '#6b7280' }}>平日出勤日数:</span>
-                  <span style={{ fontSize: fontSizes.medium, fontWeight: 'bold' }}>{statistics.weekdayWorkingDays}</span>
+                  <span style={{ fontSize: fontSizes.medium, fontWeight: 'bold' }}>{summary?.weekdayWorkDays ?? statistics.weekdayWorkingDays}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ fontSize: fontSizes.medium, color: '#6b7280' }}>休日出勤日数:</span>
-                  <span style={{ fontSize: fontSizes.medium, fontWeight: 'bold' }}>{statistics.holidayWorkingDays}</span>
+                  <span style={{ fontSize: fontSizes.medium, fontWeight: 'bold' }}>{summary?.holidayWorkDays ?? statistics.holidayWorkingDays}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ fontSize: fontSizes.medium, color: '#6b7280' }}>欠勤日数:</span>
-                  <span style={{ fontSize: fontSizes.medium, fontWeight: 'bold' }}>{statistics.absenceDays}</span>
+                  <span style={{ fontSize: fontSizes.medium, fontWeight: 'bold' }}>{summary?.absenceDays ?? statistics.absenceDays}</span>
                 </div>
               </div>
             </div>
@@ -1546,11 +1948,11 @@ export const Attendance: React.FC = () => {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ fontSize: fontSizes.medium, color: '#6b7280' }}>実労働時間:</span>
-                  <span style={{ fontSize: fontSizes.medium, fontWeight: 'bold' }}>{statistics.totalWorkTime}</span>
+                  <span style={{ fontSize: fontSizes.medium, fontWeight: 'bold' }}>{summary ? formatMinutesToTime(summary.actualWorkHours) : statistics.totalWorkTime}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ fontSize: fontSizes.medium, color: '#6b7280' }}>実残業時間:</span>
-                  <span style={{ fontSize: fontSizes.medium, fontWeight: 'bold' }}>{statistics.totalOvertime}</span>
+                  <span style={{ fontSize: fontSizes.medium, fontWeight: 'bold' }}>{summary ? formatMinutesToTime(summary.actualOvertimeHours) : statistics.totalOvertime}</span>
                 </div>
               </div>
             </div>
@@ -1574,13 +1976,13 @@ export const Attendance: React.FC = () => {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: fontSizes.medium, color: '#6b7280' }}>年間有給日数:</span>
                   <span style={{ fontSize: fontSizes.medium, fontWeight: 'bold', color: '#000000' }}>
-                    {totalPaidLeaveDays}日
+                    {summary?.annualPaidLeaveDays ?? totalPaidLeaveDays}日
                   </span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: fontSizes.medium, color: '#6b7280' }}>使用日数:</span>
                   <span style={{ fontSize: fontSizes.medium, fontWeight: 'bold', color: '#000000' }}>
-                    {usedPaidLeaveDays}日
+                    {summary?.usedPaidLeaveDays ?? usedPaidLeaveDays}日
                   </span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1590,7 +1992,7 @@ export const Attendance: React.FC = () => {
                     fontWeight: 'bold', 
                     color: '#000000'
                   }}>
-                    {remainingPaidLeaveDays}日
+                    {summary?.remainingPaidLeaveDays ?? remainingPaidLeaveDays}日
                   </span>
                 </div>
                 <div style={{
@@ -1604,10 +2006,10 @@ export const Attendance: React.FC = () => {
                     有給期限
                   </div>
                   <div style={{ fontSize: fontSizes.medium, color: '#1e40af' }}>
-                    {formatDate(paidLeaveExpiryDate)}
+                    {formatDate(summary?.paidLeaveExpirationDate ?? paidLeaveExpiryDate)}
                   </div>
                   <div style={{ fontSize: fontSizes.medium, color: '#1e3a8a', marginTop: '0.25rem' }}>
-                    上記日付までに消化日付分(残り{remainingPaidLeaveDays}日)の有給を取得してください
+                    上記日付までに消化日付分(残り{summary?.remainingPaidLeaveDays ?? remainingPaidLeaveDays}日)の有給を取得してください
                   </div>
                 </div>
               </div>
@@ -1769,38 +2171,43 @@ export const Attendance: React.FC = () => {
                         key={calendarDay.date}
                         style={{ 
                           borderBottom: '1px solid #e5e7eb',
-                          backgroundColor: needsCorrection ? '#fee2e2' : (isSunday ? '#fef2f2' : isSaturday ? '#eff6ff' : '#ffffff')
+                          backgroundColor: isSunday ? '#fef2f2' : isSaturday ? '#eff6ff' : '#ffffff'
                         }}
                       >
                         <td style={{ 
                           padding: '0.75rem',
                           borderRight: '1px solid #e5e7eb',
-                          color: needsCorrection ? '#dc2626' : (isSunday ? '#dc2626' : isSaturday ? '#2563eb' : '#1f2937'),
-                          fontWeight: (needsCorrection || isSunday || isSaturday) ? 'bold' : 'normal',
-                          backgroundColor: needsCorrection ? '#fee2e2' : 'transparent'
+                          color: isSunday ? '#dc2626' : isSaturday ? '#2563eb' : '#1f2937',
+                          fontWeight: (isSunday || isSaturday) ? 'bold' : 'normal',
+                          backgroundColor: 'transparent'
                         }}>
-                          {formatDate(calendarDay.date)}
-                          {needsCorrection && (
-                            <span style={{
-                              marginLeft: '0.25rem',
-                              color: '#dc2626',
-                              fontWeight: 'bold'
-                            }}>
-                              (修正必要)
-                            </span>
-                          )}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                            {formatDate(calendarDay.date)}
+                            {needsCorrection && (
+                              <>
+                                <WarningIcon size={18} color="#f59e0b" />
+                                <span style={{
+                                  color: '#dc2626',
+                                  fontWeight: 'bold',
+                                  fontSize: fontSizes.small
+                                }}>
+                                  退勤未打刻のため修正が必要です
+                                </span>
+                              </>
+                            )}
+                          </div>
                         </td>
                         <td style={{ 
                           padding: '0.75rem',
                           borderRight: '1px solid #e5e7eb'
                         }}>
-                          {log ? formatTime(log.clockIn) : '-'}
+                          {log ? formatTimeWithNextDay(log.clockInIso) : '-'}
                         </td>
                         <td style={{ 
                           padding: '0.75rem',
                           borderRight: '1px solid #e5e7eb'
                         }}>
-                          {log ? formatTime(log.clockOut) : '-'}
+                          {log ? formatTimeWithNextDay(log.clockOutIso) : '-'}
                         </td>
                         <td style={{ 
                           padding: '0.75rem',

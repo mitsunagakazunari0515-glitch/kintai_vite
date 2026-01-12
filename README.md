@@ -44,7 +44,18 @@ This template equips you with a foundational React application integrated with A
    - `YOUR_GOOGLE_CLIENT_SECRET`をGoogle OAuthクライアントシークレットに置き換え
    - `redirectSignIn`と`redirectSignOut`のURLを実際のドメインに更新
 
-3. **Amplifyサンドボックスの起動**
+3. **環境変数の設定**
+
+   プロジェクトルートに`.env`ファイルを作成し、以下の内容を追加：
+
+   ```bash
+   # 開発環境のAPIエンドポイント
+   VITE_API_ENDPOINT=https://tv731cev0j.execute-api.ap-northeast-1.amazonaws.com/dev
+   ```
+
+   **注意**: `.env`ファイルは`.gitignore`に含まれているため、手動で作成する必要があります。
+
+4. **Amplifyサンドボックスの起動**
    ```bash
    npx ampx sandbox
    ```

@@ -12,13 +12,23 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { Snackbar } from '../../components/Snackbar';
-import { Button, ApplyButton, CancelApprovalButton } from '../../components/Button';
+import { Button, ApplyButton, CancelApprovalButton, EditButton } from '../../components/Button';
 import { getCurrentFiscalYear, isInFiscalYear } from '../../utils/fiscalYear';
 import { fontSizes } from '../../config/fontSizes';
 import { getLeaveTypes, getRequestStatusStyle } from '../../config/masterData';
-import { dummyEmployeeLeaveRequests } from '../../data/dummyData';
 import { formatDate } from '../../utils/formatters';
 import { ConfirmModal } from '../../components/ConfirmModal';
+import { 
+  getLeaveRequestList, 
+  createLeaveRequest, 
+  updateLeaveRequest, 
+  deleteLeaveRequest,
+  LeaveRequest as ApiLeaveRequest
+} from '../../utils/leaveRequestApi';
+import { error as logError } from '../../utils/logger';
+import { translateApiError } from '../../utils/apiErrorTranslator';
+import { getLeaveTypeLabel, getLeaveRequestStatusLabel, getLeaveRequestStatusStyle, getLeaveTypeCodeFromLabel } from '../../utils/codeTranslator';
+import { getUserInfo } from '../../config/apiConfig';
 
 /**
  * 休暇申請を表すインターフェース。
@@ -47,7 +57,7 @@ interface LeaveRequest {
 /**
  * 表示モードを表す型。
  */
-type ViewMode = 'apply' | 'history';
+type ViewMode = 'apply' | 'history' | 'edit';
 
 /**
  * 有給申請画面コンポーネント。
@@ -57,22 +67,58 @@ type ViewMode = 'apply' | 'history';
  */
 export const LeaveRequest: React.FC = () => {
   const { userId } = useAuth();
+  // 認可APIから取得したemployeeIdを使用（userIdはCognitoのユーザーIDで、APIが期待するemployeeIdとは異なる）
+  const getEmployeeId = (): string | null => {
+    const userInfo = getUserInfo();
+    return userInfo.employeeId;
+  };
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
-  
-  // ダミーデータを読み込み（従業員IDでのフィルタリングなし）
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [searchFiscalYear, setSearchFiscalYear] = useState<number>(getCurrentFiscalYear());
+
+  // APIから休暇申請一覧を取得
   useEffect(() => {
-    const filtered = dummyEmployeeLeaveRequests
-      .map(req => ({
-        ...req,
-        type: req.type as '有給' | '特別休暇' | '病気休暇' | '欠勤' | 'その他',
-        status: req.status as '申請中' | '承認' | '削除済み',
-        isHalfDay: req.isHalfDay || false
-      }));
-    setRequests(filtered);
-  }, []);
+    const fetchLeaveRequests = async () => {
+      setIsLoading(true);
+      try {
+        const employeeId = getEmployeeId();
+        if (!employeeId) {
+          logError('Employee ID is not available. Please ensure you are logged in and authorized.');
+          setSnackbar({ message: '従業員IDが取得できませんでした。ログインし直してください。', type: 'error' });
+          setTimeout(() => setSnackbar(null), 5000);
+          setIsLoading(false);
+          return;
+        }
+        const response = await getLeaveRequestList(employeeId);
+        // APIから返される英語コード（paid, special, sick, absence, other）を日本語に変換
+        // APIから返されるステータスコード（pending, approved, rejected, deleted）を日本語に変換
+        const convertedRequests: LeaveRequest[] = response.requests.map(req => ({
+          id: req.id,
+          employeeId: req.employeeId,
+          startDate: req.startDate,
+          endDate: req.endDate,
+          days: req.days,
+          type: getLeaveTypeLabel(req.leaveType) as LeaveRequest['type'], // 英語コード→日本語
+          reason: req.reason,
+          status: (req.status === 'rejected' ? '削除済み' : getLeaveRequestStatusLabel(req.status)) as LeaveRequest['status'], // 英語コード→日本語（rejectedは「取消」として扱うが、UIでは「削除済み」として表示）
+          isHalfDay: req.isHalfDay
+        }));
+        setRequests(convertedRequests);
+      } catch (error) {
+        logError('Failed to fetch leave requests:', error);
+        const errorMessage = translateApiError(error);
+        setSnackbar({ message: errorMessage, type: 'error' });
+        setTimeout(() => setSnackbar(null), 3000);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchLeaveRequests();
+  }, [searchFiscalYear]);
   const leaveTypes = getLeaveTypes();
   const [formData, setFormData] = useState<Omit<LeaveRequest, 'id' | 'status'>>({
-    employeeId: userId || '',
+    employeeId: getEmployeeId() || '',
     startDate: '',
     endDate: '',
     days: 0,
@@ -84,8 +130,7 @@ export const LeaveRequest: React.FC = () => {
   const [viewMode, setViewMode] = useState<ViewMode>('apply');
   const [snackbar, setSnackbar] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [cancelRequestId, setCancelRequestId] = useState<string | null>(null);
-  
-  const [searchFiscalYear, setSearchFiscalYear] = useState<number>(getCurrentFiscalYear());
+  const [editingRequestId, setEditingRequestId] = useState<string | null>(null);
   
   useEffect(() => {
     const handleResize = () => {
@@ -133,7 +178,7 @@ export const LeaveRequest: React.FC = () => {
   });
 
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     // 半休の場合は終了日を開始日と同じにする
@@ -141,29 +186,125 @@ export const LeaveRequest: React.FC = () => {
     
     if (!formData.startDate || !formData.reason) {
       setSnackbar({ message: '必須項目を入力してください', type: 'error' });
+      setTimeout(() => setSnackbar(null), 3000);
       return;
     }
 
     if (!formData.isHalfDay && !formData.endDate) {
       setSnackbar({ message: '終了日を入力してください', type: 'error' });
+      setTimeout(() => setSnackbar(null), 3000);
       return;
     }
 
-    // 有給の場合、残日数をチェック
-    if (formData.type === '有給') {
-      if (remainingPaidLeaveDays < formData.days) {
-        setSnackbar({ message: `有給残日数が不足しています。残り: ${remainingPaidLeaveDays}日`, type: 'error' });
+    try {
+      // 認可APIから取得したemployeeIdを使用
+      const employeeId = getEmployeeId();
+      if (!employeeId) {
+        setSnackbar({ message: '従業員IDが取得できませんでした。ログインし直してください。', type: 'error' });
+        setTimeout(() => setSnackbar(null), 3000);
         return;
       }
-    }
 
-    const newRequest: LeaveRequest = {
-      id: Date.now().toString(),
-      ...formData,
-      endDate: finalEndDate,
-      status: '申請中'
-    };
-    setRequests([newRequest, ...requests]);
+      // フォームの日本語コードを英語コードに変換してAPIに送信
+      const leaveTypeCode = getLeaveTypeCodeFromLabel(formData.type);
+      
+      if (editingRequestId) {
+        // 編集モード
+        const apiRequest = await updateLeaveRequest(editingRequestId, {
+          employeeId: employeeId,
+          startDate: formData.startDate,
+          endDate: finalEndDate,
+          leaveType: leaveTypeCode as 'paid' | 'special' | 'sick' | 'absence' | 'other',
+          reason: formData.reason,
+          days: formData.days,
+          isHalfDay: formData.isHalfDay
+        });
+
+        // APIレスポンスの英語コードを日本語に変換
+        const updatedRequest: LeaveRequest = {
+          id: apiRequest.id,
+          employeeId: apiRequest.employeeId,
+          startDate: apiRequest.startDate,
+          endDate: apiRequest.endDate,
+          days: apiRequest.days,
+          type: getLeaveTypeLabel(apiRequest.leaveType) as LeaveRequest['type'],
+          reason: apiRequest.reason,
+          status: (apiRequest.status === 'rejected' ? '削除済み' : getLeaveRequestStatusLabel(apiRequest.status)) as LeaveRequest['status'],
+          isHalfDay: apiRequest.isHalfDay
+        };
+
+        setRequests(requests.map(req => 
+          req.id === editingRequestId ? updatedRequest : req
+        ));
+        setSnackbar({ message: '休暇申請を更新しました', type: 'success' });
+      } else {
+        // 新規登録モード
+        const apiRequest = await createLeaveRequest({
+          employeeId: employeeId,
+          startDate: formData.startDate,
+          endDate: finalEndDate,
+          leaveType: leaveTypeCode as 'paid' | 'special' | 'sick' | 'absence' | 'other',
+          reason: formData.reason,
+          days: formData.days,
+          isHalfDay: formData.isHalfDay
+        });
+
+        // APIレスポンスの英語コードを日本語に変換
+        const newRequest: LeaveRequest = {
+          id: apiRequest.id,
+          employeeId: apiRequest.employeeId,
+          startDate: apiRequest.startDate,
+          endDate: apiRequest.endDate,
+          days: apiRequest.days,
+          type: getLeaveTypeLabel(apiRequest.leaveType) as LeaveRequest['type'],
+          reason: apiRequest.reason,
+          status: (apiRequest.status === 'rejected' ? '削除済み' : getLeaveRequestStatusLabel(apiRequest.status)) as LeaveRequest['status'],
+          isHalfDay: apiRequest.isHalfDay
+        };
+
+        setRequests([newRequest, ...requests]);
+        setSnackbar({ message: '有給申請を提出しました', type: 'success' });
+      }
+      
+      // フォームをリセット
+      setFormData({
+        employeeId: userId || '',
+        startDate: '',
+        endDate: '',
+        days: 0,
+        type: (leaveTypes[0]?.code || '有給') as LeaveRequest['type'],
+        reason: '',
+        isHalfDay: false
+      });
+      setEditingRequestId(null);
+      setViewMode('history');
+      setTimeout(() => setSnackbar(null), 3000);
+    } catch (error) {
+      logError('Failed to submit leave request:', error);
+      const errorMessage = error instanceof Error ? error.message : '休暇申請の送信に失敗しました';
+      setSnackbar({ message: errorMessage, type: 'error' });
+      setTimeout(() => setSnackbar(null), 3000);
+    }
+  };
+
+  const handleEdit = (requestId: string) => {
+    const request = requests.find(r => r.id === requestId);
+    if (request && request.status === '申請中') {
+      setFormData({
+        employeeId: request.employeeId,
+        startDate: request.startDate,
+        endDate: request.endDate,
+        days: request.days,
+        type: request.type,
+        reason: request.reason,
+        isHalfDay: request.isHalfDay || false
+      });
+      setEditingRequestId(requestId);
+      setViewMode('edit');
+    }
+  };
+
+  const handleCancelEdit = () => {
     setFormData({
       employeeId: userId || '',
       startDate: '',
@@ -173,7 +314,7 @@ export const LeaveRequest: React.FC = () => {
       reason: '',
       isHalfDay: false
     });
-    setSnackbar({ message: '有給申請を提出しました', type: 'success' });
+    setEditingRequestId(null);
     setViewMode('history');
   };
 
@@ -181,13 +322,20 @@ export const LeaveRequest: React.FC = () => {
     setCancelRequestId(requestId);
   };
 
-  const confirmCancelRequest = () => {
+  const confirmCancelRequest = async () => {
     if (cancelRequestId) {
-      setRequests(requests.map(req => 
-        req.id === cancelRequestId ? { ...req, status: '削除済み' as const } : req
-      ));
-      setSnackbar({ message: '申請を取消しました', type: 'success' });
-      setCancelRequestId(null);
+      try {
+        await deleteLeaveRequest(cancelRequestId);
+        setRequests(requests.filter(req => req.id !== cancelRequestId));
+        setSnackbar({ message: '申請を取消しました', type: 'success' });
+        setTimeout(() => setSnackbar(null), 3000);
+        setCancelRequestId(null);
+      } catch (error) {
+        logError('Failed to delete leave request:', error);
+        const errorMessage = error instanceof Error ? error.message : '申請の取消に失敗しました';
+        setSnackbar({ message: errorMessage, type: 'error' });
+        setTimeout(() => setSnackbar(null), 3000);
+      }
     }
   };
 
@@ -217,19 +365,25 @@ export const LeaveRequest: React.FC = () => {
         overflowX: 'auto'
       }}>
         <button
-          onClick={() => setViewMode('apply')}
+          onClick={() => {
+            if (viewMode === 'edit') {
+              handleCancelEdit();
+            } else {
+              setViewMode('apply');
+            }
+          }}
           style={{
             padding: isMobile ? '0.75rem 1rem' : '0.75rem 1.5rem',
-            backgroundColor: viewMode === 'apply' ? '#92400e' : 'rgba(146, 64, 14, 0.4)',
+            backgroundColor: (viewMode === 'apply' || viewMode === 'edit') ? '#92400e' : 'rgba(146, 64, 14, 0.4)',
             color: '#ffffff',
             border: 'none',
-            borderBottom: viewMode === 'apply' ? '3px solid #ffffff' : '3px solid transparent',
+            borderBottom: (viewMode === 'apply' || viewMode === 'edit') ? '3px solid #ffffff' : '3px solid transparent',
             borderRadius: '4px 4px 0 0',
             cursor: 'pointer',
-            fontWeight: viewMode === 'apply' ? 'bold' : 'normal',
+            fontWeight: (viewMode === 'apply' || viewMode === 'edit') ? 'bold' : 'normal',
             whiteSpace: 'nowrap',
-            opacity: viewMode === 'apply' ? 1 : 0.8,
-            textShadow: viewMode === 'apply'
+            opacity: (viewMode === 'apply' || viewMode === 'edit') ? 1 : 0.8,
+            textShadow: (viewMode === 'apply' || viewMode === 'edit')
               ? '0 1px 3px rgba(0,0,0,0.35)'
               : '0 1px 2px rgba(0,0,0,0.25)'
           }}
@@ -258,10 +412,12 @@ export const LeaveRequest: React.FC = () => {
         </button>
       </div>
 
-      {/* 申請画面 */}
-      {viewMode === 'apply' && (
+      {/* 申請画面・編集画面 */}
+      {(viewMode === 'apply' || viewMode === 'edit') && (
         <div>
-          <h3 style={{ marginBottom: '0.7rem', fontSize: isMobile ? fontSizes.h3.mobile : fontSizes.h3.desktop }}>新規申請</h3>
+          <h3 style={{ marginBottom: '0.7rem', fontSize: isMobile ? fontSizes.h3.mobile : fontSizes.h3.desktop }}>
+            {viewMode === 'edit' ? '申請編集' : '新規申請'}
+          </h3>
           <form onSubmit={handleSubmit} style={{
             backgroundColor: '#f9fafb',
             padding: '1.5rem',
@@ -422,10 +578,30 @@ export const LeaveRequest: React.FC = () => {
                 required
               />
             </div>
-            <ApplyButton
-              type="submit"
-              fullWidth
-            />
+            <div style={{ display: 'flex', gap: '0.5rem', flexDirection: isMobile ? 'column' : 'row' }}>
+              {viewMode === 'edit' && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={handleCancelEdit}
+                  fullWidth={isMobile}
+                  style={{
+                    order: isMobile ? 2 : 1
+                  }}
+                >
+                  キャンセル
+                </Button>
+              )}
+              <ApplyButton
+                type="submit"
+                fullWidth={isMobile}
+                style={{
+                  order: isMobile ? 1 : 2
+                }}
+              >
+                {viewMode === 'edit' ? '更新' : '申請'}
+              </ApplyButton>
+            </div>
           </form>
         </div>
       )}
@@ -519,10 +695,24 @@ export const LeaveRequest: React.FC = () => {
                           {request.status}
                         </span>
                         {request.status === '申請中' && (
-                          <CancelApprovalButton
-                            onClick={() => handleCancelRequest(request.id)}
-                            isTableButton
-                          />
+                          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                            {isMobile ? (
+                              <EditButton
+                                onClick={() => handleEdit(request.id)}
+                                size="small"
+                              />
+                            ) : (
+                              <Button
+                                variant="icon-edit"
+                                onClick={() => handleEdit(request.id)}
+                                title="編集"
+                              />
+                            )}
+                            <CancelApprovalButton
+                              onClick={() => handleCancelRequest(request.id)}
+                              isTableButton
+                            />
+                          </div>
                         )}
                       </div>
                     </div>

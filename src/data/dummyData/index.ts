@@ -16,7 +16,8 @@ import payrollRecordsData from './payrollRecords.json';
 // 型定義
 export interface Employee {
   id: string;
-  name: string;
+  firstName: string;
+  lastName: string;
   employmentType: string;
   email: string;
   joinDate: string;
@@ -24,15 +25,21 @@ export interface Employee {
   allowances: string[];
   isAdmin: boolean;
   baseSalary: number;
-  paidLeaveDays: number;
+  defaultBreakTime: number;
+  paidLeaves: Array<{
+    grantDate: string;
+    days: number;
+  }>;
   createdAt: string;
   updatedAt: string;
+  updatedBy?: string;
 }
 
 export interface Allowance {
   id: string;
   name: string;
   color: string;
+  includeInOvertime: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -89,6 +96,7 @@ export interface AttendanceLog {
   memo?: string | null;
   createdAt: string;
   updatedAt: string;
+  updatedBy?: string;
 }
 
 export interface PayrollRecord {
@@ -117,6 +125,7 @@ export interface PayrollRecord {
   };
   createdAt: string;
   updatedAt: string;
+  updatedBy?: string;
 }
 
 // データのエクスポート
@@ -144,7 +153,12 @@ export const getAttendanceLogsByEmployeeId = (employeeId: string): AttendanceLog
 };
 
 export const getPayrollRecordsByEmployeeId = (employeeId: string): PayrollRecord[] => {
-  return dummyPayrollRecords.filter(record => record.employeeId === employeeId);
+  const result = dummyPayrollRecords.filter(record => record.employeeId === employeeId);
+  console.log(`[getPayrollRecordsByEmployeeId] employeeId=${employeeId}, total records=${dummyPayrollRecords.length}, filtered=${result.length}`);
+  console.log(`[getPayrollRecordsByEmployeeId] All records:`, dummyPayrollRecords.map(r => ({ employeeId: r.employeeId, period: r.period, employeeName: r.employeeName })));
+  console.log(`[getPayrollRecordsByEmployeeId] Filtered records:`, result.map(r => ({ employeeId: r.employeeId, period: r.period, employeeName: r.employeeName })));
+  return result;
 };
+
 
 

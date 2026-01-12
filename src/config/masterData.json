@@ -1,11 +1,11 @@
 {
   "employmentTypes": [
     {
-      "code": "正社員",
+      "code": "FULL_TIME",
       "label": "正社員"
     },
     {
-      "code": "パート",
+      "code": "PART_TIME",
       "label": "パート"
     }
   ],

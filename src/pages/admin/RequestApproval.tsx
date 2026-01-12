@@ -13,10 +13,20 @@ import { Snackbar } from '../../components/Snackbar';
 import { ConfirmModal } from '../../components/ConfirmModal';
 import { formatDate } from '../../utils/formatters';
 import { fontSizes } from '../../config/fontSizes';
-import { getRequestStatuses, getRequestTypes, getRequestStatusStyle } from '../../config/masterData';
-import { dummyLeaveRequests, dummyAttendanceCorrectionRequests, type LeaveRequest, type AttendanceCorrectionRequest } from '../../data/dummyData';
+import { getRequestStatuses, getRequestTypes, getRequestStatusStyle, getLeaveTypes } from '../../config/masterData';
 import { ChevronDownIcon, ChevronUpIcon } from '../../components/Icons';
-import { ApproveButton, BulkApproveButton, CancelApprovalButton, SelectAllButton, SearchButton, ClearButton } from '../../components/Button';
+import { ApproveButton, BulkApproveButton, CancelApprovalButton, SelectAllButton, SearchButton, ClearButton, Button, RegisterButton, CancelButton } from '../../components/Button';
+import { 
+  getApplicationList,
+  updateApplicationStatus,
+  UnifiedApplication as ApiUnifiedApplication
+} from '../../utils/applicationApi';
+import { getEmployees, EmployeeResponse } from '../../utils/employeeApi';
+import { createLeaveRequest } from '../../utils/leaveRequestApi';
+import { getLeaveTypeLabel, getLeaveTypeCodeFromLabel, getLeaveRequestStatusLabel } from '../../utils/codeTranslator';
+import { error as logError } from '../../utils/logger';
+import { translateApiError } from '../../utils/apiErrorTranslator';
+import { ProgressBar } from '../../components/ProgressBar';
 
 /**
  * 統合された申請情報を表すインターフェース。
@@ -101,27 +111,32 @@ export const RequestApproval: React.FC = () => {
   const [filterStatus, setFilterStatus] = useState<string>('all'); // 'all' | '申請中' | '承認' | '取消' | '削除済み'
   const [selectedRequestIds, setSelectedRequestIds] = useState<Set<string>>(new Set());
   const [isSearchExpanded, setIsSearchExpanded] = useState<boolean>(false); // モバイル時の検索条件の展開状態
+  const [showRegisterModal, setShowRegisterModal] = useState<boolean>(false);
+  const leaveTypes = getLeaveTypes();
+  const [registerFormData, setRegisterFormData] = useState<{
+    employeeId: string;
+    startDate: string;
+    endDate: string;
+    days: number;
+    type: '有給' | '特別休暇' | '病気休暇' | '欠勤' | 'その他';
+    reason: string;
+    isHalfDay: boolean;
+  }>({
+    employeeId: '',
+    startDate: '',
+    endDate: '',
+    days: 0,
+    type: getLeaveTypeLabel(leaveTypes[0]?.code || 'paid') as '有給' | '特別休暇' | '病気休暇' | '欠勤' | 'その他',
+    reason: '',
+    isHalfDay: false
+  });
 
-  // ダミーデータ：有給申請
-  const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>(
-    dummyLeaveRequests.map(req => ({
-      ...req,
-      employeeName: req.employeeName || '',
-      type: req.type as '有給' | '特別休暇' | '病気休暇' | '欠勤' | 'その他',
-      status: req.status as '申請中' | '承認' | '削除済み',
-      isHalfDay: req.isHalfDay || false,
-      requestedAt: req.requestedAt || req.createdAt
-    }))
-  );
+  // 申請一覧（APIから取得）
+  const [allRequests, setAllRequests] = useState<UnifiedRequest[]>([]);
 
-  // ダミーデータ：打刻修正申請
-  const [attendanceRequests, setAttendanceRequests] = useState<AttendanceCorrectionRequest[]>(
-    dummyAttendanceCorrectionRequests.map(req => ({
-      ...req,
-      status: req.status as '申請中' | '承認' | '取消',
-      requestedAt: req.requestedAt || req.createdAt
-    }))
-  );
+  // 従業員一覧（従業員名マッピング用）
+  const [employees, setEmployees] = useState<EmployeeResponse[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
 
   useEffect(() => {
     const handleResize = () => {
@@ -131,42 +146,73 @@ export const RequestApproval: React.FC = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // すべての申請を統合
-  const allRequests: UnifiedRequest[] = [
-    ...leaveRequests.map(req => ({
-      id: req.id,
-      type: '休暇申請' as const,
-      employeeId: req.employeeId,
-      employeeName: req.employeeName || '',
-      status: req.status as '申請中' | '承認' | '取消' | '削除済み',
-      requestedAt: req.requestedAt || req.createdAt,
-      leaveData: {
-        startDate: req.startDate,
-        endDate: req.endDate,
-        days: req.days,
-        leaveType: req.type as '有給' | '特別休暇' | '病気休暇' | '欠勤' | 'その他',
-        reason: req.reason,
-        isHalfDay: req.isHalfDay || false
+  // APIから申請一覧を取得
+  useEffect(() => {
+    const fetchApplications = async () => {
+      setIsLoading(true);
+      try {
+        // 従業員一覧を取得してマップを作成
+        const employeesList = await getEmployees();
+        setEmployees(employeesList);
+        const employeeMap = new Map<string, string>();
+        employeesList.forEach(emp => employeeMap.set(emp.id, `${emp.firstName} ${emp.lastName}`));
+
+        // 申請一覧を取得
+        const response = await getApplicationList(
+          searchYearMonthFrom || undefined,
+          searchYearMonthTo || undefined,
+          filterType === 'all' ? undefined : (filterType === '休暇申請' ? 'leave_request' : filterType === '打刻修正申請' ? 'attendance_correction_request' : undefined),
+          filterStatus === 'all' ? undefined : (filterStatus === '申請中' ? 'pending' : filterStatus === '承認' ? 'approved' : filterStatus === '取消' ? 'rejected' : filterStatus === '削除済み' ? 'deleted' : undefined)
+        );
+
+        // APIレスポンスをUI用の形式に変換
+        const convertedRequests: UnifiedRequest[] = response.requests.map(apiReq => {
+          const baseRequest: UnifiedRequest = {
+            id: apiReq.id,
+            type: apiReq.type === 'leave_request' ? '休暇申請' : '打刻修正申請',
+            employeeId: apiReq.employeeId,
+            employeeName: employeeMap.get(apiReq.employeeId) || apiReq.employeeName || '不明な従業員',
+            status: apiReq.status === 'pending' ? '申請中' : apiReq.status === 'approved' ? '承認' : apiReq.status === 'rejected' ? '取消' : '削除済み',
+            requestedAt: apiReq.requestedAt
+          };
+
+          if (apiReq.type === 'leave_request' && apiReq.leaveData) {
+            baseRequest.leaveData = {
+              startDate: apiReq.leaveData.startDate,
+              endDate: apiReq.leaveData.endDate,
+              days: apiReq.leaveData.days,
+              leaveType: getLeaveTypeLabel(apiReq.leaveData.leaveType) as '有給' | '特別休暇' | '病気休暇' | '欠勤' | 'その他',
+              reason: apiReq.leaveData.reason,
+              isHalfDay: apiReq.leaveData.isHalfDay
+            };
+          } else if (apiReq.type === 'attendance_correction_request' && apiReq.attendanceData) {
+            baseRequest.attendanceData = {
+              date: apiReq.attendanceData.date,
+              originalClockIn: apiReq.attendanceData.originalClockIn,
+              originalClockOut: apiReq.attendanceData.originalClockOut,
+              requestedClockIn: apiReq.attendanceData.requestedClockIn,
+              requestedClockOut: apiReq.attendanceData.requestedClockOut,
+              requestedBreaks: apiReq.attendanceData.requestedBreaks,
+              reason: apiReq.attendanceData.reason
+            };
+          }
+
+          return baseRequest;
+        });
+
+        setAllRequests(convertedRequests);
+      } catch (error) {
+        logError('Failed to fetch applications:', error);
+        const errorMessage = translateApiError(error);
+        setSnackbar({ message: errorMessage, type: 'error' });
+        setTimeout(() => setSnackbar(null), 5000);
+      } finally {
+        setIsLoading(false);
       }
-    })),
-    ...attendanceRequests.map(req => ({
-      id: req.id,
-      type: '打刻修正申請' as const,
-      employeeId: req.employeeId,
-      employeeName: req.employeeName,
-      status: req.status as '申請中' | '承認' | '取消' | '削除済み',
-      requestedAt: req.requestedAt || req.createdAt,
-      attendanceData: {
-        date: req.date,
-        originalClockIn: req.originalClockIn,
-        originalClockOut: req.originalClockOut,
-        requestedClockIn: req.requestedClockIn,
-        requestedClockOut: req.requestedClockOut,
-        requestedBreaks: req.requestedBreaks,
-        reason: req.reason
-      }
-    }))
-  ].sort((a, b) => new Date(b.requestedAt).getTime() - new Date(a.requestedAt).getTime());
+    };
+
+    fetchApplications();
+  }, [searchYearMonthFrom, searchYearMonthTo, filterType, filterStatus]);
 
   // フィルタリング処理
   const filteredRequests = allRequests.filter(request => {
@@ -189,17 +235,29 @@ export const RequestApproval: React.FC = () => {
   // 日付フォーマット関数（yyyy/mm/dd形式）
 
   // 申請の承認
-  const handleApprove = (request: UnifiedRequest) => {
-    if (request.type === '休暇申請') {
-      setLeaveRequests(prev => 
+  const handleApprove = async (request: UnifiedRequest) => {
+    try {
+      await updateApplicationStatus({
+        requestId: request.id,
+        type: request.type === '休暇申請' ? 'leave_request' : 'attendance_correction_request',
+        action: 'approve'
+      });
+
+      // ローカル状態を更新
+      setAllRequests(prev =>
         prev.map(req => req.id === request.id ? { ...req, status: '承認' as const } : req)
       );
-      setSnackbar({ message: '休暇申請を承認しました', type: 'success' });
-    } else {
-      setAttendanceRequests(prev => 
-        prev.map(req => req.id === request.id ? { ...req, status: '承認' as const } : req)
-      );
-      setSnackbar({ message: '打刻修正申請を承認しました', type: 'success' });
+
+      setSnackbar({ 
+        message: request.type === '休暇申請' ? '休暇申請を承認しました' : '打刻修正申請を承認しました', 
+        type: 'success' 
+      });
+      setTimeout(() => setSnackbar(null), 3000);
+    } catch (error) {
+      logError('Failed to approve application:', error);
+      const errorMessage = translateApiError(error);
+      setSnackbar({ message: errorMessage, type: 'error' });
+      setTimeout(() => setSnackbar(null), 5000);
     }
   };
 
@@ -210,17 +268,31 @@ export const RequestApproval: React.FC = () => {
       title: request.status === '申請中' ? '申請の取消' : '承認の取消',
       message: request.status === '申請中' ? '申請を取り消しますか？' : '承認を取り消しますか？',
       confirmText: '取消',
-      onConfirm: () => {
-        if (request.type === '休暇申請') {
-          setLeaveRequests(prev => 
+      onConfirm: async () => {
+        try {
+          await updateApplicationStatus({
+            requestId: request.id,
+            type: request.type === '休暇申請' ? 'leave_request' : 'attendance_correction_request',
+            action: 'reject'
+          });
+
+          // ローカル状態を更新
+          setAllRequests(prev =>
             prev.map(req => req.id === request.id ? { ...req, status: '取消' as const } : req)
           );
-          setSnackbar({ message: request.status === '申請中' ? '休暇申請を取り消しました' : '休暇申請の承認を取り消しました', type: 'success' });
-        } else {
-          setAttendanceRequests(prev => 
-            prev.map(req => req.id === request.id ? { ...req, status: '取消' as const } : req)
-          );
-          setSnackbar({ message: request.status === '申請中' ? '打刻修正申請を取り消しました' : '打刻修正申請の承認を取り消しました', type: 'success' });
+
+          setSnackbar({ 
+            message: request.status === '申請中' 
+              ? (request.type === '休暇申請' ? '休暇申請を取り消しました' : '打刻修正申請を取り消しました')
+              : (request.type === '休暇申請' ? '休暇申請の承認を取り消しました' : '打刻修正申請の承認を取り消しました'), 
+            type: 'success' 
+          });
+          setTimeout(() => setSnackbar(null), 3000);
+        } catch (error) {
+          logError('Failed to reject application:', error);
+          const errorMessage = translateApiError(error);
+          setSnackbar({ message: errorMessage, type: 'error' });
+          setTimeout(() => setSnackbar(null), 5000);
         }
         setConfirmModal(null);
       }
@@ -280,20 +352,37 @@ export const RequestApproval: React.FC = () => {
       title: '一括承認',
       message: `${selectedPendingRequests.length}件の申請を一括承認しますか？`,
       confirmText: '承認',
-      onConfirm: () => {
-        selectedPendingRequests.forEach(request => {
-          if (request.type === '休暇申請') {
-            setLeaveRequests(prev => 
-              prev.map(req => req.id === request.id ? { ...req, status: '承認' as const } : req)
-            );
-          } else {
-            setAttendanceRequests(prev => 
-              prev.map(req => req.id === request.id ? { ...req, status: '承認' as const } : req)
-            );
-          }
-        });
-        setSelectedRequestIds(new Set());
-        setSnackbar({ message: `${selectedPendingRequests.length}件の申請を一括承認しました`, type: 'success' });
+      onConfirm: async () => {
+        try {
+          // すべての申請を並列で承認
+          await Promise.all(
+            selectedPendingRequests.map(request =>
+              updateApplicationStatus({
+                requestId: request.id,
+                type: request.type === '休暇申請' ? 'leave_request' : 'attendance_correction_request',
+                action: 'approve'
+              })
+            )
+          );
+
+          // ローカル状態を更新
+          setAllRequests(prev =>
+            prev.map(req => 
+              selectedPendingRequests.some(selected => selected.id === req.id)
+                ? { ...req, status: '承認' as const }
+                : req
+            )
+          );
+
+          setSelectedRequestIds(new Set());
+          setSnackbar({ message: `${selectedPendingRequests.length}件の申請を一括承認しました`, type: 'success' });
+          setTimeout(() => setSnackbar(null), 3000);
+        } catch (error) {
+          logError('Failed to bulk approve applications:', error);
+          const errorMessage = translateApiError(error);
+          setSnackbar({ message: errorMessage, type: 'error' });
+          setTimeout(() => setSnackbar(null), 5000);
+        }
         setConfirmModal(null);
       }
     });
@@ -307,8 +396,120 @@ export const RequestApproval: React.FC = () => {
     setFilterStatus('all');
   };
 
+  // 全休暇の場合、開始日と終了日から日数を自動計算
+  useEffect(() => {
+    if (!registerFormData.isHalfDay && registerFormData.startDate && registerFormData.endDate) {
+      const start = new Date(registerFormData.startDate);
+      const end = new Date(registerFormData.endDate);
+      const diffTime = Math.abs(end.getTime() - start.getTime());
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+      
+      setRegisterFormData(prev => {
+        if (prev.days !== diffDays) {
+          return { ...prev, days: diffDays };
+        }
+        return prev;
+      });
+    } else if (registerFormData.isHalfDay && registerFormData.startDate) {
+      // 半休の場合は0.5日で固定
+      setRegisterFormData(prev => {
+        if (prev.days !== 0.5 || prev.endDate !== registerFormData.startDate) {
+          return { ...prev, days: 0.5, endDate: registerFormData.startDate };
+        }
+        return prev;
+      });
+    }
+  }, [registerFormData.startDate, registerFormData.endDate, registerFormData.isHalfDay]);
+
+  // 代理登録の処理
+  const handleRegisterLeaveRequest = async () => {
+    // 半休の場合は終了日を開始日と同じにする
+    const finalEndDate = registerFormData.isHalfDay ? registerFormData.startDate : registerFormData.endDate;
+    
+    if (!registerFormData.employeeId || !registerFormData.startDate || !registerFormData.reason) {
+      setSnackbar({ message: '必須項目を入力してください', type: 'error' });
+      return;
+    }
+
+    if (!registerFormData.isHalfDay && !registerFormData.endDate) {
+      setSnackbar({ message: '終了日を入力してください', type: 'error' });
+      return;
+    }
+
+    try {
+      // UIの日本語ラベルをAPIの英語コードに変換
+      const apiLeaveType = getLeaveTypeCodeFromLabel(registerFormData.type) as 'paid' | 'special' | 'sick' | 'absence' | 'other';
+
+      const apiRequest = await createLeaveRequest({
+        startDate: registerFormData.startDate,
+        endDate: finalEndDate,
+        leaveType: apiLeaveType,
+        reason: registerFormData.reason,
+        isHalfDay: registerFormData.isHalfDay
+      });
+
+      // 従業員名を取得
+      const selectedEmployee = employees.find(emp => emp.id === registerFormData.employeeId);
+      const employeeName = selectedEmployee 
+        ? `${selectedEmployee.firstName} ${selectedEmployee.lastName}`
+        : '不明な従業員';
+
+      // ローカル状態に追加（APIから取得したデータを変換）
+      const newRequest: UnifiedRequest = {
+        id: apiRequest.id,
+        type: '休暇申請',
+        employeeId: apiRequest.employeeId,
+        employeeName: employeeName,
+        status: getLeaveRequestStatusLabel(apiRequest.status) as '申請中' | '承認' | '取消' | '削除済み',
+        requestedAt: apiRequest.requestedAt,
+        leaveData: {
+          startDate: apiRequest.startDate,
+          endDate: apiRequest.endDate,
+          days: apiRequest.days,
+          leaveType: getLeaveTypeLabel(apiRequest.leaveType) as '有給' | '特別休暇' | '病気休暇' | '欠勤' | 'その他',
+          reason: apiRequest.reason,
+          isHalfDay: apiRequest.isHalfDay
+        }
+      };
+
+      setAllRequests(prev => [newRequest, ...prev].sort((a, b) => new Date(b.requestedAt).getTime() - new Date(a.requestedAt).getTime()));
+      setShowRegisterModal(false);
+      setRegisterFormData({
+        employeeId: '',
+        startDate: '',
+        endDate: '',
+        days: 0,
+        type: getLeaveTypeLabel(leaveTypes[0]?.code || 'paid') as '有給' | '特別休暇' | '病気休暇' | '欠勤' | 'その他',
+        reason: '',
+        isHalfDay: false
+      });
+      setSnackbar({ message: '休暇申請を代理で登録しました', type: 'success' });
+      setTimeout(() => setSnackbar(null), 3000);
+    } catch (error) {
+      logError('Failed to register leave request:', error);
+      const errorMessage = translateApiError(error);
+      setSnackbar({ message: errorMessage, type: 'error' });
+      setTimeout(() => setSnackbar(null), 5000);
+    }
+  };
+
+  // モーダルを閉じる
+  const handleCancelRegister = () => {
+    setShowRegisterModal(false);
+    setRegisterFormData({
+      employeeId: '',
+      startDate: '',
+      endDate: '',
+      days: 0,
+      type: getLeaveTypeLabel(leaveTypes[0]?.code || 'paid') as '有給' | '特別休暇' | '病気休暇' | '欠勤' | 'その他',
+      reason: '',
+      isHalfDay: false
+    });
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: isMobile ? 'auto' : '100%' }}>
+      {isLoading && <ProgressBar />}
       {snackbar && (
         <Snackbar
           message={snackbar.message}
@@ -327,9 +528,30 @@ export const RequestApproval: React.FC = () => {
           isMobile={isMobile}
         />
       )}
-      <h2 style={{ marginBottom: isMobile ? '1rem' : '1.4rem', fontSize: isMobile ? '1.25rem' : '1.05rem' }}>
-        申請一覧
-      </h2>
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'flex-start', 
+        marginBottom: isMobile ? '1rem' : '1.4rem',
+        marginTop: isMobile ? '0.5rem' : '0.75rem'
+      }}>
+        <h2 style={{ fontSize: isMobile ? '1.25rem' : '1.05rem', margin: 0 }}>
+          申請一覧
+        </h2>
+        <Button
+          variant="primary"
+          onClick={() => setShowRegisterModal(true)}
+          size={isMobile ? 'small' : 'medium'}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '0.05rem',
+            minWidth: '100px'
+          }}
+        >
+          + 代理申請
+        </Button>
+      </div>
 
       {/* 検索・フィルター */}
       <div style={{
@@ -861,6 +1083,236 @@ export const RequestApproval: React.FC = () => {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* 代理登録モーダル */}
+      {showRegisterModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 1000,
+          padding: isMobile ? '1rem' : '1.4rem'
+        }}
+        onClick={handleCancelRegister}
+        >
+          <div
+            style={{
+              backgroundColor: 'white',
+              borderRadius: '8px',
+              padding: isMobile ? '1.5rem' : '1.4rem',
+              width: '100%',
+              maxWidth: '600px',
+              maxHeight: '90vh',
+              overflowY: 'auto',
+              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 style={{ marginBottom: '1.05rem', fontSize: isMobile ? '1.125rem' : '0.875rem' }}>
+              休暇申請代理登録
+            </h3>
+            <form onSubmit={(e) => { e.preventDefault(); handleRegisterLeaveRequest(); }}>
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold', fontSize: fontSizes.label }}>
+                  従業員 *
+                </label>
+                <select
+                  value={registerFormData.employeeId}
+                  onChange={(e) => setRegisterFormData({ ...registerFormData, employeeId: e.target.value })}
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '4px',
+                    fontSize: fontSizes.input,
+                    boxSizing: 'border-box'
+                  }}
+                  required
+                >
+                  <option value="">選択してください</option>
+                  {employees.map((emp) => {
+                    const empName = `${emp.firstName} ${emp.lastName}`;
+                    return (
+                      <option key={emp.id} value={emp.id}>
+                        {emp.id} - {empName}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold', fontSize: fontSizes.label }}>
+                  休暇種別 *
+                </label>
+                <select
+                  value={registerFormData.type}
+                  onChange={(e) => setRegisterFormData({ ...registerFormData, type: e.target.value as '有給' | '特別休暇' | '病気休暇' | '欠勤' | 'その他' })}
+                  style={{
+                    width: '100%',
+                    padding: '0.5rem',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '4px',
+                    boxSizing: 'border-box',
+                    fontSize: fontSizes.select
+                  }}
+                >
+                  {leaveTypes.map((type) => (
+                    <option key={type.code} value={type.code}>{type.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold', fontSize: fontSizes.label }}>
+                  休暇区分 *
+                </label>
+                <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.5rem' }}>
+                  <label style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    cursor: 'pointer',
+                    padding: '0.5rem',
+                    borderRadius: '4px',
+                    backgroundColor: !registerFormData.isHalfDay ? '#dbeafe' : 'transparent',
+                    border: `2px solid ${!registerFormData.isHalfDay ? '#2563eb' : '#d1d5db'}`,
+                    fontSize: fontSizes.label
+                  }}>
+                    <input
+                      type="radio"
+                      checked={!registerFormData.isHalfDay}
+                      onChange={() => {
+                        setRegisterFormData({ ...registerFormData, isHalfDay: false });
+                      }}
+                      style={{ marginRight: '0.5rem' }}
+                    />
+                    全休暇
+                  </label>
+                  <label style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    cursor: 'pointer',
+                    padding: '0.5rem',
+                    borderRadius: '4px',
+                    backgroundColor: registerFormData.isHalfDay ? '#dbeafe' : 'transparent',
+                    border: `2px solid ${registerFormData.isHalfDay ? '#2563eb' : '#d1d5db'}`,
+                    fontSize: fontSizes.label
+                  }}>
+                    <input
+                      type="radio"
+                      checked={registerFormData.isHalfDay}
+                      onChange={() => {
+                        setRegisterFormData({ ...registerFormData, isHalfDay: true, days: 0.5, endDate: registerFormData.startDate });
+                      }}
+                      style={{ marginRight: '0.5rem' }}
+                    />
+                    半休（0.5日）
+                  </label>
+                </div>
+              </div>
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold', fontSize: fontSizes.label }}>
+                  開始日 *
+                </label>
+                <input
+                  type="date"
+                  value={registerFormData.startDate}
+                  onChange={(e) => {
+                    setRegisterFormData({ ...registerFormData, startDate: e.target.value });
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '4px',
+                    fontSize: fontSizes.input,
+                    boxSizing: 'border-box'
+                  }}
+                  required
+                />
+              </div>
+              {!registerFormData.isHalfDay && (
+                <div style={{ marginBottom: '1rem' }}>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold', fontSize: fontSizes.label }}>
+                    終了日 *
+                  </label>
+                  <input
+                    type="date"
+                    value={registerFormData.endDate}
+                    onChange={(e) => {
+                      setRegisterFormData({ ...registerFormData, endDate: e.target.value });
+                    }}
+                    min={registerFormData.startDate}
+                    style={{
+                      width: '100%',
+                      padding: '0.75rem',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '4px',
+                      fontSize: fontSizes.input,
+                      boxSizing: 'border-box'
+                    }}
+                    required={!registerFormData.isHalfDay}
+                  />
+                </div>
+              )}
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold', fontSize: fontSizes.label }}>
+                  日数
+                </label>
+                <input
+                  type="text"
+                  value={registerFormData.days > 0 ? `${registerFormData.days}日${registerFormData.days === 0.5 ? '（半休）' : ''}` : ''}
+                  readOnly
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '4px',
+                    backgroundColor: '#f3f4f6',
+                    fontSize: fontSizes.input,
+                    boxSizing: 'border-box'
+                  }}
+                />
+              </div>
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold', fontSize: fontSizes.label }}>
+                  理由 *
+                </label>
+                <textarea
+                  value={registerFormData.reason}
+                  onChange={(e) => setRegisterFormData({ ...registerFormData, reason: e.target.value })}
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '4px',
+                    fontSize: fontSizes.input,
+                    boxSizing: 'border-box',
+                    minHeight: '100px',
+                    resize: 'vertical'
+                  }}
+                  required
+                />
+              </div>
+              <div style={{ display: 'flex', gap: '1rem', flexDirection: isMobile ? 'column-reverse' : 'row' }}>
+                <CancelButton
+                  fullWidth
+                  type="button"
+                  onClick={handleCancelRegister}
+                />
+                <RegisterButton
+                  fullWidth
+                  type="submit"
+                />
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>

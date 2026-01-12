@@ -77,10 +77,14 @@ aws cognito-idp describe-user-pool-client \
 ```bash
 # 開発環境
 VITE_AMPLIFY_ENV=development
+VITE_API_ENDPOINT=https://tv731cev0j.execute-api.ap-northeast-1.amazonaws.com/dev
 
 # 本番環境
 VITE_AMPLIFY_ENV=production
+VITE_API_ENDPOINT_PRODUCTION=https://your-production-api-endpoint.execute-api.ap-northeast-1.amazonaws.com/prod
 ```
+
+**注意**: `.env`ファイルは`.gitignore`に含まれているため、手動で作成する必要があります。
 
 ### 方法2: ビルド時に指定
 
@@ -111,4 +115,7 @@ VITE_AMPLIFY_ENV=production npm run build
 1. `npx ampx sandbox` が実行されているか確認
 2. `amplify_outputs.json` が生成されているか確認
 3. ブラウザのコンソールでエラーログを確認
+
+
+
 

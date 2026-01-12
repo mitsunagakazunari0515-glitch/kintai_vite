@@ -1,0 +1,21 @@
+{
+  "employmentTypes": [
+    {
+      "code": "FULL_TIME",
+      "label": "正社員",
+      "description": "正社員"
+    },
+    {
+      "code": "PART_TIME",
+      "label": "パート",
+      "description": "パートタイム"
+    }
+  ]
+}
+
+
+
+
+
+
+

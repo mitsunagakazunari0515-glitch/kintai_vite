@@ -11,7 +11,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { formatTime, formatDate } from '../../utils/formatters';
+import { formatTime, formatDate, formatJSTDateTime, parseJSTDateTime, extractTimeFromJST } from '../../utils/formatters';
 import { fontSizes } from '../../config/fontSizes';
 import { Button, RegisterButton, CancelButton, EditButton, SearchButton, ClearButton } from '../../components/Button';
 import { Snackbar } from '../../components/Snackbar';
@@ -19,7 +19,7 @@ import { useSort } from '../../hooks/useSort';
 import { ChevronDownIcon, ChevronUpIcon } from '../../components/Icons';
 import { getAttendanceList, updateAttendance, updateAttendanceMemo, AttendanceLog as ApiAttendanceLog, Break as ApiBreak, BreakRequest } from '../../utils/attendanceApi';
 import { getEmployees } from '../../utils/employeeApi';
-import { error as logError } from '../../utils/logger';
+import { log, error as logError } from '../../utils/logger';
 import { translateApiError } from '../../utils/apiErrorTranslator';
 import { getAttendanceStatusLabel, getAttendanceStatusStyle } from '../../utils/codeTranslator';
 import { ProgressBar } from '../../components/ProgressBar';
@@ -50,10 +50,22 @@ interface AttendanceLog {
   clockIn: string | null;
   /** 退勤時刻。nullの場合は未退勤。 */
   clockOut: string | null;
+  /** 出勤時刻（YYYY-MM-DD HH:MM:SS形式、日をまたぐ計算用）。 */
+  clockInIso: string | null;
+  /** 退勤時刻（YYYY-MM-DD HH:MM:SS形式、日をまたぐ計算用）。 */
+  clockOutIso: string | null;
   /** 休憩時間の配列。 */
   breaks: Break[];
+  /** 休憩時間の配列（YYYY-MM-DD HH:MM:SS形式、日をまたぐ計算用）。 */
+  breaksIso?: Array<{ start: string; end: string | null }>;
   /** 勤怠ステータス。 */
   status: '未出勤' | '出勤中' | '休憩中' | '退勤済み';
+  /** 労働時間（分、APIから取得）。 */
+  totalWorkMinutes?: number;
+  /** 残業時間（分、APIから取得）。 */
+  overtimeMinutes?: number;
+  /** 深夜時間（分、APIから取得）。 */
+  lateNightMinutes?: number;
   /** メモ。 */
   memo?: string | null;
   /** 更新者。 */
@@ -90,12 +102,47 @@ export const AttendanceList: React.FC = () => {
     };
   };
 
+  // ローカルストレージから日付検索条件を読み込む
+  const loadDateSearchConditions = () => {
+    try {
+      const saved = localStorage.getItem('attendanceListSearchConditions');
+      if (saved) {
+        const conditions = JSON.parse(saved);
+        return {
+          startDate: conditions.startDate || getThisWeekDates().start,
+          endDate: conditions.endDate || getThisWeekDates().end
+        };
+      }
+    } catch (error) {
+      // パースエラー時はデフォルト値を返す
+    }
+    const thisWeek = getThisWeekDates();
+    return {
+      startDate: thisWeek.start,
+      endDate: thisWeek.end
+    };
+  };
+  
+  // 日付検索条件をローカルストレージに保存
+  const saveDateSearchConditions = (conditions: {
+    startDate: string;
+    endDate: string;
+  }) => {
+    try {
+      localStorage.setItem('attendanceListSearchConditions', JSON.stringify(conditions));
+      log('日付検索条件をローカルストレージに保存:', conditions);
+    } catch (error) {
+      logError('日付検索条件の保存に失敗:', error);
+    }
+  };
+  
+  const initialDateConditions = loadDateSearchConditions();
   const thisWeek = getThisWeekDates();
-  const [startDate, setStartDate] = useState(thisWeek.start);
-  const [endDate, setEndDate] = useState(thisWeek.end);
+  const [startDate, setStartDate] = useState(initialDateConditions.startDate);
+  const [endDate, setEndDate] = useState(initialDateConditions.endDate);
   // 検索条件を保存するためのstate
-  const [searchStartDate, setSearchStartDate] = useState(thisWeek.start);
-  const [searchEndDate, setSearchEndDate] = useState(thisWeek.end);
+  const [searchStartDate, setSearchStartDate] = useState(initialDateConditions.startDate);
+  const [searchEndDate, setSearchEndDate] = useState(initialDateConditions.endDate);
   const [showModal, setShowModal] = useState(false);
   const [isSearchExpanded, setIsSearchExpanded] = useState<boolean>(false); // モバイル時の検索条件の展開状態
   const [editingMemoLogId, setEditingMemoLogId] = useState<string | null>(null); // メモ編集中のログID
@@ -117,17 +164,11 @@ export const AttendanceList: React.FC = () => {
 
   // APIのAttendanceLogをUI用のAttendanceLogに変換
   const convertApiLogToUiLog = (apiLog: ApiAttendanceLog): AttendanceLog => {
-    // APIのclockIn/clockOutはISO 8601形式なので、時刻部分のみ抽出
-    const extractTime = (isoString: string | null): string | null => {
-      if (!isoString) return null;
-      try {
-        const date = new Date(isoString);
-        const hours = String(date.getHours()).padStart(2, '0');
-        const minutes = String(date.getMinutes()).padStart(2, '0');
-        return `${hours}:${minutes}`;
-      } catch {
-        return null;
-      }
+    // APIのclockIn/clockOutはYYYY-MM-DD HH:MM:SS形式（JST形式）なので、時刻部分のみ抽出
+    const extractTime = (dateTimeStr: string | null): string | null => {
+      if (!dateTimeStr) return null;
+      // YYYY-MM-DD HH:MM:SS形式から時刻部分（HH:mm）を抽出
+      return extractTimeFromJST(dateTimeStr);
     };
 
     // APIのbreaksをUI用のbreaksに変換
@@ -151,8 +192,14 @@ export const AttendanceList: React.FC = () => {
       date: apiLog.workDate, // APIレスポンスのworkDateをdateにマッピング
       clockIn: extractTime(apiLog.clockIn),
       clockOut: extractTime(apiLog.clockOut),
+      clockInIso: apiLog.clockIn || null, // YYYY-MM-DD HH:MM:SS形式を保持（日をまたぐ計算用）
+      clockOutIso: apiLog.clockOut || null, // YYYY-MM-DD HH:MM:SS形式を保持（日をまたぐ計算用）
       breaks: convertBreaks(apiLog.breaks),
+      breaksIso: apiLog.breaks?.map(b => ({ start: b.start, end: b.end || null })) || [], // YYYY-MM-DD HH:MM:SS形式を保持（日をまたぐ計算用）
       status: convertStatus(apiLog.status),
+      totalWorkMinutes: apiLog.totalWorkMinutes, // APIから取得した労働時間（分）
+      overtimeMinutes: apiLog.overtimeMinutes, // APIから取得した残業時間（分）
+      lateNightMinutes: apiLog.lateNightMinutes, // APIから取得した深夜時間（分）
       memo: apiLog.memo || null,
       updatedBy: apiLog.updatedBy,
       updatedAt: apiLog.updatedAt
@@ -222,9 +269,22 @@ export const AttendanceList: React.FC = () => {
   const handleSearch = async () => {
     setSearchStartDate(startDate);
     setSearchEndDate(endDate);
+    // 検索条件をローカルストレージに保存
+    saveDateSearchConditions({
+      startDate,
+      endDate
+    });
     // 検索条件でAPIを呼び出す
     await fetchAttendanceList(startDate, endDate);
   };
+  
+  // 日付検索条件が変更されたらローカルストレージに保存
+  useEffect(() => {
+    saveDateSearchConditions({
+      startDate,
+      endDate
+    });
+  }, [startDate, endDate]);
 
   // ソート機能を共通フックから取得
   const { handleSort, getSortIcon, sortedData: sortedLogs } = useSort<AttendanceLog>(
@@ -232,31 +292,35 @@ export const AttendanceList: React.FC = () => {
   );
 
   // 労働時間、残業時間、深夜時間、休憩時間を計算
+  // APIから取得したtotalWorkMinutes、overtimeMinutes、lateNightMinutesを使用
   const calculateWorkTimes = (log: AttendanceLog) => {
-    if (!log.clockIn || !log.clockOut) {
-      return {
-        workTime: '-',
-        overtime: '-',
-        lateNight: '-',
-        breakTime: '-'
-      };
-    }
-    
-    const [inHour, inMinute] = log.clockIn.split(':').map(Number);
-    const [outHour, outMinute] = log.clockOut.split(':').map(Number);
-    const inMinutes = inHour * 60 + inMinute;
-    const outMinutes = outHour * 60 + outMinute;
-    
-    // 休憩時間計算
+    // 休憩時間を計算（表示用）
     let breakMinutes = 0;
-    if (log.breaks && log.breaks.length > 0) {
-      log.breaks.forEach(breakItem => {
+    if (log.breaksIso && log.breaksIso.length > 0) {
+      log.breaksIso.forEach(breakItem => {
         if (breakItem.start && breakItem.end) {
-          const [bStartHour, bStartMinute] = breakItem.start.split(':').map(Number);
-          const [bEndHour, bEndMinute] = breakItem.end.split(':').map(Number);
-          const bStartMinutes = bStartHour * 60 + bStartMinute;
-          const bEndMinutes = bEndHour * 60 + bEndMinute;
-          breakMinutes += Math.max(0, bEndMinutes - bStartMinutes);
+          try {
+            // YYYY-MM-DD HH:MM:SS形式（JST）をDateオブジェクトに変換
+            const breakStartDate = parseJSTDateTime(breakItem.start);
+            const breakEndDate = parseJSTDateTime(breakItem.end);
+            if (!breakStartDate || !breakEndDate) return;
+            
+            const bStartHour = breakStartDate.getHours();
+            const bStartMinute = breakStartDate.getMinutes();
+            const bEndHour = breakEndDate.getHours();
+            const bEndMinute = breakEndDate.getMinutes();
+            const bStartMinutes = bStartHour * 60 + bStartMinute;
+            let bEndMinutes = bEndHour * 60 + bEndMinute;
+            
+            // 休憩が日付をまたぐ場合（終了時刻が開始時刻より前の場合）
+            if (bEndMinutes < bStartMinutes) {
+              bEndMinutes += 24 * 60;
+            }
+            
+            breakMinutes += Math.max(0, bEndMinutes - bStartMinutes);
+          } catch {
+            // エラーが発生した場合はスキップ
+          }
         }
       });
     }
@@ -264,24 +328,36 @@ export const AttendanceList: React.FC = () => {
     const breakMins = breakMinutes % 60;
     const breakTime = `${String(breakHours).padStart(2, '0')}:${String(breakMins).padStart(2, '0')}`;
     
-    // 労働時間
-    const workMinutes = outMinutes - inMinutes - breakMinutes;
+    // APIから取得した労働時間（totalWorkMinutes）を使用
+    if (log.totalWorkMinutes === undefined || log.totalWorkMinutes === null) {
+      return {
+        workTime: '-',
+        overtime: '-',
+        lateNight: '-',
+        breakTime
+      };
+    }
+    
+    const workMinutes = log.totalWorkMinutes;
     const workHours = Math.floor(workMinutes / 60);
     const workMins = workMinutes % 60;
     const workTime = `${String(workHours).padStart(2, '0')}:${String(workMins).padStart(2, '0')}`;
     
-    // 残業時間（8時間を超える分）
-    const standardWorkMinutes = 8 * 60;
+    // APIから取得した残業時間（overtimeMinutes）を使用
     let overtime = '00:00';
-    if (workMinutes > standardWorkMinutes) {
-      const overtimeMinutes = workMinutes - standardWorkMinutes;
-      const overtimeHours = Math.floor(overtimeMinutes / 60);
-      const overtimeMins = overtimeMinutes % 60;
+    if (log.overtimeMinutes && log.overtimeMinutes > 0) {
+      const overtimeHours = Math.floor(log.overtimeMinutes / 60);
+      const overtimeMins = log.overtimeMinutes % 60;
       overtime = `${String(overtimeHours).padStart(2, '0')}:${String(overtimeMins).padStart(2, '0')}`;
     }
     
-    // 深夜時間（22時以降の労働時間、簡易的に0:00と表示）
-    const lateNight = '00:00';
+    // APIから取得した深夜時間（lateNightMinutes）を使用
+    let lateNight = '00:00';
+    if (log.lateNightMinutes && log.lateNightMinutes > 0) {
+      const lateNightHours = Math.floor(log.lateNightMinutes / 60);
+      const lateNightMins = log.lateNightMinutes % 60;
+      lateNight = `${String(lateNightHours).padStart(2, '0')}:${String(lateNightMins).padStart(2, '0')}`;
+    }
     
     return {
       workTime,
@@ -298,14 +374,13 @@ export const AttendanceList: React.FC = () => {
     setEditingAttendanceData(null);
   };
 
-  // 時刻文字列をISO 8601形式に変換（date文字列と時刻文字列から）
-  const convertTimeToISO = (timeStr: string | null, dateStr: string): string | null => {
+  // 時刻文字列をYYYY-MM-DD HH:MM:SS形式（JST）に変換（date文字列と時刻文字列から）
+  // タイムゾーン管理ガイドに基づき、すべての時刻はJSTで統一
+  const convertTimeToJST = (timeStr: string | null, dateStr: string): string | null => {
     if (!timeStr) return null;
     try {
-      const [hours, minutes] = timeStr.split(':').map(Number);
-      const date = new Date(dateStr);
-      date.setHours(hours, minutes, 0, 0);
-      return date.toISOString();
+      // JSTとして送信（YYYY-MM-DD HH:MM:SS形式）
+      return formatJSTDateTime(dateStr, timeStr);
     } catch {
       return null;
     }
@@ -314,8 +389,8 @@ export const AttendanceList: React.FC = () => {
   // UI用のBreakをAPI用のBreakRequestに変換（idは不要）
   const convertBreakToApiFormat = (breaks: Break[], dateStr: string): BreakRequest[] => {
     return breaks.map(breakItem => ({
-      start: convertTimeToISO(breakItem.start, dateStr) || '',
-      end: breakItem.end ? convertTimeToISO(breakItem.end, dateStr) : null
+      start: convertTimeToJST(breakItem.start, dateStr) || '',
+      end: breakItem.end ? convertTimeToJST(breakItem.end, dateStr) : null
     }));
   };
 
@@ -331,9 +406,9 @@ export const AttendanceList: React.FC = () => {
         throw new Error('従業員IDが取得できませんでした');
       }
 
-      // UI用の時刻形式（HH:mm）をAPI用のISO 8601形式に変換
-      const apiClockIn = convertTimeToISO(editingAttendanceData.clockIn, log.date);
-      const apiClockOut = convertTimeToISO(editingAttendanceData.clockOut, log.date);
+      // UI用の時刻形式（HH:mm）をAPI用のYYYY-MM-DD HH:MM:SS形式に変換
+      const apiClockIn = convertTimeToJST(editingAttendanceData.clockIn, log.date);
+      const apiClockOut = convertTimeToJST(editingAttendanceData.clockOut, log.date);
       const apiBreaks = convertBreakToApiFormat(editingAttendanceData.breaks, log.date);
 
       // API呼び出し
@@ -645,6 +720,9 @@ export const AttendanceList: React.FC = () => {
                           if (!log.employeeId) {
                             throw new Error('従業員IDが取得できませんでした');
                           }
+                          if (!log.employeeId) {
+                            throw new Error('従業員IDが取得できませんでした');
+                          }
                           await updateAttendanceMemo({
                             employeeId: log.employeeId,
                             workDate: log.date,
@@ -802,8 +880,12 @@ export const AttendanceList: React.FC = () => {
                             onChange={(e) => setEditingMemo(e.target.value)}
                             onBlur={async () => {
                               try {
+                                if (!log.employeeId) {
+                                  throw new Error('従業員IDが取得できませんでした');
+                                }
                                 await updateAttendanceMemo({
-                                  attendanceId: log.id,
+                                  employeeId: log.employeeId,
+                                  workDate: log.date,
                                   memo: editingMemo || null
                                 });
                                 setAttendanceLogs(prevLogs => prevLogs.map(l => 

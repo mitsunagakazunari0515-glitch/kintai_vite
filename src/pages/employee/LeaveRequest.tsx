@@ -12,6 +12,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { Snackbar } from '../../components/Snackbar';
+import { ProgressBar } from '../../components/ProgressBar';
 import { Button, ApplyButton, CancelApprovalButton, EditButton } from '../../components/Button';
 import { getCurrentFiscalYear, isInFiscalYear } from '../../utils/fiscalYear';
 import { fontSizes } from '../../config/fontSizes';
@@ -93,15 +94,15 @@ export const LeaveRequest: React.FC = () => {
         // APIから返される英語コード（paid, special, sick, absence, other）を日本語に変換
         // APIから返されるステータスコード（pending, approved, rejected, deleted）を日本語に変換
         const convertedRequests: LeaveRequest[] = response.requests.map(req => ({
-          id: req.id,
-          employeeId: req.employeeId,
-          startDate: req.startDate,
-          endDate: req.endDate,
-          days: req.days,
-          type: getLeaveTypeLabel(req.leaveType) as LeaveRequest['type'], // 英語コード→日本語
-          reason: req.reason,
-          status: (req.status === 'rejected' ? '削除済み' : getLeaveRequestStatusLabel(req.status)) as LeaveRequest['status'], // 英語コード→日本語（rejectedは「取消」として扱うが、UIでは「削除済み」として表示）
-          isHalfDay: req.isHalfDay
+          id: req.id || (req as any).leaveRequestId || '', // idがundefinedの場合、leaveRequestIdをフォールバックとして使用
+            employeeId: req.employeeId,
+            startDate: req.startDate,
+            endDate: req.endDate,
+            days: req.days,
+            type: getLeaveTypeLabel(req.leaveType) as LeaveRequest['type'], // 英語コード→日本語
+            reason: req.reason,
+            status: (req.status === 'rejected' ? '削除済み' : getLeaveRequestStatusLabel(req.status)) as LeaveRequest['status'], // 英語コード→日本語（rejectedは「取消」として扱うが、UIでは「削除済み」として表示）
+            isHalfDay: req.isHalfDay
         }));
         setRequests(convertedRequests);
       } catch (error) {
@@ -208,9 +209,39 @@ export const LeaveRequest: React.FC = () => {
       // フォームの日本語コードを英語コードに変換してAPIに送信
       const leaveTypeCode = getLeaveTypeCodeFromLabel(formData.type);
       
-      if (editingRequestId) {
-        // 編集モード
-        const apiRequest = await updateLeaveRequest(editingRequestId, {
+      // 編集モードの判定: editingRequestIdが設定されている場合、またはviewModeが'edit'の場合は更新APIを呼び出す
+      if (editingRequestId || viewMode === 'edit') {
+        // editingRequestIdがnullの場合、viewModeが'edit'ならrequestsから該当する申請を探す
+        let requestIdToUpdate = editingRequestId;
+        if (!requestIdToUpdate && viewMode === 'edit') {
+          // 編集画面では、formDataの内容から該当する申請を特定する
+          const matchingRequest = requests.find(r => 
+            r.startDate === formData.startDate && 
+            r.endDate === (formData.isHalfDay ? formData.startDate : formData.endDate) &&
+            r.reason === formData.reason &&
+            r.status === '申請中'
+          );
+          if (matchingRequest) {
+            requestIdToUpdate = matchingRequest.id;
+            // editingRequestIdを復元
+            setEditingRequestId(matchingRequest.id);
+          } else {
+            logError('⚠️ Cannot find matching request for update. editingRequestId is null and no matching request found.');
+            setSnackbar({ message: '更新する申請が見つかりませんでした。', type: 'error' });
+            setTimeout(() => setSnackbar(null), 3000);
+            return;
+          }
+        }
+        
+        if (!requestIdToUpdate) {
+          logError('⚠️ requestIdToUpdate is still null. Cannot update leave request.');
+          setSnackbar({ message: '更新する申請IDが設定されていません。', type: 'error' });
+          setTimeout(() => setSnackbar(null), 3000);
+          return;
+        }
+        // 編集モード: PUT /api/v1/leave-requests/:requestId
+        // API仕様書に基づき、更新APIはレスポンスにdataフィールドを含まないため、更新後に一覧を再取得
+        await updateLeaveRequest(requestIdToUpdate, {
           employeeId: employeeId,
           startDate: formData.startDate,
           endDate: finalEndDate,
@@ -220,22 +251,24 @@ export const LeaveRequest: React.FC = () => {
           isHalfDay: formData.isHalfDay
         });
 
-        // APIレスポンスの英語コードを日本語に変換
-        const updatedRequest: LeaveRequest = {
-          id: apiRequest.id,
-          employeeId: apiRequest.employeeId,
-          startDate: apiRequest.startDate,
-          endDate: apiRequest.endDate,
-          days: apiRequest.days,
-          type: getLeaveTypeLabel(apiRequest.leaveType) as LeaveRequest['type'],
-          reason: apiRequest.reason,
-          status: (apiRequest.status === 'rejected' ? '削除済み' : getLeaveRequestStatusLabel(apiRequest.status)) as LeaveRequest['status'],
-          isHalfDay: apiRequest.isHalfDay
-        };
+        // 更新成功後、一覧を再取得して最新の状態を反映
+        const employeeIdForFetch = getEmployeeId();
+        if (employeeIdForFetch) {
+          const listResponse = await getLeaveRequestList(employeeIdForFetch);
+          const convertedRequests: LeaveRequest[] = listResponse.requests.map(req => ({
+            id: req.leaveRequestId || req.id,
+            employeeId: req.employeeId,
+            startDate: req.startDate,
+            endDate: req.endDate,
+            days: req.days,
+            type: getLeaveTypeLabel(req.leaveType) as LeaveRequest['type'],
+            reason: req.reason,
+            status: (req.status === 'rejected' ? '削除済み' : getLeaveRequestStatusLabel(req.status)) as LeaveRequest['status'],
+            isHalfDay: req.isHalfDay
+          }));
+          setRequests(convertedRequests);
+        }
 
-        setRequests(requests.map(req => 
-          req.id === editingRequestId ? updatedRequest : req
-        ));
         setSnackbar({ message: '休暇申請を更新しました', type: 'success' });
       } else {
         // 新規登録モード
@@ -287,9 +320,21 @@ export const LeaveRequest: React.FC = () => {
     }
   };
 
-  const handleEdit = (requestId: string) => {
+  const handleEdit = (requestId: string | undefined) => {
+    if (!requestId) {
+      logError('⚠️ handleEdit called with undefined requestId');
+      setSnackbar({ message: '編集する申請IDが設定されていません。', type: 'error' });
+      setTimeout(() => setSnackbar(null), 3000);
+      return;
+    }
     const request = requests.find(r => r.id === requestId);
     if (request && request.status === '申請中') {
+      if (!request.id) {
+        logError('⚠️ Request found but id is undefined', { request, requestId });
+        setSnackbar({ message: '申請IDが正しく設定されていません。', type: 'error' });
+        setTimeout(() => setSnackbar(null), 3000);
+        return;
+      }
       setFormData({
         employeeId: request.employeeId,
         startDate: request.startDate,
@@ -299,8 +344,10 @@ export const LeaveRequest: React.FC = () => {
         reason: request.reason,
         isHalfDay: request.isHalfDay || false
       });
-      setEditingRequestId(requestId);
+      setEditingRequestId(request.id);
       setViewMode('edit');
+    } else {
+      logError(`⚠️ Cannot edit request: request not found or status is not '申請中'`, { requestId, request, status: request?.status });
     }
   };
 
@@ -345,6 +392,7 @@ export const LeaveRequest: React.FC = () => {
 
   return (
     <div>
+      {isLoading && <ProgressBar isLoading={true} />}
       {snackbar && (
         <Snackbar
           message={snackbar.message}
@@ -367,7 +415,8 @@ export const LeaveRequest: React.FC = () => {
         <button
           onClick={() => {
             if (viewMode === 'edit') {
-              handleCancelEdit();
+              // 編集モードの場合は、キャンセルではなく編集を続ける
+              // タブをクリックしても編集モードを維持する
             } else {
               setViewMode('apply');
             }
@@ -666,9 +715,9 @@ export const LeaveRequest: React.FC = () => {
               <p style={{ color: '#6b7280', textAlign: 'center' }}>申請履歴がありません</p>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                {filteredRequests.map((request) => (
+                {filteredRequests.map((request, index) => (
                   <div
-                    key={request.id}
+                    key={request.id || `request-${index}`}
                     style={{
                       backgroundColor: request.status === '削除済み' ? '#f3f4f6' : 'white',
                       padding: '1rem',

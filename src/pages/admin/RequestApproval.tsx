@@ -8,7 +8,7 @@
  *   - 未対応申請のバッチ表示
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Snackbar } from '../../components/Snackbar';
 import { ConfirmModal } from '../../components/ConfirmModal';
 import { formatDate } from '../../utils/formatters';
@@ -24,7 +24,7 @@ import {
 import { getEmployees, EmployeeResponse } from '../../utils/employeeApi';
 import { createLeaveRequest } from '../../utils/leaveRequestApi';
 import { getLeaveTypeLabel, getLeaveTypeCodeFromLabel, getLeaveRequestStatusLabel } from '../../utils/codeTranslator';
-import { error as logError } from '../../utils/logger';
+import { log, error as logError } from '../../utils/logger';
 import { translateApiError } from '../../utils/apiErrorTranslator';
 import { ProgressBar } from '../../components/ProgressBar';
 
@@ -105,10 +105,83 @@ export const RequestApproval: React.FC = () => {
     const month = String(now.getMonth() + 1).padStart(2, '0');
     return `${year}-${month}`;
   };
-  const [searchYearMonthFrom, setSearchYearMonthFrom] = useState(getCurrentYearMonth());
-  const [searchYearMonthTo, setSearchYearMonthTo] = useState(getCurrentYearMonth());
-  const [filterType, setFilterType] = useState<string>('all'); // 'all' | '休暇申請' | '打刻修正申請'
-  const [filterStatus, setFilterStatus] = useState<string>('all'); // 'all' | '申請中' | '承認' | '取消' | '削除済み'
+  
+  // ローカルストレージから検索条件を読み込む
+  const loadSearchConditions = () => {
+    try {
+      const saved = localStorage.getItem('requestApprovalSearchConditions');
+      if (saved) {
+        const conditions = JSON.parse(saved);
+        return {
+          searchYearMonthFrom: conditions.searchYearMonthFrom || getCurrentYearMonth(),
+          searchYearMonthTo: conditions.searchYearMonthTo || getCurrentYearMonth(),
+          filterType: conditions.filterType || 'all',
+          filterStatus: conditions.filterStatus || 'all'
+        };
+      }
+    } catch (error) {
+      // パースエラー時はデフォルト値を返す
+    }
+    return {
+      searchYearMonthFrom: getCurrentYearMonth(),
+      searchYearMonthTo: getCurrentYearMonth(),
+      filterType: 'all',
+      filterStatus: 'all'
+    };
+  };
+  
+  // 検索条件をローカルストレージに保存
+  const saveSearchConditions = (conditions: {
+    searchYearMonthFrom: string;
+    searchYearMonthTo: string;
+    filterType: string;
+    filterStatus: string;
+  }) => {
+    try {
+      const data = JSON.stringify(conditions);
+      localStorage.setItem('requestApprovalSearchConditions', data);
+      log('検索条件をローカルストレージに保存:', conditions);
+    } catch (error) {
+      logError('検索条件の保存に失敗:', error);
+    }
+  };
+  
+  // 検索条件（入力用）- 初期値はローカルストレージから読み込む
+  const [searchYearMonthFrom, setSearchYearMonthFrom] = useState(() => {
+    const conditions = loadSearchConditions();
+    return conditions.searchYearMonthFrom;
+  });
+  const [searchYearMonthTo, setSearchYearMonthTo] = useState(() => {
+    const conditions = loadSearchConditions();
+    return conditions.searchYearMonthTo;
+  });
+  const [filterType, setFilterType] = useState<string>(() => {
+    const conditions = loadSearchConditions();
+    return conditions.filterType;
+  }); // 'all' | '休暇申請' | '打刻修正申請'
+  const [filterStatus, setFilterStatus] = useState<string>(() => {
+    const conditions = loadSearchConditions();
+    return conditions.filterStatus;
+  }); // 'all' | '申請中' | '承認' | '取消' | '削除済み'
+  
+  // 検索条件（API用）- 初期値はローカルストレージから読み込む
+  const [apiSearchYearMonthFrom, setApiSearchYearMonthFrom] = useState(() => {
+    const conditions = loadSearchConditions();
+    return conditions.searchYearMonthFrom;
+  });
+  const [apiSearchYearMonthTo, setApiSearchYearMonthTo] = useState(() => {
+    const conditions = loadSearchConditions();
+    return conditions.searchYearMonthTo;
+  });
+  const [apiFilterType, setApiFilterType] = useState<string>(() => {
+    const conditions = loadSearchConditions();
+    return conditions.filterType;
+  });
+  const [apiFilterStatus, setApiFilterStatus] = useState<string>(() => {
+    const conditions = loadSearchConditions();
+    return conditions.filterStatus;
+  });
+  
   const [selectedRequestIds, setSelectedRequestIds] = useState<Set<string>>(new Set());
   const [isSearchExpanded, setIsSearchExpanded] = useState<boolean>(false); // モバイル時の検索条件の展開状態
   const [showRegisterModal, setShowRegisterModal] = useState<boolean>(false);
@@ -137,6 +210,7 @@ export const RequestApproval: React.FC = () => {
   // 従業員一覧（従業員名マッピング用）
   const [employees, setEmployees] = useState<EmployeeResponse[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const isInitialMount = useRef(true);
 
   useEffect(() => {
     const handleResize = () => {
@@ -147,99 +221,129 @@ export const RequestApproval: React.FC = () => {
   }, []);
 
   // APIから申請一覧を取得
-  useEffect(() => {
-    const fetchApplications = async () => {
-      setIsLoading(true);
-      try {
-        // 従業員一覧を取得してマップを作成
-        const employeesList = await getEmployees();
-        setEmployees(employeesList);
-        const employeeMap = new Map<string, string>();
-        employeesList.forEach(emp => employeeMap.set(emp.id, `${emp.firstName} ${emp.lastName}`));
+  const fetchApplications = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      // 従業員一覧を取得してマップを作成
+      const employeesList = await getEmployees();
+      setEmployees(employeesList);
+      const employeeMap = new Map<string, string>();
+      employeesList.forEach(emp => employeeMap.set(emp.id, `${emp.firstName} ${emp.lastName}`));
 
-        // 申請一覧を取得
-        const response = await getApplicationList(
-          searchYearMonthFrom || undefined,
-          searchYearMonthTo || undefined,
-          filterType === 'all' ? undefined : (filterType === '休暇申請' ? 'leave_request' : filterType === '打刻修正申請' ? 'attendance_correction_request' : undefined),
-          filterStatus === 'all' ? undefined : (filterStatus === '申請中' ? 'pending' : filterStatus === '承認' ? 'approved' : filterStatus === '取消' ? 'rejected' : filterStatus === '削除済み' ? 'deleted' : undefined)
-        );
+      // 申請一覧を取得
+      const response = await getApplicationList(
+        apiSearchYearMonthFrom || undefined,
+        apiSearchYearMonthTo || undefined,
+        apiFilterType === 'all' ? undefined : (apiFilterType === '休暇申請' ? 'leave_request' : apiFilterType === '打刻修正申請' ? 'attendance_correction_request' : undefined),
+        apiFilterStatus === 'all' ? undefined : (apiFilterStatus === '申請中' ? 'pending' : apiFilterStatus === '承認' ? 'approved' : apiFilterStatus === '取消' ? 'rejected' : apiFilterStatus === '削除済み' ? 'deleted' : undefined)
+      );
 
-        // APIレスポンスをUI用の形式に変換
-        const convertedRequests: UnifiedRequest[] = response.requests.map(apiReq => {
-          const baseRequest: UnifiedRequest = {
-            id: apiReq.id,
-            type: apiReq.type === 'leave_request' ? '休暇申請' : '打刻修正申請',
-            employeeId: apiReq.employeeId,
-            employeeName: employeeMap.get(apiReq.employeeId) || apiReq.employeeName || '不明な従業員',
-            status: apiReq.status === 'pending' ? '申請中' : apiReq.status === 'approved' ? '承認' : apiReq.status === 'rejected' ? '取消' : '削除済み',
-            requestedAt: apiReq.requestedAt
+      // APIレスポンスをUI用の形式に変換
+      const convertedRequests: UnifiedRequest[] = response.requests.map(apiReq => {
+        const baseRequest: UnifiedRequest = {
+          id: apiReq.id,
+          type: apiReq.type === 'leave_request' ? '休暇申請' : '打刻修正申請',
+          employeeId: apiReq.employeeId,
+          employeeName: employeeMap.get(apiReq.employeeId) || apiReq.employeeName || '不明な従業員',
+          status: apiReq.status === 'pending' ? '申請中' : apiReq.status === 'approved' ? '承認' : apiReq.status === 'rejected' ? '取消' : '削除済み',
+          requestedAt: apiReq.requestedAt
+        };
+
+        if (apiReq.type === 'leave_request' && apiReq.leaveData) {
+          baseRequest.leaveData = {
+            startDate: apiReq.leaveData.startDate,
+            endDate: apiReq.leaveData.endDate,
+            days: apiReq.leaveData.days,
+            leaveType: getLeaveTypeLabel(apiReq.leaveData.leaveType) as '有給' | '特別休暇' | '病気休暇' | '欠勤' | 'その他',
+            reason: apiReq.leaveData.reason,
+            isHalfDay: apiReq.leaveData.isHalfDay
           };
+        } else if (apiReq.type === 'attendance_correction_request' && apiReq.attendanceData) {
+          baseRequest.attendanceData = {
+            date: apiReq.attendanceData.date,
+            originalClockIn: apiReq.attendanceData.originalClockIn,
+            originalClockOut: apiReq.attendanceData.originalClockOut,
+            requestedClockIn: apiReq.attendanceData.requestedClockIn,
+            requestedClockOut: apiReq.attendanceData.requestedClockOut,
+            requestedBreaks: apiReq.attendanceData.requestedBreaks,
+            reason: apiReq.attendanceData.reason
+          };
+        }
 
-          if (apiReq.type === 'leave_request' && apiReq.leaveData) {
-            baseRequest.leaveData = {
-              startDate: apiReq.leaveData.startDate,
-              endDate: apiReq.leaveData.endDate,
-              days: apiReq.leaveData.days,
-              leaveType: getLeaveTypeLabel(apiReq.leaveData.leaveType) as '有給' | '特別休暇' | '病気休暇' | '欠勤' | 'その他',
-              reason: apiReq.leaveData.reason,
-              isHalfDay: apiReq.leaveData.isHalfDay
-            };
-          } else if (apiReq.type === 'attendance_correction_request' && apiReq.attendanceData) {
-            baseRequest.attendanceData = {
-              date: apiReq.attendanceData.date,
-              originalClockIn: apiReq.attendanceData.originalClockIn,
-              originalClockOut: apiReq.attendanceData.originalClockOut,
-              requestedClockIn: apiReq.attendanceData.requestedClockIn,
-              requestedClockOut: apiReq.attendanceData.requestedClockOut,
-              requestedBreaks: apiReq.attendanceData.requestedBreaks,
-              reason: apiReq.attendanceData.reason
-            };
-          }
+        return baseRequest;
+      });
 
-          return baseRequest;
-        });
+      setAllRequests(convertedRequests);
+    } catch (error) {
+      logError('Failed to fetch applications:', error);
+      const errorMessage = translateApiError(error);
+      setSnackbar({ message: errorMessage, type: 'error' });
+      setTimeout(() => setSnackbar(null), 5000);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [apiSearchYearMonthFrom, apiSearchYearMonthTo, apiFilterType, apiFilterStatus]);
 
-        setAllRequests(convertedRequests);
-      } catch (error) {
-        logError('Failed to fetch applications:', error);
-        const errorMessage = translateApiError(error);
-        setSnackbar({ message: errorMessage, type: 'error' });
-        setTimeout(() => setSnackbar(null), 5000);
-      } finally {
-        setIsLoading(false);
-      }
-    };
+  // 初期表示時にAPIを呼ぶ
+  useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      fetchApplications();
+    }
+  }, []); // 初期表示時のみ実行
 
+  // 検索ボタン押下時の処理
+  const handleSearch = () => {
+    // 入力用の検索条件をAPI用の検索条件に反映
+    setApiSearchYearMonthFrom(searchYearMonthFrom);
+    setApiSearchYearMonthTo(searchYearMonthTo);
+    setApiFilterType(filterType);
+    setApiFilterStatus(filterStatus);
+    
+    // 検索条件をローカルストレージに保存
+    saveSearchConditions({
+      searchYearMonthFrom,
+      searchYearMonthTo,
+      filterType,
+      filterStatus
+    });
+  };
+
+  // API用の検索条件が変更されたらAPIを呼ぶ（検索ボタン押下時のみ）
+  useEffect(() => {
+    if (isInitialMount.current) {
+      return; // 初期表示時はスキップ（既に別のuseEffectで呼ばれている）
+    }
     fetchApplications();
+  }, [fetchApplications]);
+
+  // 検索条件が変更されたらローカルストレージに保存
+  useEffect(() => {
+    // 初期表示時はスキップ（初期値の設定による不要な保存を防ぐ）
+    if (isInitialMount.current) {
+      return;
+    }
+    // 検索条件をローカルストレージに保存
+    saveSearchConditions({
+      searchYearMonthFrom,
+      searchYearMonthTo,
+      filterType,
+      filterStatus
+    });
   }, [searchYearMonthFrom, searchYearMonthTo, filterType, filterStatus]);
 
-  // フィルタリング処理
-  const filteredRequests = allRequests.filter(request => {
-    // 年月でフィルタ
-    const requestDate = new Date(request.requestedAt);
-    const requestYearMonth = `${requestDate.getFullYear()}-${String(requestDate.getMonth() + 1).padStart(2, '0')}`;
-    
-    const matchYearMonth = (!searchYearMonthFrom || requestYearMonth >= searchYearMonthFrom) &&
-                           (!searchYearMonthTo || requestYearMonth <= searchYearMonthTo);
-    
-    // 種別でフィルタ
-    const matchType = filterType === 'all' || request.type === filterType;
-    
-    // ステータスでフィルタ
-    const matchStatus = filterStatus === 'all' || request.status === filterStatus;
-    
-    return matchYearMonth && matchType && matchStatus;
-  });
+  // フィルタリング処理（フロントエンド側のフィルタリングは不要、APIでフィルタリング済み）
+  const filteredRequests = allRequests;
 
   // 日付フォーマット関数（yyyy/mm/dd形式）
 
   // 申請の承認
   const handleApprove = async (request: UnifiedRequest) => {
+    setIsLoading(true);
     try {
       await updateApplicationStatus({
         requestId: request.id,
-        type: request.type === '休暇申請' ? 'leave_request' : 'attendance_correction_request',
+        type: request.type === '休暇申請' ? 'leave' : 'attendance',
         action: 'approve'
       });
 
@@ -258,6 +362,8 @@ export const RequestApproval: React.FC = () => {
       const errorMessage = translateApiError(error);
       setSnackbar({ message: errorMessage, type: 'error' });
       setTimeout(() => setSnackbar(null), 5000);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -269,10 +375,11 @@ export const RequestApproval: React.FC = () => {
       message: request.status === '申請中' ? '申請を取り消しますか？' : '承認を取り消しますか？',
       confirmText: '取消',
       onConfirm: async () => {
+        setIsLoading(true);
         try {
           await updateApplicationStatus({
             requestId: request.id,
-            type: request.type === '休暇申請' ? 'leave_request' : 'attendance_correction_request',
+            type: request.type === '休暇申請' ? 'leave' : 'attendance',
             action: 'reject'
           });
 
@@ -293,6 +400,8 @@ export const RequestApproval: React.FC = () => {
           const errorMessage = translateApiError(error);
           setSnackbar({ message: errorMessage, type: 'error' });
           setTimeout(() => setSnackbar(null), 5000);
+        } finally {
+          setIsLoading(false);
         }
         setConfirmModal(null);
       }
@@ -353,13 +462,14 @@ export const RequestApproval: React.FC = () => {
       message: `${selectedPendingRequests.length}件の申請を一括承認しますか？`,
       confirmText: '承認',
       onConfirm: async () => {
+        setIsLoading(true);
         try {
           // すべての申請を並列で承認
           await Promise.all(
             selectedPendingRequests.map(request =>
               updateApplicationStatus({
                 requestId: request.id,
-                type: request.type === '休暇申請' ? 'leave_request' : 'attendance_correction_request',
+                type: request.type === '休暇申請' ? 'leave' : 'attendance',
                 action: 'approve'
               })
             )
@@ -382,6 +492,8 @@ export const RequestApproval: React.FC = () => {
           const errorMessage = translateApiError(error);
           setSnackbar({ message: errorMessage, type: 'error' });
           setTimeout(() => setSnackbar(null), 5000);
+        } finally {
+          setIsLoading(false);
         }
         setConfirmModal(null);
       }
@@ -390,10 +502,24 @@ export const RequestApproval: React.FC = () => {
 
   // 検索条件をクリア
   const handleClearSearch = () => {
-    setSearchYearMonthFrom('');
-    setSearchYearMonthTo('');
+    const currentYearMonth = getCurrentYearMonth();
+    setSearchYearMonthFrom(currentYearMonth);
+    setSearchYearMonthTo(currentYearMonth);
     setFilterType('all');
     setFilterStatus('all');
+    
+    // API用の検索条件もクリアしてAPIを呼ぶ
+    setApiSearchYearMonthFrom(currentYearMonth);
+    setApiSearchYearMonthTo(currentYearMonth);
+    setApiFilterType('all');
+    setApiFilterStatus('all');
+    
+    // ローカルストレージから検索条件を削除
+    try {
+      localStorage.removeItem('requestApprovalSearchConditions');
+    } catch (error) {
+      // 削除エラーは無視
+    }
   };
 
   // 全休暇の場合、開始日と終了日から日数を自動計算
@@ -436,11 +562,13 @@ export const RequestApproval: React.FC = () => {
       return;
     }
 
+    setIsLoading(true);
     try {
       // UIの日本語ラベルをAPIの英語コードに変換
       const apiLeaveType = getLeaveTypeCodeFromLabel(registerFormData.type) as 'paid' | 'special' | 'sick' | 'absence' | 'other';
 
       const apiRequest = await createLeaveRequest({
+        employeeId: registerFormData.employeeId,
         startDate: registerFormData.startDate,
         endDate: finalEndDate,
         leaveType: apiLeaveType,
@@ -472,7 +600,6 @@ export const RequestApproval: React.FC = () => {
         }
       };
 
-      setAllRequests(prev => [newRequest, ...prev].sort((a, b) => new Date(b.requestedAt).getTime() - new Date(a.requestedAt).getTime()));
       setShowRegisterModal(false);
       setRegisterFormData({
         employeeId: '',
@@ -485,11 +612,16 @@ export const RequestApproval: React.FC = () => {
       });
       setSnackbar({ message: '休暇申請を代理で登録しました', type: 'success' });
       setTimeout(() => setSnackbar(null), 3000);
+      
+      // 代理申請登録完了後、再度検索条件のもと申請一覧取得APIを叩く
+      await fetchApplications();
     } catch (error) {
       logError('Failed to register leave request:', error);
       const errorMessage = translateApiError(error);
       setSnackbar({ message: errorMessage, type: 'error' });
       setTimeout(() => setSnackbar(null), 5000);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -699,7 +831,7 @@ export const RequestApproval: React.FC = () => {
                     fullWidth
                   />
                   <SearchButton
-                    onClick={() => {}}
+                    onClick={handleSearch}
                     fullWidth
                   />
                 </div>
@@ -816,7 +948,7 @@ export const RequestApproval: React.FC = () => {
             gap: '0.5rem'
           }}>
             <SearchButton
-              onClick={() => {}}
+              onClick={handleSearch}
             />
             <ClearButton
               onClick={handleClearSearch}
@@ -883,7 +1015,7 @@ export const RequestApproval: React.FC = () => {
               </div>
               <div style={{ marginBottom: '0.75rem' }}>
                 <div style={{ fontSize: fontSizes.medium, color: request.status === '削除済み' || request.status === '取消' ? '#9ca3af' : '#6b7280', marginBottom: '0.25rem' }}>従業員</div>
-                <div style={{ fontWeight: 'bold', color: request.status === '削除済み' || request.status === '取消' ? '#9ca3af' : 'inherit' }}>{request.employeeName} ({request.employeeId})</div>
+                <div style={{ fontWeight: 'bold', color: request.status === '削除済み' || request.status === '取消' ? '#9ca3af' : 'inherit' }}>{request.employeeName}</div>
               </div>
               <div style={{ marginBottom: '0.75rem' }}>
                 <div style={{ fontSize: fontSizes.medium, color: request.status === '削除済み' || request.status === '取消' ? '#9ca3af' : '#6b7280', marginBottom: '0.25rem' }}>申請日時</div>
@@ -1031,7 +1163,7 @@ export const RequestApproval: React.FC = () => {
                     )}
                   </td>
                   <td style={{ padding: '0.75rem', fontWeight: 'bold', color: request.status === '削除済み' || request.status === '取消' ? '#9ca3af' : 'inherit' }}>{request.type}</td>
-                  <td style={{ padding: '0.75rem', color: request.status === '削除済み' || request.status === '取消' ? '#9ca3af' : 'inherit' }}>{request.employeeName} ({request.employeeId})</td>
+                  <td style={{ padding: '0.75rem', color: request.status === '削除済み' || request.status === '取消' ? '#9ca3af' : 'inherit' }}>{request.employeeName}</td>
                   <td style={{ padding: '0.75rem', color: request.status === '削除済み' || request.status === '取消' ? '#9ca3af' : 'inherit' }}>
                     {formatDate(request.requestedAt)} {new Date(request.requestedAt).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}
                   </td>

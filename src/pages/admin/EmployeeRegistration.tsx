@@ -173,18 +173,16 @@ export const EmployeeRegistration: React.FC = () => {
         if (storedAllowances) {
           try {
             const parsedAllowances = JSON.parse(storedAllowances);
-            console.log('EmployeeRegistration: Loaded allowances from localStorage:', parsedAllowances);
             setAllowances(parsedAllowances);
             setIsLoadingAllowances(false);
             return;
           } catch (parseError) {
-            console.warn('EmployeeRegistration: Failed to parse allowances from localStorage:', parseError);
+            // パースエラー時はAPIから取得する（ログは不要）
             // パースエラー時はAPIから取得する
           }
         }
         
         // localStorageにデータがない場合はAPIから取得
-        console.log('EmployeeRegistration: Allowances not found in localStorage, fetching from API');
         const allowanceResponse = await getAllowances();
         const fetchedAllowances: Allowance[] = allowanceResponse.allowances.map(allowance => ({
           id: allowance.id,
@@ -192,18 +190,15 @@ export const EmployeeRegistration: React.FC = () => {
           color: allowance.color,
           includeInOvertime: allowance.includeInOvertime
         }));
-        console.log('EmployeeRegistration: Fetched allowances from API:', fetchedAllowances);
         setAllowances(fetchedAllowances);
         
         // localStorageに保存（次回以降の読み込みを高速化）
         try {
           localStorage.setItem('allowances', JSON.stringify(fetchedAllowances));
-          console.log('EmployeeRegistration: Allowances saved to localStorage');
         } catch (storageError) {
-          console.warn('EmployeeRegistration: Failed to save allowances to localStorage:', storageError);
+          // 保存エラーは無視（ログは不要）
         }
       } catch (error: any) {
-        console.error('EmployeeRegistration: Failed to load allowances:', error);
         logError('Failed to load allowances:', error);
         const errorMessage = translateApiError(error);
         setSnackbar({ message: `手当マスタの取得に失敗しました: ${errorMessage}`, type: 'error' });

@@ -27,20 +27,21 @@ export interface PayrollDetailResponse {
   paidLeaveRemainingDate: string;
   normalOvertime: number;
   lateNightOvertime: number;
+  totalWorkHours: number;
   baseSalary: number;
   overtimeAllowance: number;
   lateNightAllowance: number;
   mealAllowance: number;
   commutingAllowance: number;
   housingAllowance: number;
-  allowances: { [key: string]: number };
+  allowances: Array<{ name: string; amount: number }>;
   totalEarnings: number;
   socialInsurance: number;
   employeePension: number;
   employmentInsurance: number;
   municipalTax: number;
   incomeTax: number;
-  deductions: { [key: string]: number };
+  deductions: Array<{ name: string; amount: number }>;
   totalDeductions: number;
   netPay: number;
 }

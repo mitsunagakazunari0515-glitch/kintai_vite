@@ -19,16 +19,17 @@ import html2canvas from 'html2canvas';
 import { EditIcon, ViewIcon, InfoIcon } from '../../components/Icons';
 import { error as logError, log } from '../../utils/logger';
 import { PdfExportButton, RegisterButton, UpdateButton, Button, EditButton, BackButton } from '../../components/Button';
-import { formatCurrency } from '../../utils/formatters';
+import { ProgressBar } from '../../components/ProgressBar';
+import { formatCurrency, formatMinutesToTime } from '../../utils/formatters';
 import { fontSizes } from '../../config/fontSizes';
 import { getCurrentFiscalYear } from '../../utils/fiscalYear';
-import { dummyAllowances, dummyDeductions, dummyEmployees } from '../../data/dummyData';
+import { dummyEmployees } from '../../data/dummyData';
 import { apiRequest } from '../../config/apiConfig';
-import { getPayrollList, getPayrollDetail, createPayroll, updatePayroll, PayrollListResponse, PayrollApiResponse, PayrollDetailResponse, formatPeriod, parsePeriod, convertPayrollListResponseToRecord, convertPayrollApiResponseToRecord } from '../../utils/payrollApi';
+import { getPayrollList, getPayrollDetail, createPayroll, updatePayroll, PayrollDetailResponse, convertPayrollListResponseToRecord, convertPayrollApiResponseToRecord } from '../../utils/payrollApi';
 import { getStatementTypeLabel } from '../../utils/codeTranslator';
-import { getAllowances, Allowance as ApiAllowance } from '../../utils/allowanceApi';
-import { getDeductions, Deduction as ApiDeduction } from '../../utils/deductionApi';
-import { getAttendanceMyRecords, AttendanceSummary } from '../../utils/attendanceApi';
+import { getAllowances } from '../../utils/allowanceApi';
+import { getDeductions } from '../../utils/deductionApi';
+import { getAttendanceMyRecords } from '../../utils/attendanceApi';
 import { getEmployee, EmployeeResponse } from '../../utils/employeeApi';
 
 /**
@@ -117,14 +118,8 @@ interface BonusDetail {
   bonus: number;
   /** 総支給額。 */
   totalEarnings: number;
-  /** 健康保険料。 */
-  healthInsurance: number;
-  /** 厚生年金保険料。 */
-  employeePension: number;
-  /** 雇用保険料。 */
-  employmentInsurance: number;
-  /** 所得税。 */
-  incomeTax: number;
+  /** 控除IDをキーとした金額のマップ。 */
+  deductions: { [key: string]: number };
   /** 控除合計。 */
   totalDeductions: number;
   /** 差引支給額。 */
@@ -158,6 +153,12 @@ interface PayrollRecord {
   detail?: PayrollDetail;
   /** 賞与明細の詳細情報（後方互換性のため残すが、API仕様では使用しない）。 */
   bonusDetail?: BonusDetail;
+  /** 総支給額（一覧APIから取得）。 */
+  totalEarnings?: number;
+  /** 控除合計（一覧APIから取得）。 */
+  totalDeductions?: number;
+  /** 差引支給額（一覧APIから取得）。 */
+  netPay?: number;
   /** 更新日時。 */
   updatedAt?: string;
   /** 更新者。 */
@@ -189,10 +190,44 @@ export const EmployeePayroll: React.FC = () => {
     const now = new Date();
     return { year: now.getFullYear(), month: now.getMonth() + 1 };
   });
+  // 年の入力中の一時的な値（APIを叩かないため）
+  const [yearInputValue, setYearInputValue] = useState<string>('');
   const [snackbar, setSnackbar] = useState<{ message: string; type: 'error' | 'success' } | null>(null);
   const payslipRef = useRef<HTMLDivElement>(null);
   
-  const [searchFiscalYear, setSearchFiscalYear] = useState<number>(getCurrentFiscalYear());
+  // ローカルストレージから年度検索条件を読み込む
+  const loadFiscalYearSearchCondition = (): number => {
+    try {
+      const saved = localStorage.getItem('employeePayrollSearchFiscalYear');
+      if (saved) {
+        const fiscalYear = parseInt(saved, 10);
+        if (!isNaN(fiscalYear) && fiscalYear >= 2000 && fiscalYear <= 2100) {
+          return fiscalYear;
+        }
+      }
+    } catch (error) {
+      // パースエラー時はデフォルト値を返す
+    }
+    return getCurrentFiscalYear();
+  };
+  
+  // 年度検索条件をローカルストレージに保存
+  const saveFiscalYearSearchCondition = (fiscalYear: number) => {
+    try {
+      localStorage.setItem('employeePayrollSearchFiscalYear', String(fiscalYear));
+      log('年度検索条件をローカルストレージに保存:', fiscalYear);
+    } catch (error) {
+      logError('年度検索条件の保存に失敗:', error);
+    }
+  };
+  
+  const [searchFiscalYear, setSearchFiscalYear] = useState<number>(() => loadFiscalYearSearchCondition());
+  // 年度の入力中の一時的な値（APIを叩かないため）
+  const [fiscalYearInputValue, setFiscalYearInputValue] = useState<string>('');
+  // 残業時間入力中の一時的な値（hh:mm形式）
+  const [normalOvertimeInputValue, setNormalOvertimeInputValue] = useState<string>('');
+  const [lateNightOvertimeInputValue, setLateNightOvertimeInputValue] = useState<string>('');
+  const [totalWorkHoursInputValue, setTotalWorkHoursInputValue] = useState<string>('');
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [recordType, setRecordType] = useState<'payroll' | 'bonus'>('payroll'); // 新規登録時の種類
@@ -201,10 +236,7 @@ export const EmployeePayroll: React.FC = () => {
   const [bonusFormData, setBonusFormData] = useState<BonusDetail>({
     bonus: 0,
     totalEarnings: 0,
-    healthInsurance: 0,
-    employeePension: 0,
-    employmentInsurance: 0,
-    incomeTax: 0,
+    deductions: {},
     totalDeductions: 0,
     netPay: 0
   });
@@ -227,6 +259,9 @@ export const EmployeePayroll: React.FC = () => {
   
   // 従業員情報（基本給取得用）
   const [employeeInfo, setEmployeeInfo] = useState<EmployeeResponse | null>(null);
+  
+  // 残業単価（表示用）
+  const [overtimeRate, setOvertimeRate] = useState<number | null>(null);
   
   log(`[EmployeePayroll] Component initialized. employeeId=${employeeId}, payrollRecords.length=${payrollRecords.length}`);
 
@@ -271,25 +306,73 @@ export const EmployeePayroll: React.FC = () => {
         return sum + amount;
       }, 0);
 
-    // 残業単価 = (基本給 + 残業代に含む手当の金額合計) ÷ 20.5 ÷ 7.5
-    const overtimeRate = (baseSalary + allowancesForOvertime) / 20.5 / 7.5;
+    // 残業単価（時給単価） = (基本給 + 残業代に含む手当の金額合計) ÷ 20.5 ÷ 7.5
+    const overtimeRateHourly = (baseSalary + allowancesForOvertime) / 20.5 / 7.5;
     // 端数処理: 切り上げ（1円単位）
-    const overtimeRateRounded = Math.ceil(overtimeRate);
+    const overtimeRateHourlyRounded = Math.ceil(overtimeRateHourly);
+    // 残業単価（分単価）= 残業単価（時給単価）÷ 60
+    const overtimeRatePerMinute = overtimeRateHourlyRounded / 60;
 
     // 時間外手当の計算
-    // 簡易版: normalOvertimeMinutes（普通残業時間）に平均単価率1.25倍を適用
+    // 簡易版: normalOvertimeMinutes（普通残業時間、分単位）に平均単価率1.25倍を適用
     // 注意: 仕様書では時間帯別・曜日別の単価率があるが、簡易版として平均1.25倍を使用
-    const overtimeAllowance = Math.ceil(overtimeRateRounded * 1.25 * (normalOvertimeMinutes / 60));
+    // 時間外手当 = 残業単価（分単価）× 1.25倍 × 普通残業時間（分）
+    const overtimeAllowance = Math.ceil(overtimeRatePerMinute * 1.25 * normalOvertimeMinutes);
 
     // 深夜手当の計算
-    // 深夜手当 = 深夜労働時間（分） × 残業単価 × 1.50倍
-    const lateNightAllowance = Math.ceil(overtimeRateRounded * 1.50 * (lateNightOvertimeMinutes / 60));
+    // 深夜手当 = 残業単価（分単価）× 1.50倍 × 深夜残業時間（分）
+    const lateNightAllowance = Math.ceil(overtimeRatePerMinute * 1.50 * lateNightOvertimeMinutes);
 
     return {
       baseSalary,
       overtimeAllowance,
       lateNightAllowance
     };
+  };
+
+  /**
+   * 残業単価を計算する関数
+   * @param employee 従業員情報
+   * @param currentAllowances 現在の手当金額（残業代に含む手当を含む）
+   * @param allowanceMasters 手当マスタ一覧（残業代に含む判定用）
+   * @param actualWorkHoursMinutes 実労働時間（分、パートタイム従業員の基本給計算用）
+   * @param formBaseSalary フォームで入力された基本給（オプション、指定されていない場合は従業員情報から取得）
+   * @returns 残業単価（円/時間、切り上げ済み）
+   */
+  const calculateOvertimeRate = (
+    employee: EmployeeResponse | null,
+    currentAllowances: { [key: string]: number },
+    allowanceMasters: Allowance[],
+    actualWorkHoursMinutes: number = 0,
+    formBaseSalary?: number
+  ): number => {
+    // 基本給
+    let baseSalary = 0;
+    if (formBaseSalary !== undefined) {
+      // フォームで入力された基本給を使用
+      baseSalary = formBaseSalary;
+    } else if (employee?.employmentType === 'PART_TIME') {
+      // パートタイム: 時給（baseSalary）× 稼働時間（時間）
+      const hourlyRate = employee.baseSalary || 0;
+      const workHours = actualWorkHoursMinutes / 60; // 分を時間に変換
+      baseSalary = Math.round(hourlyRate * workHours);
+    } else {
+      // 正社員: 月額基本給
+      baseSalary = employee?.baseSalary || 0;
+    }
+
+    // 残業代に含む手当（*マークが付いている手当）の金額合計を取得
+    const allowancesForOvertime = allowanceMasters
+      .filter(allowance => allowance.includeInOvertime)
+      .reduce((sum, allowance) => {
+        const amount = currentAllowances[allowance.id] || 0;
+        return sum + amount;
+      }, 0);
+
+    // 残業単価 = (基本給 + 残業代に含む手当の金額合計) ÷ 20.5 ÷ 7.5
+    const overtimeRate = (baseSalary + allowancesForOvertime) / 20.5 / 7.5;
+    // 端数処理: 切り上げ（1円単位）
+    return Math.ceil(overtimeRate);
   };
 
   /**
@@ -473,8 +556,21 @@ export const EmployeePayroll: React.FC = () => {
           const record = payrollRecords.find(r => r.id === state.recordId);
           if (record) {
             setSelectedRecord(record);
-            if (record.type === 'bonus' && record.bonusDetail) {
+            if (record.type === 'bonus') {
+              if (record.bonusDetail) {
               setBonusFormData(record.bonusDetail);
+              } else if (record.detail) {
+                // APIから取得したdetailからbonusDetailを生成
+                // detail.baseSalaryから賞与の金額を取得
+                const bonusDetail: BonusDetail = {
+                  bonus: record.detail.baseSalary || 0,
+                  totalEarnings: record.detail.totalEarnings || 0,
+                  deductions: record.detail.deductions || {},
+                  totalDeductions: record.detail.totalDeductions || 0,
+                  netPay: record.detail.netPay || 0
+                };
+                setBonusFormData(bonusDetail);
+              }
               setRecordType('bonus');
             } else if (record.detail) {
             setFormData(record.detail);
@@ -517,6 +613,10 @@ export const EmployeePayroll: React.FC = () => {
         
         // 従業員情報を状態に保存（ツールチップ表示用）
         setEmployeeInfo(employeeResponse);
+        // 従業員名を状態に保存
+        if (employeeResponse.firstName && employeeResponse.lastName) {
+          setEmployeeName(`${employeeResponse.firstName} ${employeeResponse.lastName}`);
+        }
         
         // 出勤簿データから勤務情報を取得
         const summary = attendanceResponse.summary;
@@ -552,14 +652,38 @@ export const EmployeePayroll: React.FC = () => {
                 mealAllowance: detailResponse.detail.mealAllowance ?? 0,
                 commutingAllowance: detailResponse.detail.commutingAllowance ?? 0,
                 housingAllowance: detailResponse.detail.housingAllowance ?? 0,
-                allowances: detailResponse.detail.allowances || {},
+                allowances: (() => {
+                  // APIレスポンスの配列形式をオブジェクト形式に変換
+                  const allowancesObj: { [key: string]: number } = {};
+                  if (Array.isArray(detailResponse.detail.allowances)) {
+                    detailResponse.detail.allowances.forEach(item => {
+                      const allowance = allowances.find(a => a.name === item.name);
+                      if (allowance) {
+                        allowancesObj[allowance.id] = item.amount;
+                      }
+                    });
+                  }
+                  return allowancesObj;
+                })(),
                 totalEarnings: detailResponse.detail.totalEarnings ?? 0,
                 socialInsurance: detailResponse.detail.socialInsurance ?? 0,
                 employeePension: detailResponse.detail.employeePension ?? 0,
                 employmentInsurance: detailResponse.detail.employmentInsurance ?? 0,
                 municipalTax: detailResponse.detail.municipalTax ?? 0,
                 incomeTax: detailResponse.detail.incomeTax ?? 0,
-                deductions: detailResponse.detail.deductions || {},
+                deductions: (() => {
+                  // APIレスポンスの配列形式をオブジェクト形式に変換
+                  const deductionsObj: { [key: string]: number } = {};
+                  if (Array.isArray(detailResponse.detail.deductions)) {
+                    detailResponse.detail.deductions.forEach(item => {
+                      const deduction = deductions.find(d => d.name === item.name);
+                      if (deduction) {
+                        deductionsObj[deduction.id] = item.amount;
+                      }
+                    });
+                  }
+                  return deductionsObj;
+                })(),
                 totalDeductions: detailResponse.detail.totalDeductions ?? 0,
                 netPay: detailResponse.detail.netPay ?? 0
               };
@@ -575,7 +699,9 @@ export const EmployeePayroll: React.FC = () => {
           const existingAllowances = existingPayrollDetail?.allowances ?? {};
           const newAllowances: { [key: string]: number } = {};
           allowances.forEach(allowance => {
-            newAllowances[allowance.id] = existingAllowances[allowance.id] ?? 0;
+            // APIからは名称をキーとして返ってくる場合とIDをキーとして返ってくる場合の両方に対応
+            const amount = existingAllowances[allowance.name] || existingAllowances[allowance.id] || 0;
+            newAllowances[allowance.id] = amount;
           });
           return newAllowances;
         })();
@@ -627,7 +753,9 @@ export const EmployeePayroll: React.FC = () => {
             const existingDeductions = existingPayrollDetail?.deductions ?? {};
             const newDeductions: { [key: string]: number } = {};
             deductions.forEach(deduction => {
-              newDeductions[deduction.id] = existingDeductions[deduction.id] ?? 0;
+              // APIからは名称をキーとして返ってくる場合とIDをキーとして返ってくる場合の両方に対応
+              const amount = existingDeductions[deduction.name] || existingDeductions[deduction.id] || 0;
+              newDeductions[deduction.id] = amount;
             });
             return newDeductions;
           })(),
@@ -643,6 +771,60 @@ export const EmployeePayroll: React.FC = () => {
 
     fetchDataForPeriod();
   }, [newPeriod.year, newPeriod.month, viewMode, recordType, employeeId, allowances, deductions]);
+
+  // 残業単価を計算（給与明細の場合のみ）
+  useEffect(() => {
+    if (((viewMode === 'new' && recordType === 'payroll') || (viewMode === 'edit' && selectedRecord?.type !== 'bonus')) && employeeInfo) {
+      const calculatedRate = calculateOvertimeRate(
+        employeeInfo,
+        formData.allowances || {},
+        allowances,
+        formData.totalWorkHours || 0,
+        formData.baseSalary
+      );
+      setOvertimeRate(calculatedRate);
+    } else {
+      setOvertimeRate(null);
+    }
+  }, [
+    viewMode,
+    recordType,
+    selectedRecord?.type,
+    employeeInfo,
+    formData.allowances,
+    formData.totalWorkHours,
+    formData.baseSalary,
+    allowances
+  ]);
+
+  // 残業単価の変更に合わせて時間外手当と深夜手当を自動更新
+  useEffect(() => {
+    if (((viewMode === 'new' && recordType === 'payroll') || (viewMode === 'edit' && selectedRecord?.type !== 'bonus')) && overtimeRate !== null) {
+      // 残業単価（分単価）= 残業単価（時給単価）÷ 60
+      const overtimeRatePerMinute = overtimeRate / 60;
+      
+      // 時間外手当 = 残業単価（分単価）× 1.25倍 × 普通残業時間（分）
+      // formData.normalOvertimeは分単位で保存されている
+      const calculatedOvertimeAllowance = Math.ceil(overtimeRatePerMinute * 1.25 * (formData.normalOvertime || 0));
+
+      // 深夜手当 = 残業単価（分単価）× 1.50倍 × 深夜残業時間（分）
+      // formData.lateNightOvertimeは分単位で保存されている
+      const calculatedLateNightAllowance = Math.ceil(overtimeRatePerMinute * 1.50 * (formData.lateNightOvertime || 0));
+
+      setFormData(prev => ({
+        ...prev,
+        overtimeAllowance: calculatedOvertimeAllowance,
+        lateNightAllowance: calculatedLateNightAllowance
+      }));
+    }
+  }, [
+    viewMode,
+    recordType,
+    selectedRecord?.type,
+    overtimeRate,
+    formData.normalOvertime,
+    formData.lateNightOvertime
+  ]);
 
   useEffect(() => {
     // 給与明細の場合のみ自動計算
@@ -676,10 +858,7 @@ export const EmployeePayroll: React.FC = () => {
     // 賞与明細の場合のみ自動計算
     if (recordType === 'bonus' && bonusFormData) {
       const totalEarnings = bonusFormData.bonus;
-      const totalDeductions = bonusFormData.healthInsurance + 
-        bonusFormData.employeePension + 
-        bonusFormData.employmentInsurance + 
-        bonusFormData.incomeTax;
+      const totalDeductions = Object.values(bonusFormData.deductions || {}).reduce((sum, amount) => sum + (amount || 0), 0);
       const netPay = totalEarnings - totalDeductions;
 
       setBonusFormData(prev => ({
@@ -692,10 +871,7 @@ export const EmployeePayroll: React.FC = () => {
   }, [
     recordType,
     bonusFormData?.bonus,
-    bonusFormData?.healthInsurance,
-    bonusFormData?.employeePension,
-    bonusFormData?.employmentInsurance,
-    bonusFormData?.incomeTax
+    bonusFormData?.deductions
   ]);
 
   // 手当マスタをAPIから取得
@@ -755,10 +931,17 @@ export const EmployeePayroll: React.FC = () => {
       
       setIsLoadingPayroll(true);
       try {
-        // 従業員名を取得（ダミーデータから、将来的にAPIから取得）
-        const employee = dummyEmployees.find(emp => emp.id === employeeId) as any;
-        if (employee && employee.firstName && employee.lastName) {
-          setEmployeeName(`${employee.firstName} ${employee.lastName}`);
+        // 従業員名をAPIから取得
+        let employeeNameForRecords = '従業員';
+        try {
+          const employeeResponse = await getEmployee(employeeId);
+          if (employeeResponse.firstName && employeeResponse.lastName) {
+            const fullName = `${employeeResponse.firstName} ${employeeResponse.lastName}`;
+            setEmployeeName(fullName);
+            employeeNameForRecords = fullName;
+          }
+        } catch (error) {
+          logError('Failed to fetch employee:', error);
         }
         
         // APIから給与明細一覧を取得
@@ -766,9 +949,7 @@ export const EmployeePayroll: React.FC = () => {
         const mappedRecords: PayrollRecord[] = records.map(record => {
           const converted = convertPayrollListResponseToRecord(
             record,
-            employee && employee.firstName && employee.lastName 
-              ? `${employee.firstName} ${employee.lastName}` 
-              : '従業員',
+            employeeNameForRecords,
             companyName
           );
           return {
@@ -794,14 +975,69 @@ export const EmployeePayroll: React.FC = () => {
 
     fetchPayrollRecords();
   }, [employeeId, searchFiscalYear, companyName]);
+  
+  // 年度検索条件が変更されたらローカルストレージに保存
+  useEffect(() => {
+    saveFiscalYearSearchCondition(searchFiscalYear);
+  }, [searchFiscalYear]);
+
+  // APIレスポンスの配列形式をUI用のオブジェクト形式に変換
+  const convertApiDetailToUiDetail = (apiDetail: PayrollDetailResponse): PayrollDetail => {
+    // allowancesを配列形式からオブジェクト形式に変換（IDをキーとして使用）
+    const allowancesObj: { [key: string]: number } = {};
+    if (Array.isArray(apiDetail.allowances)) {
+      apiDetail.allowances.forEach(item => {
+        // 手当名からIDを検索
+        const allowance = allowances.find(a => a.name === item.name);
+        if (allowance) {
+          allowancesObj[allowance.id] = item.amount;
+        }
+      });
+    }
+    
+    // deductionsを配列形式からオブジェクト形式に変換（IDをキーとして使用）
+    const deductionsObj: { [key: string]: number } = {};
+    if (Array.isArray(apiDetail.deductions)) {
+      apiDetail.deductions.forEach(item => {
+        // 控除名からIDを検索
+        const deduction = deductions.find(d => d.name === item.name);
+        if (deduction) {
+          deductionsObj[deduction.id] = item.amount;
+        }
+      });
+    }
+    
+    return {
+      ...apiDetail,
+      allowances: allowancesObj,
+      deductions: deductionsObj
+    };
+  };
 
   const handleView = async (record: PayrollRecord) => {
     try {
       // 詳細情報が既にロードされている場合はそれを使用
       if (record.detail || record.bonusDetail) {
-        setSelectedRecord(record);
-        if (record.type === 'bonus' && record.bonusDetail) {
+        // employeeNameが「従業員」の場合は、employeeNameのstateを使用
+        const recordWithEmployeeName: PayrollRecord = {
+          ...record,
+          employeeName: record.employeeName && record.employeeName !== '従業員' ? record.employeeName : employeeName
+        };
+        setSelectedRecord(recordWithEmployeeName);
+        if (record.type === 'bonus') {
+          if (record.bonusDetail) {
           setBonusFormData(record.bonusDetail);
+          } else if (record.detail) {
+            // APIから取得したdetailからbonusDetailを生成
+            const bonusDetail: BonusDetail = {
+              bonus: record.detail.allowances?.['賞与'] || 0,
+              totalEarnings: record.detail.totalEarnings || 0,
+              deductions: record.detail.deductions || {},
+              totalDeductions: record.detail.totalDeductions || 0,
+              netPay: record.detail.netPay || 0
+            };
+            setBonusFormData(bonusDetail);
+          }
           setRecordType('bonus');
         } else if (record.detail) {
           setFormData(record.detail);
@@ -822,17 +1058,48 @@ export const EmployeePayroll: React.FC = () => {
         companyName
       );
       
+      // APIレスポンスの配列形式をUI用のオブジェクト形式に変換
+      const uiDetail = convertApiDetailToUiDetail(convertedRecord.detail);
+      
       const fullRecord: PayrollRecord = {
         ...record,
         ...convertedRecord,
-        detail: convertedRecord.detail,
+        employeeName: convertedRecord.employeeName || employeeName, // employeeNameを明示的に設定
+        detail: uiDetail,
         memo: record.memo ?? undefined,
         updatedBy: record.updatedBy ?? undefined
       };
       
       setSelectedRecord(fullRecord);
-      setFormData(convertedRecord.detail);
-      setRecordType(convertedRecord.type);
+      if (convertedRecord.type === 'bonus') {
+        // 賞与明細の場合、detailからbonusDetailを生成
+        // detail.baseSalaryから賞与の金額を取得
+        const bonusAmount = convertedRecord.detail.baseSalary || 0;
+        
+        // 配列形式から控除を取得
+        const deductionsObj: { [key: string]: number } = {};
+        if (Array.isArray(convertedRecord.detail.deductions)) {
+          convertedRecord.detail.deductions.forEach(item => {
+            const deduction = deductions.find(d => d.name === item.name);
+            if (deduction) {
+              deductionsObj[deduction.id] = item.amount;
+            }
+          });
+        }
+        
+        const bonusDetail: BonusDetail = {
+          bonus: bonusAmount,
+          totalEarnings: convertedRecord.detail.totalEarnings || 0,
+          deductions: deductionsObj,
+          totalDeductions: convertedRecord.detail.totalDeductions || 0,
+          netPay: convertedRecord.detail.netPay || 0
+        };
+        setBonusFormData(bonusDetail);
+        setRecordType('bonus');
+      } else {
+      setFormData(uiDetail);
+        setRecordType('payroll');
+      }
       setViewMode('preview');
       window.history.pushState({ viewMode: 'preview', recordId: record.id }, '', window.location.pathname);
       
@@ -849,18 +1116,67 @@ export const EmployeePayroll: React.FC = () => {
     }
   };
 
-  const handleEdit = (record: PayrollRecord) => {
+  const handleEdit = async (record: PayrollRecord) => {
     // 編集画面に入る前のviewModeを記録（一覧からかプレビューからかを判定するため）
     const prevMode = viewMode;
     setPreviousViewMode(prevMode);
     setSelectedRecord(record);
-    if (record.type === 'bonus' && record.bonusDetail) {
-      setBonusFormData(record.bonusDetail);
+    
+    try {
+      // 編集ボタン押下時に必ずAPIから最新データを取得
+      setIsLoadingPayroll(true);
+      const detailResponse = await getPayrollDetail(record.id);
+      const convertedRecord = convertPayrollApiResponseToRecord(
+        detailResponse,
+        employeeId || '',
+        employeeName,
+        companyName
+      );
+      
+      // APIレスポンスの配列形式をUI用のオブジェクト形式に変換
+      const uiDetail = convertApiDetailToUiDetail(convertedRecord.detail);
+      
+      const fullRecord: PayrollRecord = {
+        ...record,
+        ...convertedRecord,
+        employeeName: convertedRecord.employeeName || employeeName, // employeeNameを明示的に設定
+        detail: uiDetail,
+        memo: record.memo ?? undefined,
+        updatedBy: record.updatedBy ?? undefined
+      };
+      
+      setSelectedRecord(fullRecord);
+      
+      if (convertedRecord.type === 'bonus') {
+        // 賞与明細の場合、detailからbonusDetailを生成
+        // detail.baseSalaryから賞与の金額を取得
+        const bonusAmount = convertedRecord.detail.baseSalary || 0;
+        
+        // 配列形式から控除を取得
+        const deductionsObj: { [key: string]: number } = {};
+        if (Array.isArray(convertedRecord.detail.deductions)) {
+          convertedRecord.detail.deductions.forEach(item => {
+            const deduction = deductions.find(d => d.name === item.name);
+            if (deduction) {
+              deductionsObj[deduction.id] = item.amount;
+            }
+          });
+        }
+        
+        const bonusDetail: BonusDetail = {
+          bonus: bonusAmount,
+          totalEarnings: convertedRecord.detail.totalEarnings || 0,
+          deductions: deductionsObj,
+          totalDeductions: convertedRecord.detail.totalDeductions || 0,
+          netPay: convertedRecord.detail.netPay || 0
+        };
+        setBonusFormData(bonusDetail);
       setRecordType('bonus');
-    } else if (record.detail) {
-    setFormData(record.detail);
+      } else {
+        setFormData(uiDetail);
       setRecordType('payroll');
     }
+      
     setViewMode('edit');
     // ブラウザの履歴に追加（previousViewModeも保存）
     window.history.pushState({ 
@@ -868,6 +1184,13 @@ export const EmployeePayroll: React.FC = () => {
       recordId: record.id,
       previousViewMode: prevMode 
     }, '', window.location.pathname);
+    } catch (error) {
+      logError('Failed to fetch payroll detail for edit:', error);
+      setSnackbar({ message: '給与明細の取得に失敗しました', type: 'error' });
+      setTimeout(() => setSnackbar(null), 3000);
+    } finally {
+      setIsLoadingPayroll(false);
+    }
   };
 
   const handleNew = async (type: 'payroll' | 'bonus' = 'payroll') => {
@@ -878,13 +1201,15 @@ export const EmployeePayroll: React.FC = () => {
     
     // 初期データを設定
     if (type === 'bonus') {
+      // 控除マスタから初期化
+      const initialDeductions: { [key: string]: number } = {};
+      deductions.forEach(deduction => {
+        initialDeductions[deduction.id] = 0;
+      });
       setBonusFormData({
         bonus: 0,
         totalEarnings: 0,
-        healthInsurance: 0,
-        employeePension: 0,
-        employmentInsurance: 0,
-        incomeTax: 0,
+        deductions: initialDeductions,
         totalDeductions: 0,
         netPay: 0
       });
@@ -903,6 +1228,10 @@ export const EmployeePayroll: React.FC = () => {
           
           // 従業員情報を状態に保存（ツールチップ表示用）
           setEmployeeInfo(employeeResponse);
+          // 従業員名を状態に保存
+          if (employeeResponse.firstName && employeeResponse.lastName) {
+            setEmployeeName(`${employeeResponse.firstName} ${employeeResponse.lastName}`);
+          }
           
           // 出勤簿データから勤務情報を取得
           const summary = attendanceResponse.summary;
@@ -1062,6 +1391,27 @@ export const EmployeePayroll: React.FC = () => {
         let detailPayload: PayrollDetailResponse;
         if (recordType === 'bonus') {
           // 賞与明細の場合
+          // allowancesを配列形式に変換
+          const allowancesArray: Array<{ name: string; amount: number }> = [];
+          if (bonusFormData.bonus > 0) {
+            allowancesArray.push({
+              name: '賞与',
+              amount: bonusFormData.bonus
+            });
+          }
+          
+          // deductionsを配列形式に変換
+          const deductionsArray: Array<{ name: string; amount: number }> = [];
+          Object.keys(bonusFormData.deductions || {}).forEach(deductionId => {
+            const deduction = deductions.find(d => d.id === deductionId);
+            if (deduction && (bonusFormData.deductions[deductionId] || 0) > 0) {
+              deductionsArray.push({
+                name: deduction.name,
+                amount: bonusFormData.deductions[deductionId]
+              });
+            }
+          });
+          
           detailPayload = {
             workingDays: 0,
             holidayWork: 0,
@@ -1070,26 +1420,66 @@ export const EmployeePayroll: React.FC = () => {
             paidLeaveRemainingDate: '',
             normalOvertime: 0,
             lateNightOvertime: 0,
+            totalWorkHours: 0,
             baseSalary: 0,
             overtimeAllowance: 0,
             lateNightAllowance: 0,
             mealAllowance: 0,
             commutingAllowance: 0,
             housingAllowance: 0,
-            allowances: { '賞与': bonusFormData.bonus },
+            allowances: allowancesArray,
             totalEarnings: bonusFormData.totalEarnings,
-            socialInsurance: bonusFormData.healthInsurance,
-            employeePension: bonusFormData.employeePension,
-            employmentInsurance: bonusFormData.employmentInsurance,
+            socialInsurance: 0,
+            employeePension: 0,
+            employmentInsurance: 0,
             municipalTax: 0,
-            incomeTax: bonusFormData.incomeTax,
-            deductions: {},
+            incomeTax: 0,
+            deductions: deductionsArray,
             totalDeductions: bonusFormData.totalDeductions,
             netPay: bonusFormData.netPay
           };
         } else {
           // 給与明細の場合
-          detailPayload = formData;
+          // allowancesとdeductionsを配列形式に変換
+          const allowancesArray: Array<{ name: string; amount: number }> = [];
+          Object.keys(formData.allowances || {}).forEach(allowanceId => {
+            const allowance = allowances.find(a => a.id === allowanceId);
+            if (allowance && (formData.allowances[allowanceId] || 0) > 0) {
+              allowancesArray.push({
+                name: allowance.name,
+                amount: formData.allowances[allowanceId]
+              });
+            }
+          });
+          
+          const deductionsArray: Array<{ name: string; amount: number }> = [];
+          Object.keys(formData.deductions || {}).forEach(deductionId => {
+            const deduction = deductions.find(d => d.id === deductionId);
+            if (deduction && (formData.deductions[deductionId] || 0) > 0) {
+              deductionsArray.push({
+                name: deduction.name,
+                amount: formData.deductions[deductionId]
+              });
+            }
+          });
+          
+          detailPayload = {
+            ...formData,
+            allowances: allowancesArray,
+            deductions: deductionsArray
+          };
+          
+          // デバッグ: 勤務情報が正しく含まれているか確認
+          log('給与明細登録 - 勤務情報:', {
+            workingDays: detailPayload.workingDays,
+            holidayWork: detailPayload.holidayWork,
+            paidLeave: detailPayload.paidLeave,
+            paidLeaveRemaining: detailPayload.paidLeaveRemaining,
+            paidLeaveRemainingDate: detailPayload.paidLeaveRemainingDate,
+            normalOvertime: detailPayload.normalOvertime,
+            lateNightOvertime: detailPayload.lateNightOvertime,
+            totalWorkHours: detailPayload.totalWorkHours
+          });
         }
         
         await createPayroll({
@@ -1134,6 +1524,27 @@ export const EmployeePayroll: React.FC = () => {
         let detailPayload: PayrollDetailResponse;
         if (selectedRecord.type === 'bonus') {
           // 賞与明細の場合
+          // allowancesを配列形式に変換
+          const allowancesArray: Array<{ name: string; amount: number }> = [];
+          if (bonusFormData.bonus > 0) {
+            allowancesArray.push({
+              name: '賞与',
+              amount: bonusFormData.bonus
+            });
+          }
+          
+          // deductionsを配列形式に変換
+          const deductionsArray: Array<{ name: string; amount: number }> = [];
+          Object.keys(bonusFormData.deductions || {}).forEach(deductionId => {
+            const deduction = deductions.find(d => d.id === deductionId);
+            if (deduction && (bonusFormData.deductions[deductionId] || 0) > 0) {
+              deductionsArray.push({
+                name: deduction.name,
+                amount: bonusFormData.deductions[deductionId]
+              });
+            }
+          });
+          
           detailPayload = {
             workingDays: 0,
             holidayWork: 0,
@@ -1142,26 +1553,66 @@ export const EmployeePayroll: React.FC = () => {
             paidLeaveRemainingDate: '',
             normalOvertime: 0,
             lateNightOvertime: 0,
+            totalWorkHours: 0,
             baseSalary: 0,
             overtimeAllowance: 0,
             lateNightAllowance: 0,
             mealAllowance: 0,
             commutingAllowance: 0,
             housingAllowance: 0,
-            allowances: { '賞与': bonusFormData.bonus },
+            allowances: allowancesArray,
             totalEarnings: bonusFormData.totalEarnings,
-            socialInsurance: bonusFormData.healthInsurance,
-            employeePension: bonusFormData.employeePension,
-            employmentInsurance: bonusFormData.employmentInsurance,
+            socialInsurance: 0,
+            employeePension: 0,
+            employmentInsurance: 0,
             municipalTax: 0,
-            incomeTax: bonusFormData.incomeTax,
-            deductions: {},
+            incomeTax: 0,
+            deductions: deductionsArray,
             totalDeductions: bonusFormData.totalDeductions,
             netPay: bonusFormData.netPay
           };
         } else {
           // 給与明細の場合
-          detailPayload = formData;
+          // allowancesとdeductionsを配列形式に変換
+          const allowancesArray: Array<{ name: string; amount: number }> = [];
+          Object.keys(formData.allowances || {}).forEach(allowanceId => {
+            const allowance = allowances.find(a => a.id === allowanceId);
+            if (allowance && (formData.allowances[allowanceId] || 0) > 0) {
+              allowancesArray.push({
+                name: allowance.name,
+                amount: formData.allowances[allowanceId]
+              });
+            }
+          });
+          
+          const deductionsArray: Array<{ name: string; amount: number }> = [];
+          Object.keys(formData.deductions || {}).forEach(deductionId => {
+            const deduction = deductions.find(d => d.id === deductionId);
+            if (deduction && (formData.deductions[deductionId] || 0) > 0) {
+              deductionsArray.push({
+                name: deduction.name,
+                amount: formData.deductions[deductionId]
+              });
+            }
+          });
+          
+          detailPayload = {
+            ...formData,
+            allowances: allowancesArray,
+            deductions: deductionsArray
+          };
+          
+          // デバッグ: 勤務情報が正しく含まれているか確認
+          log('給与明細更新 - 勤務情報:', {
+            workingDays: detailPayload.workingDays,
+            holidayWork: detailPayload.holidayWork,
+            paidLeave: detailPayload.paidLeave,
+            paidLeaveRemaining: detailPayload.paidLeaveRemaining,
+            paidLeaveRemainingDate: detailPayload.paidLeaveRemainingDate,
+            normalOvertime: detailPayload.normalOvertime,
+            lateNightOvertime: detailPayload.lateNightOvertime,
+            totalWorkHours: detailPayload.totalWorkHours
+          });
         }
         
         await updatePayroll(selectedRecord.id, {
@@ -1203,10 +1654,14 @@ export const EmployeePayroll: React.FC = () => {
             employeeName,
             companyName
           );
+          // APIレスポンスの配列形式をUI用のオブジェクト形式に変換
+          const uiDetail = convertApiDetailToUiDetail(convertedRecord.detail);
+          
           const fullRecord: PayrollRecord = {
             ...updatedRecord,
             ...convertedRecord,
-            detail: convertedRecord.detail,
+            employeeName: convertedRecord.employeeName || employeeName, // employeeNameを明示的に設定
+            detail: uiDetail,
             memo: updatedRecord.memo ?? undefined,
             updatedBy: updatedRecord.updatedBy ?? undefined
           };
@@ -1255,8 +1710,20 @@ export const EmployeePayroll: React.FC = () => {
       
       if (returnViewMode === 'preview') {
         // プレビューに戻る場合は、selectedRecordを保持
-        if (selectedRecord.type === 'bonus' && selectedRecord.bonusDetail) {
+        if (selectedRecord.type === 'bonus') {
+          if (selectedRecord.bonusDetail) {
           setBonusFormData(selectedRecord.bonusDetail);
+          } else if (selectedRecord.detail) {
+            // APIから取得したdetailからbonusDetailを生成
+            const bonusDetail: BonusDetail = {
+              bonus: selectedRecord.detail.allowances?.['賞与'] || 0,
+              totalEarnings: selectedRecord.detail.totalEarnings || 0,
+              deductions: selectedRecord.detail.deductions || {},
+              totalDeductions: selectedRecord.detail.totalDeductions || 0,
+              netPay: selectedRecord.detail.netPay || 0
+            };
+            setBonusFormData(bonusDetail);
+          }
           setRecordType('bonus');
         } else if (selectedRecord.detail) {
         setFormData(selectedRecord.detail);
@@ -1469,14 +1936,18 @@ export const EmployeePayroll: React.FC = () => {
       month: newPeriod.month,
       type: recordType,
       employeeId: employeeId || '',
-      employeeName: payrollRecords[0]?.employeeName || '従業員',
+      employeeName: payrollRecords[0]?.employeeName || employeeName,
       companyName: '株式会社A・1インテリア',
       period: `${newPeriod.year}年 ${newPeriod.month}月`,
       ...(recordType === 'bonus' ? { bonusDetail: bonusFormData } : { detail: formData })
     } :
     (selectedRecord ? 
-      (viewMode === 'preview' ? selectedRecord : { 
-        ...selectedRecord, 
+      (viewMode === 'preview' ? {
+        ...selectedRecord,
+        employeeName: selectedRecord.employeeName || employeeName // employeeNameを明示的に設定
+      } : { 
+        ...selectedRecord,
+        employeeName: selectedRecord.employeeName || employeeName, // employeeNameを明示的に設定
         ...(selectedRecord.type === 'bonus' 
           ? { bonusDetail: bonusFormData } 
           : { detail: formData }) 
@@ -1485,6 +1956,8 @@ export const EmployeePayroll: React.FC = () => {
 
   return (
     <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', height: isMobile ? 'auto' : '100%' }}>
+      {/* ローディング表示 */}
+      {(isLoadingPayroll || isLoadingAllowances || isLoadingDeductions) && <ProgressBar isLoading={true} />}
       {/* スナックバー */}
       {snackbar && (
         <div
@@ -1680,11 +2153,36 @@ export const EmployeePayroll: React.FC = () => {
                 <input
                   type="text"
                   inputMode="numeric"
-                  value={searchFiscalYear || ''}
+                  value={fiscalYearInputValue !== '' ? fiscalYearInputValue : (searchFiscalYear || '')}
                   onChange={(e) => {
-                    const num = handleNumberInput(e.target.value);
+                    const value = e.target.value;
+                    // 数値のみを許可（空文字列も許可して入力中を可能にする）
+                    if (value === '' || /^\d*$/.test(value)) {
+                      setFiscalYearInputValue(value);
+                    }
+                  }}
+                  onBlur={(e) => {
+                    const value = e.target.value.trim();
+                    if (value === '') {
+                      // 空の場合は現在の値を維持
+                      setFiscalYearInputValue('');
+                      return;
+                    }
+                    const num = parseInt(value, 10);
                     if (!isNaN(num) && num >= 2000 && num <= 2100) {
                       setSearchFiscalYear(num);
+                      setFiscalYearInputValue('');
+                      // 年度検索条件をローカルストレージに保存
+                      saveFiscalYearSearchCondition(num);
+                    } else {
+                      // 無効な値の場合は現在の値を維持
+                      setFiscalYearInputValue('');
+                    }
+                  }}
+                  onFocus={() => {
+                    // フォーカス時に現在の値を表示
+                    if (fiscalYearInputValue === '') {
+                      setFiscalYearInputValue(String(searchFiscalYear || ''));
                     }
                   }}
                   style={{
@@ -1764,9 +2262,10 @@ export const EmployeePayroll: React.FC = () => {
             ) : isMobile ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1rem' }}>
                 {sortedRecords.map((record) => {
-                  const totalEarnings = record.type === 'bonus' ? (record.bonusDetail?.totalEarnings || 0) : (record.detail?.totalEarnings || 0);
-                  const totalDeductions = record.type === 'bonus' ? (record.bonusDetail?.totalDeductions || 0) : (record.detail?.totalDeductions || 0);
-                  const netPay = record.type === 'bonus' ? (record.bonusDetail?.netPay || 0) : (record.detail?.netPay || 0);
+                  // 一覧APIから取得したレコードにはtotalEarnings, totalDeductions, netPayが直接含まれている
+                  const totalEarnings = record.totalEarnings || 0;
+                  const totalDeductions = record.totalDeductions || 0;
+                  const netPay = record.netPay || 0;
                   return (
                   <div
                     key={record.id}
@@ -2007,9 +2506,10 @@ export const EmployeePayroll: React.FC = () => {
                   </thead>
                   <tbody>
                     {sortedRecords.map((record) => {
-                      const totalEarnings = record.type === 'bonus' ? (record.bonusDetail?.totalEarnings || 0) : (record.detail?.totalEarnings || 0);
-                      const totalDeductions = record.type === 'bonus' ? (record.bonusDetail?.totalDeductions || 0) : (record.detail?.totalDeductions || 0);
-                      const netPay = record.type === 'bonus' ? (record.bonusDetail?.netPay || 0) : (record.detail?.netPay || 0);
+                      // 一覧APIから取得したレコードにはtotalEarnings, totalDeductions, netPayが直接含まれている
+                      const totalEarnings = record.totalEarnings || 0;
+                      const totalDeductions = record.totalDeductions || 0;
+                      const netPay = record.netPay || 0;
                       return (
                       <tr key={record.id} style={{ borderBottom: '1px solid #e5e7eb' }}>
                           <td style={{ padding: '0.75rem', fontWeight: 'bold', width: '120px', minWidth: '120px', maxWidth: '120px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{record.period}</td>
@@ -2236,12 +2736,40 @@ export const EmployeePayroll: React.FC = () => {
                   <input
                     type="text"
                     inputMode="numeric"
-                    value={newPeriod.year || ''}
+                    value={yearInputValue !== '' ? yearInputValue : (newPeriod.year || '')}
                     onChange={(e) => {
-                      const num = handleNumberInput(e.target.value);
+                      const value = e.target.value;
+                      // 数値のみを許可（空文字列も許可して入力中を可能にする）
+                      if (value === '' || /^\d*$/.test(value)) {
+                        setYearInputValue(value);
+                      } else {
+                        // 数値以外の文字が入力された場合は、現在の値を維持
+                        e.preventDefault();
+                      }
+                    }}
+                    onBlur={(e) => {
+                      const value = e.target.value.trim();
+                      if (value === '') {
+                        // 空の場合は現在の値を維持
+                        setYearInputValue('');
+                        return;
+                      }
+                      const num = parseInt(value, 10);
                       if (!isNaN(num) && num >= 2000 && num <= 2100) {
                         setNewPeriod({ ...newPeriod, year: num });
+                        setYearInputValue('');
+                      } else {
+                        // 無効な値の場合は現在の値を維持
+                        setYearInputValue('');
                       }
+                    }}
+                    onFocus={(e) => {
+                      // フォーカス時に現在の値を表示（入力可能にするため）
+                      if (yearInputValue === '') {
+                        setYearInputValue(String(newPeriod.year || ''));
+                      }
+                      // フォーカス時に全選択して、すぐに入力できるようにする
+                      e.target.select();
                     }}
                     style={{
                       width: '100%',
@@ -2298,7 +2826,7 @@ export const EmployeePayroll: React.FC = () => {
                     {currentRecord.companyName}
                   </div>
                   <div style={{ fontSize: fontSizes.large }}>
-                    氏名 {currentRecord.employeeName}様
+                    氏名 {((currentRecord.employeeName && currentRecord.employeeName !== '従業員') ? currentRecord.employeeName : employeeName)}様
                   </div>
                 </div>
                 <div style={{ fontSize: '1.125rem', fontWeight: 'bold' }}>
@@ -2306,7 +2834,7 @@ export const EmployeePayroll: React.FC = () => {
                 </div>
               </div>
 
-              {currentRecord.type === 'bonus' && 'bonusDetail' in currentRecord && currentRecord.bonusDetail ? (
+              {currentRecord.type === 'bonus' ? (
                 // 賞与明細のプレビュー
                 <>
                   {/* 支給セクション */}
@@ -2315,14 +2843,31 @@ export const EmployeePayroll: React.FC = () => {
                       支給
                     </div>
                     <div style={{ padding: '1rem' }}>
+                      {/* bonusDetailがある場合はそれを使用、ない場合はdetail.baseSalaryから賞与を取得 */}
+                      {(() => {
+                        let bonusAmount = 0;
+                        let totalEarnings = 0;
+                        if (currentRecord.bonusDetail) {
+                          bonusAmount = currentRecord.bonusDetail.bonus;
+                          totalEarnings = currentRecord.bonusDetail.totalEarnings;
+                        } else if (currentRecord.detail) {
+                          // detail.baseSalaryから賞与を取得
+                          bonusAmount = currentRecord.detail.baseSalary || 0;
+                          totalEarnings = currentRecord.detail.totalEarnings || 0;
+                        }
+                        return (
+                          <>
                       <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.75rem 0', borderBottom: '1px solid #e5e7eb' }}>
                         <div style={{ fontWeight: 'bold' }}>賞与</div>
-                        <div style={{ fontWeight: 'bold' }}>{formatCurrency(currentRecord.bonusDetail.bonus)}</div>
+                              <div style={{ fontWeight: 'bold' }}>{formatCurrency(bonusAmount)}</div>
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.75rem 0', marginTop: '0.5rem', borderTop: '2px solid #1f2937' }}>
                         <div style={{ fontWeight: 'bold', fontSize: '1.125rem' }}>総支給額</div>
-                        <div style={{ fontWeight: 'bold', fontSize: '1.125rem' }}>{formatCurrency(currentRecord.bonusDetail.totalEarnings)}</div>
+                              <div style={{ fontWeight: 'bold', fontSize: '1.125rem' }}>{formatCurrency(totalEarnings)}</div>
                       </div>
+                          </>
+                        );
+                      })()}
                     </div>
                   </div>
 
@@ -2332,26 +2877,47 @@ export const EmployeePayroll: React.FC = () => {
                       控除
                     </div>
                     <div style={{ padding: '1rem' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.75rem 0', borderBottom: '1px solid #e5e7eb' }}>
-                        <div>健康保険料</div>
-                        <div style={{ fontWeight: 'bold' }}>{formatCurrency(currentRecord.bonusDetail.healthInsurance)}</div>
+                      {/* 控除マスタから動的に表示 */}
+                      {(() => {
+                        let deductionsObj: { [key: string]: number } = {};
+                        let totalDeductions = 0;
+                        if (currentRecord.bonusDetail) {
+                          deductionsObj = currentRecord.bonusDetail.deductions || {};
+                          totalDeductions = currentRecord.bonusDetail.totalDeductions || 0;
+                        } else if (currentRecord.detail) {
+                          // detailから控除を取得（配列形式またはオブジェクト形式に対応）
+                          if (Array.isArray(currentRecord.detail.deductions)) {
+                            deductionsObj = {};
+                            currentRecord.detail.deductions.forEach(item => {
+                              const deduction = deductions.find(d => d.name === item.name);
+                              if (deduction) {
+                                deductionsObj[deduction.id] = item.amount;
+                              }
+                            });
+                          } else {
+                            deductionsObj = currentRecord.detail.deductions || {};
+                          }
+                          totalDeductions = currentRecord.detail.totalDeductions || 0;
+                        }
+                        return (
+                          <>
+                            {deductions.map(deduction => {
+                              const amount = deductionsObj[deduction.id] || 0;
+                              if (amount === 0) return null;
+                              return (
+                                <div key={deduction.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.75rem 0', borderBottom: '1px solid #e5e7eb' }}>
+                                  <div>{deduction.name}</div>
+                                  <div style={{ fontWeight: 'bold' }}>{formatCurrency(amount)}</div>
                       </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.75rem 0', borderBottom: '1px solid #e5e7eb' }}>
-                        <div>厚生年金保険料</div>
-                        <div style={{ fontWeight: 'bold' }}>{formatCurrency(currentRecord.bonusDetail.employeePension)}</div>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.75rem 0', borderBottom: '1px solid #e5e7eb' }}>
-                        <div>雇用保険料</div>
-                        <div style={{ fontWeight: 'bold' }}>{formatCurrency(currentRecord.bonusDetail.employmentInsurance)}</div>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.75rem 0', borderBottom: '1px solid #e5e7eb' }}>
-                        <div>所得税</div>
-                        <div style={{ fontWeight: 'bold' }}>{formatCurrency(currentRecord.bonusDetail.incomeTax)}</div>
-                      </div>
+                              );
+                            })}
                       <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.75rem 0', marginTop: '0.5rem', borderTop: '2px solid #1f2937' }}>
                         <div style={{ fontWeight: 'bold', fontSize: '1.125rem' }}>控除合計</div>
-                        <div style={{ fontWeight: 'bold', fontSize: '1.125rem' }}>{formatCurrency(currentRecord.bonusDetail.totalDeductions)}</div>
+                              <div style={{ fontWeight: 'bold', fontSize: '1.125rem' }}>{formatCurrency(totalDeductions)}</div>
                       </div>
+                          </>
+                        );
+                      })()}
                     </div>
                   </div>
 
@@ -2364,7 +2930,11 @@ export const EmployeePayroll: React.FC = () => {
                   }}>
                     <div style={{ fontSize: fontSizes.medium, color: '#065f46', marginBottom: '0.5rem' }}>差引支給額</div>
                     <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#065f46' }}>
-                      {formatCurrency(currentRecord.bonusDetail.netPay)}
+                      {formatCurrency(
+                        currentRecord.bonusDetail?.netPay || 
+                        currentRecord.detail?.netPay || 
+                        0
+                      )}
                     </div>
                   </div>
                 </>
@@ -2376,7 +2946,7 @@ export const EmployeePayroll: React.FC = () => {
                 <div style={{ backgroundColor: '#f3f4f6', padding: '0.75rem', fontWeight: 'bold', borderBottom: '1px solid #e5e7eb' }}>
                   勤務
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem', padding: '1rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '1rem', padding: '1rem', marginBottom: '1rem' }}>
                   <div>
                     <div style={{ fontSize: fontSizes.medium, color: '#6b7280', marginBottom: '0.25rem' }}>出勤日数</div>
                     <div style={{ fontSize: '1.125rem', fontWeight: 'bold' }}>{currentRecord.detail.workingDays}</div>
@@ -2390,28 +2960,26 @@ export const EmployeePayroll: React.FC = () => {
                     <div style={{ fontSize: '1.125rem', fontWeight: 'bold' }}>{currentRecord.detail.paidLeave}</div>
                   </div>
                   <div>
-                    <div style={{ fontSize: fontSizes.medium, color: '#6b7280', marginBottom: '0.25rem' }}>有給残</div>
+                    <div style={{ fontSize: fontSizes.medium, color: '#6b7280', marginBottom: '0.25rem' }}>有給残日数</div>
                     <div style={{ fontSize: '1.125rem', fontWeight: 'bold' }}>
                       {currentRecord.detail.paidLeaveRemaining}
                     </div>
                   </div>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem', padding: '0 1rem 1rem 1rem' }}>
                   <div>
                     <div style={{ fontSize: fontSizes.medium, color: '#6b7280', marginBottom: '0.25rem' }}>稼働時間</div>
                     <div style={{ fontSize: '1.125rem', fontWeight: 'bold' }}>
-                      {(() => {
-                        const hours = Math.floor((currentRecord.detail.totalWorkHours || 0) / 60);
-                        const minutes = (currentRecord.detail.totalWorkHours || 0) % 60;
-                        return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
-                      })()}
+                      {formatMinutesToTime(currentRecord.detail.totalWorkHours)}
                     </div>
                   </div>
                   <div>
-                    <div style={{ fontSize: fontSizes.medium, color: '#6b7280', marginBottom: '0.25rem' }}>普通残業</div>
-                    <div style={{ fontSize: '1.125rem', fontWeight: 'bold' }}>{String(currentRecord.detail.normalOvertime).padStart(2, '0')}:00</div>
+                    <div style={{ fontSize: fontSizes.medium, color: '#6b7280', marginBottom: '0.25rem' }}>普通残業時間</div>
+                    <div style={{ fontSize: '1.125rem', fontWeight: 'bold' }}>{formatMinutesToTime(currentRecord.detail.normalOvertime)}</div>
                   </div>
                   <div>
-                    <div style={{ fontSize: fontSizes.medium, color: '#6b7280', marginBottom: '0.25rem' }}>深夜残業</div>
-                    <div style={{ fontSize: '1.125rem', fontWeight: 'bold' }}>{String(currentRecord.detail.lateNightOvertime).padStart(2, '0')}:00</div>
+                    <div style={{ fontSize: fontSizes.medium, color: '#6b7280', marginBottom: '0.25rem' }}>深夜残業時間</div>
+                    <div style={{ fontSize: '1.125rem', fontWeight: 'bold' }}>{formatMinutesToTime(currentRecord.detail.lateNightOvertime)}</div>
                   </div>
                 </div>
               </div>
@@ -2436,13 +3004,10 @@ export const EmployeePayroll: React.FC = () => {
                       <div>深夜手当</div>
                       <div style={{ fontWeight: 'bold' }}>{formatCurrency(currentRecord.detail.lateNightAllowance)}</div>
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid #e5e7eb' }}>
-                      <div>食事手当</div>
-                      <div style={{ fontWeight: 'bold' }}>{formatCurrency(currentRecord.detail.mealAllowance)}</div>
-                    </div>
                     {/* 手当マスタから動的に表示 */}
                     {allowances.map(allowance => {
-                      const amount = currentRecord.detail?.allowances?.[allowance.id] || 0;
+                      // APIからは名称をキーとして返ってくるため、名称で検索
+                      const amount = currentRecord.detail?.allowances?.[allowance.name] || currentRecord.detail?.allowances?.[allowance.id] || 0;
                       if (amount === 0) return null;
                       return (
                         <div key={allowance.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid #e5e7eb' }}>
@@ -2590,8 +3155,9 @@ export const EmployeePayroll: React.FC = () => {
                 <h4 style={{ marginBottom: '1rem', fontSize: isMobile ? fontSizes.h4.mobile : fontSizes.h4.desktop, fontWeight: 'bold' }}>勤務情報</h4>
                 <div style={{ 
                   display: 'grid', 
-                  gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', 
-                  gap: '1rem'
+                  gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr 1fr', 
+                  gap: '1rem',
+                  marginBottom: '1rem'
                 }}>
                   <div>
                     <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: fontSizes.label }}>出勤日数</label>
@@ -2660,7 +3226,7 @@ export const EmployeePayroll: React.FC = () => {
                     />
                   </div>
                   <div>
-                    <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: fontSizes.label }}>有給残</label>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: fontSizes.label }}>有給残日数</label>
                     <input
                       type="text"
                       inputMode="decimal"
@@ -2681,17 +3247,63 @@ export const EmployeePayroll: React.FC = () => {
                       }}
                     />
                   </div>
+                </div>
+                <div style={{ 
+                  display: 'grid', 
+                  gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', 
+                  gap: '1rem'
+                }}>
                   <div>
-                    <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: fontSizes.label }}>稼働時間 (時間)</label>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: fontSizes.label }}>稼働時間</label>
                     <input
                       type="text"
-                      inputMode="numeric"
-                      value={formData.totalWorkHours === 0 ? '0' : (Math.round((formData.totalWorkHours || 0) / 60 * 100) / 100).toString()}
+                      inputMode="text"
+                      placeholder="hh:mm"
+                      value={totalWorkHoursInputValue !== '' ? totalWorkHoursInputValue : formatMinutesToTime(formData.totalWorkHours)}
                       onChange={(e) => {
-                        const num = handleNumberInput(e.target.value, true);
-                        if (!isNaN(num)) {
-                          // 時間を分に変換して保存
-                          setFormData({ ...formData, totalWorkHours: Math.round(num * 60) });
+                        const value = e.target.value;
+                        setTotalWorkHoursInputValue(value);
+                        // hh:mm形式の入力を処理
+                        const match = value.match(/^(\d{1,3}):?(\d{0,2})$/);
+                        if (match) {
+                          const hours = parseInt(match[1] || '0', 10);
+                          const minutes = parseInt(match[2] || '0', 10);
+                          if (minutes < 60) {
+                            const totalMinutes = hours * 60 + minutes;
+                            setFormData({ ...formData, totalWorkHours: totalMinutes });
+                          }
+                        } else if (value === '' || value === '0' || value === '0:') {
+                          setFormData({ ...formData, totalWorkHours: 0 });
+                        }
+                      }}
+                      onFocus={(e) => {
+                        if (totalWorkHoursInputValue === '') {
+                          setTotalWorkHoursInputValue(formatMinutesToTime(formData.totalWorkHours));
+                          e.target.select();
+                        }
+                      }}
+                      onBlur={() => {
+                        // フォーカスが外れたときに、正しい形式に整形
+                        const value = totalWorkHoursInputValue;
+                        const match = value.match(/^(\d{1,3}):?(\d{0,2})$/);
+                        if (match) {
+                          const hours = parseInt(match[1] || '0', 10);
+                          const minutes = parseInt(match[2] || '0', 10);
+                          const totalMinutes = hours * 60 + Math.min(minutes, 59);
+                          setFormData({ ...formData, totalWorkHours: totalMinutes });
+                        }
+                        setTotalWorkHoursInputValue('');
+                        // 稼働時間を変更後、残業単価を再計算（パートタイムの場合）
+                        if (employeeInfo?.employmentType === 'PART_TIME') {
+                          const finalMinutes = match ? (parseInt(match[1] || '0', 10) * 60 + Math.min(parseInt(match[2] || '0', 10), 59)) : formData.totalWorkHours;
+                          const calculatedRate = calculateOvertimeRate(
+                            employeeInfo,
+                            formData.allowances || {},
+                            allowances,
+                            finalMinutes,
+                            formData.baseSalary
+                          );
+                          setOvertimeRate(calculatedRate);
                         }
                       }}
                       style={{
@@ -2705,16 +3317,45 @@ export const EmployeePayroll: React.FC = () => {
                     />
                   </div>
                   <div>
-                    <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: fontSizes.label }}>普通残業 (時間)</label>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: fontSizes.label }}>普通残業時間</label>
                     <input
                       type="text"
-                      inputMode="numeric"
-                      value={formData.normalOvertime === 0 ? '0' : (formData.normalOvertime || '')}
+                      inputMode="text"
+                      placeholder="hh:mm"
+                      value={normalOvertimeInputValue !== '' ? normalOvertimeInputValue : formatMinutesToTime(formData.normalOvertime)}
                       onChange={(e) => {
-                        const num = handleNumberInput(e.target.value);
-                        if (!isNaN(num)) {
-                          setFormData({ ...formData, normalOvertime: num });
+                        const value = e.target.value;
+                        setNormalOvertimeInputValue(value);
+                        // hh:mm形式の入力を処理
+                        const match = value.match(/^(\d{1,3}):?(\d{0,2})$/);
+                        if (match) {
+                          const hours = parseInt(match[1] || '0', 10);
+                          const minutes = parseInt(match[2] || '0', 10);
+                          if (minutes < 60) {
+                            const totalMinutes = hours * 60 + minutes;
+                            setFormData({ ...formData, normalOvertime: totalMinutes });
+                          }
+                        } else if (value === '' || value === '0' || value === '0:') {
+                          setFormData({ ...formData, normalOvertime: 0 });
                         }
+                      }}
+                      onFocus={(e) => {
+                        if (normalOvertimeInputValue === '') {
+                          setNormalOvertimeInputValue(formatMinutesToTime(formData.normalOvertime));
+                          e.target.select();
+                        }
+                      }}
+                      onBlur={(e) => {
+                        // フォーカスが外れたときに、正しい形式に整形
+                        const value = e.target.value;
+                        const match = value.match(/^(\d{1,3}):?(\d{0,2})$/);
+                        if (match) {
+                          const hours = parseInt(match[1] || '0', 10);
+                          const minutes = parseInt(match[2] || '0', 10);
+                          const totalMinutes = hours * 60 + Math.min(minutes, 59);
+                          setFormData({ ...formData, normalOvertime: totalMinutes });
+                        }
+                        setNormalOvertimeInputValue('');
                       }}
                       style={{
                         width: '100%',
@@ -2727,16 +3368,45 @@ export const EmployeePayroll: React.FC = () => {
                     />
                   </div>
                   <div>
-                    <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: fontSizes.label }}>深夜残業 (時間)</label>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: fontSizes.label }}>深夜残業時間</label>
                     <input
                       type="text"
-                      inputMode="numeric"
-                      value={formData.lateNightOvertime === 0 ? '0' : (formData.lateNightOvertime || '')}
+                      inputMode="text"
+                      placeholder="hh:mm"
+                      value={lateNightOvertimeInputValue !== '' ? lateNightOvertimeInputValue : formatMinutesToTime(formData.lateNightOvertime)}
                       onChange={(e) => {
-                        const num = handleNumberInput(e.target.value);
-                        if (!isNaN(num)) {
-                          setFormData({ ...formData, lateNightOvertime: num });
+                        const value = e.target.value;
+                        setLateNightOvertimeInputValue(value);
+                        // hh:mm形式の入力を処理
+                        const match = value.match(/^(\d{1,3}):?(\d{0,2})$/);
+                        if (match) {
+                          const hours = parseInt(match[1] || '0', 10);
+                          const minutes = parseInt(match[2] || '0', 10);
+                          if (minutes < 60) {
+                            const totalMinutes = hours * 60 + minutes;
+                            setFormData({ ...formData, lateNightOvertime: totalMinutes });
+                          }
+                        } else if (value === '' || value === '0' || value === '0:') {
+                          setFormData({ ...formData, lateNightOvertime: 0 });
                         }
+                      }}
+                      onFocus={(e) => {
+                        if (lateNightOvertimeInputValue === '') {
+                          setLateNightOvertimeInputValue(formatMinutesToTime(formData.lateNightOvertime));
+                          e.target.select();
+                        }
+                      }}
+                      onBlur={(e) => {
+                        // フォーカスが外れたときに、正しい形式に整形
+                        const value = e.target.value;
+                        const match = value.match(/^(\d{1,3}):?(\d{0,2})$/);
+                        if (match) {
+                          const hours = parseInt(match[1] || '0', 10);
+                          const minutes = parseInt(match[2] || '0', 10);
+                          const totalMinutes = hours * 60 + Math.min(minutes, 59);
+                          setFormData({ ...formData, lateNightOvertime: totalMinutes });
+                        }
+                        setLateNightOvertimeInputValue('');
                       }}
                       style={{
                         width: '100%',
@@ -2757,6 +3427,23 @@ export const EmployeePayroll: React.FC = () => {
                 {/* 支給 */}
                 <div style={{ flex: 1, padding: '1rem', backgroundColor: 'white', borderRadius: '4px' }}>
                   <h4 style={{ marginBottom: '1rem', fontSize: isMobile ? fontSizes.h4.mobile : fontSizes.h4.desktop, fontWeight: 'bold' }}>支給</h4>
+                  {/* 残業単価の表示（給与明細の場合のみ） */}
+                  {((viewMode === 'new' && recordType === 'payroll') || (viewMode === 'edit' && selectedRecord?.type !== 'bonus')) && overtimeRate !== null && (
+                    <div style={{ 
+                      marginBottom: '1rem', 
+                      padding: '0.5rem',
+                      backgroundColor: '#f3f4f6',
+                      borderRadius: '4px',
+                      border: '1px solid #d1d5db'
+                    }}>
+                      <div style={{ 
+                        fontSize: fontSizes.small, 
+                        color: '#6b7280'
+                      }}>
+                        残業単価: {formatCurrency(overtimeRate)}/時間
+                      </div>
+                    </div>
+                  )}
                   {/* 給与明細の場合 */}
                   {((viewMode === 'new' && recordType === 'payroll') || (viewMode === 'edit' && selectedRecord?.type !== 'bonus')) ? (
                   <div style={{ 
@@ -2768,7 +3455,7 @@ export const EmployeePayroll: React.FC = () => {
                     <div>
                       <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', fontSize: fontSizes.label }}>
                         基本給
-                        <Tooltip content="【算出ロジック】正社員: 従業員テーブルから取得した月額基本給。パートタイム: 時給 × 稼働時間（時間）。">
+                        <Tooltip content="【算出ロジック】正社員: 月額基本給。パートタイム: 時給 × 稼働時間（時間）。">
                           <InfoIcon size={16} color="#3b82f6" />
                         </Tooltip>
                       </label>
@@ -2781,6 +3468,17 @@ export const EmployeePayroll: React.FC = () => {
                           if (!isNaN(num)) {
                             setFormData({ ...formData, baseSalary: num });
                           }
+                        }}
+                        onBlur={() => {
+                          // 基本給を変更後、残業単価を再計算
+                          const calculatedRate = calculateOvertimeRate(
+                            employeeInfo,
+                            formData.allowances || {},
+                            allowances,
+                            formData.totalWorkHours || 0,
+                            formData.baseSalary
+                          );
+                          setOvertimeRate(calculatedRate);
                         }}
                         style={{
                           width: '100%',
@@ -2795,7 +3493,7 @@ export const EmployeePayroll: React.FC = () => {
                     <div>
                       <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', fontSize: fontSizes.label }}>
                         時間外手当
-                        <Tooltip content={`【算出ロジック】\n残業単価 = (基本給 + 残業代に含む手当（*マーク付き）の金額合計) ÷ 20.5 ÷ 7.5\n時間外手当 = 残業単価 × 1.25倍 × (普通残業時間（分） ÷ 60)\n\n※端数処理: 切り上げ（1円単位）\n※簡易版として平均単価率1.25倍を使用（時間帯別・曜日別の単価率は未実装）`}>
+                        <Tooltip content={`【算出ロジック】\n残業単価（時給単価） = (基本給 + 残業代に含む手当（*マーク付き）の金額合計) ÷ 20.5 ÷ 7.5\n残業単価（分単価） = 残業単価（時給単価） ÷ 60\n時間外手当 = 残業単価（分単価） × 1.25倍 × 普通残業時間（分）\n\n※端数処理: 切り上げ（1円単位）\n※簡易版として平均単価率1.25倍を使用（時間帯別・曜日別の単価率は未実装）`}>
                           <InfoIcon size={16} color="#3b82f6" />
                         </Tooltip>
                       </label>
@@ -2822,7 +3520,7 @@ export const EmployeePayroll: React.FC = () => {
                     <div>
                       <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', fontSize: fontSizes.label }}>
                         深夜手当
-                        <Tooltip content={`【算出ロジック】\n残業単価 = (基本給 + 残業代に含む手当（*マーク付き）の金額合計) ÷ 20.5 ÷ 7.5\n深夜手当 = 残業単価 × 1.50倍 × (深夜残業時間（分） ÷ 60)\n\n※端数処理: 切り上げ（1円単位）\n※深夜時間帯: 22:00-04:59`}>
+                        <Tooltip content={`【算出ロジック】\n残業単価（時給単価） = (基本給 + 残業代に含む手当（*マーク付き）の金額合計) ÷ 20.5 ÷ 7.5\n残業単価（分単価） = 残業単価（時給単価） ÷ 60\n深夜手当 = 残業単価（分単価） × 1.50倍 × 深夜残業時間（分）\n\n※端数処理: 切り上げ（1円単位）\n※深夜時間帯: 22:00-04:59`}>
                           <InfoIcon size={16} color="#3b82f6" />
                         </Tooltip>
                       </label>
@@ -2867,6 +3565,17 @@ export const EmployeePayroll: React.FC = () => {
                                 }
                               });
                             }
+                          }}
+                          onBlur={() => {
+                            // 残業代に含む手当の金額を入力後、残業単価を再計算
+                            const calculatedRate = calculateOvertimeRate(
+                              employeeInfo,
+                              formData.allowances,
+                              allowances,
+                              formData.totalWorkHours || 0,
+                              formData.baseSalary
+                            );
+                            setOvertimeRate(calculatedRate);
                           }}
                           style={{
                             width: '100%',
@@ -2959,29 +3668,30 @@ export const EmployeePayroll: React.FC = () => {
                     ))}
                   </div>
                   ) : (
-                    /* 賞与明細の場合 - 健康保険料、厚生年金保険料、雇用保険料、所得税のみ */
+                    /* 賞与明細の場合 - 控除マスタから動的に表示 */
                     <div style={{ 
                       display: 'grid', 
                       gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', 
                       gap: '1rem'
                     }}>
-                      <div>
-                        <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: fontSizes.label }}>健康保険料</label>
+                      {deductions.map(deduction => (
+                        <div key={deduction.id}>
+                          <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: fontSizes.label }}>
+                            {deduction.name}
+                          </label>
                         <input
                           type="text"
                           inputMode="numeric"
-                          value={bonusFormData.healthInsurance || ''}
+                            value={bonusFormData.deductions[deduction.id] === 0 ? '0' : (bonusFormData.deductions[deduction.id] || '')}
                           onChange={(e) => {
                             const num = handleNumberInput(e.target.value);
                             if (!isNaN(num)) {
-                              const healthInsurance = num;
-                              const totalDeductions = healthInsurance + bonusFormData.employeePension + bonusFormData.employmentInsurance + bonusFormData.incomeTax;
-                              const netPay = bonusFormData.totalEarnings - totalDeductions;
                               setBonusFormData({
                                 ...bonusFormData,
-                                healthInsurance,
-                                totalDeductions,
-                                netPay
+                                  deductions: {
+                                    ...bonusFormData.deductions,
+                                    [deduction.id]: num
+                                  }
                               });
                             }
                           }}
@@ -2995,96 +3705,7 @@ export const EmployeePayroll: React.FC = () => {
                           }}
                         />
                       </div>
-                      <div>
-                        <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: fontSizes.label }}>厚生年金保険料</label>
-                        <input
-                          type="text"
-                          inputMode="numeric"
-                          value={bonusFormData.employeePension || ''}
-                          onChange={(e) => {
-                            const num = handleNumberInput(e.target.value);
-                            if (!isNaN(num)) {
-                              const employeePension = num;
-                              const totalDeductions = bonusFormData.healthInsurance + employeePension + bonusFormData.employmentInsurance + bonusFormData.incomeTax;
-                              const netPay = bonusFormData.totalEarnings - totalDeductions;
-                              setBonusFormData({
-                                ...bonusFormData,
-                                employeePension,
-                                totalDeductions,
-                                netPay
-                              });
-                            }
-                          }}
-                          style={{
-                            width: '100%',
-                            padding: '0.5rem',
-                            border: '1px solid #d1d5db',
-                            borderRadius: '4px',
-                            fontSize: fontSizes.input,
-                            boxSizing: 'border-box'
-                          }}
-                        />
-                      </div>
-                      <div>
-                        <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: fontSizes.label }}>雇用保険料</label>
-                        <input
-                          type="text"
-                          inputMode="numeric"
-                          value={bonusFormData.employmentInsurance || ''}
-                          onChange={(e) => {
-                            const num = handleNumberInput(e.target.value);
-                            if (!isNaN(num)) {
-                              const employmentInsurance = num;
-                              const totalDeductions = bonusFormData.healthInsurance + bonusFormData.employeePension + employmentInsurance + bonusFormData.incomeTax;
-                              const netPay = bonusFormData.totalEarnings - totalDeductions;
-                              setBonusFormData({
-                                ...bonusFormData,
-                                employmentInsurance,
-                                totalDeductions,
-                                netPay
-                              });
-                            }
-                          }}
-                          style={{
-                            width: '100%',
-                            padding: '0.5rem',
-                            border: '1px solid #d1d5db',
-                            borderRadius: '4px',
-                            fontSize: fontSizes.input,
-                            boxSizing: 'border-box'
-                          }}
-                        />
-                      </div>
-                      <div>
-                        <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: fontSizes.label }}>所得税</label>
-                        <input
-                          type="text"
-                          inputMode="numeric"
-                          value={bonusFormData.incomeTax || ''}
-                          onChange={(e) => {
-                            const num = handleNumberInput(e.target.value);
-                            if (!isNaN(num)) {
-                              const incomeTax = num;
-                              const totalDeductions = bonusFormData.healthInsurance + bonusFormData.employeePension + bonusFormData.employmentInsurance + incomeTax;
-                              const netPay = bonusFormData.totalEarnings - totalDeductions;
-                              setBonusFormData({
-                                ...bonusFormData,
-                                incomeTax,
-                                totalDeductions,
-                                netPay
-                              });
-                            }
-                          }}
-                          style={{
-                            width: '100%',
-                            padding: '0.5rem',
-                            border: '1px solid #d1d5db',
-                            borderRadius: '4px',
-                            fontSize: fontSizes.input,
-                            boxSizing: 'border-box'
-                          }}
-                        />
-                      </div>
+                      ))}
                     </div>
                   )}
                   <div style={{ marginTop: '1rem', padding: '0.75rem', backgroundColor: '#fee2e2', borderRadius: '4px', textAlign: 'right' }}>

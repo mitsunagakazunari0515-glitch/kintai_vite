@@ -162,14 +162,22 @@ export const createLeaveRequest = async (
 
 /**
  * 休暇申請更新
+ * API仕様書に基づき、レスポンスにはdataフィールドが含まれない
  * @param requestId 休暇申請ID
  * @param payload 休暇申請更新データ
- * @returns 休暇申請
+ * @returns void（更新成功時）
  */
 export const updateLeaveRequest = async (
   requestId: string,
   payload: UpdateLeaveRequestRequest
-): Promise<LeaveRequest> => {
+): Promise<void> => {
+  // requestIdの検証
+  if (!requestId || requestId.trim() === '') {
+    const error = new Error('requestId is required for updating leave request');
+    logError('Failed to update leave request: requestId is missing', error);
+    throw error;
+  }
+  
   try {
     const response = await apiRequest(`/api/v1/leave-requests/${requestId}`, {
       method: 'PUT',
@@ -185,8 +193,12 @@ export const updateLeaveRequest = async (
       throw error;
     }
 
+    // API仕様書によると、レスポンスは`{"statusCode": 200, "message": "success"}`のみ
+    // dataフィールドは含まれないため、レスポンスを読み取って検証（必要に応じて）
     const data = await response.json();
-    return data.data;
+    if (data.statusCode !== 200) {
+      throw new Error(data.message || 'Failed to update leave request');
+    }
   } catch (error) {
     logError('Failed to update leave request:', error);
     throw error;
@@ -195,6 +207,11 @@ export const updateLeaveRequest = async (
 
 /**
  * 休暇申請削除
+ * @param requestId 休暇申請ID
+ */
+/**
+ * 休暇申請削除
+ * API仕様書に基づき、レスポンスは204 No Content
  * @param requestId 休暇申請ID
  */
 export const deleteLeaveRequest = async (requestId: string): Promise<void> => {
@@ -211,6 +228,9 @@ export const deleteLeaveRequest = async (requestId: string): Promise<void> => {
       (error as any).apiError = apiError;
       throw error;
     }
+
+    // API仕様書によると、レスポンスは204 No Content
+    // レスポンスボディは読み取らない（204の場合は空）
   } catch (error) {
     logError('Failed to delete leave request:', error);
     throw error;

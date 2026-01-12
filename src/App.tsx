@@ -17,6 +17,7 @@ import { AttendanceList } from './pages/admin/AttendanceList';
 import { Attendance } from './pages/employee/Attendance';
 import { LeaveRequest } from './pages/employee/LeaveRequest';
 import { getLoginUserType, getGoogleLoginInProgress, removeLoginUserType, removeGoogleLoginInProgress, saveGoogleLoginInProgress } from './utils/storageHelper';
+import { log, error as logError, warn } from './utils/logger';
 
 /**
  * 管理者用ルートコンポーネント。
@@ -99,7 +100,7 @@ const AppRoutes = () => {
       }
       
       if (loginUserType === 'admin' || loginUserType === 'employee') {
-        console.log('App.tsx: Found loginUserType, restoring to storage:', loginUserType);
+        // loginUserTypeをストレージに復元
         sessionStorage.setItem('loginUserType', loginUserType);
         localStorage.setItem('loginUserType', loginUserType);
         // Cookieを削除（使用後は不要）
@@ -130,7 +131,7 @@ const AppRoutes = () => {
       try {
         googleLoginInProgress = await getGoogleLoginInProgress();
       } catch (error) {
-        console.error('App.tsx: Failed to get googleLoginInProgress from IndexedDB:', error);
+        logError('App.tsx: Failed to get googleLoginInProgress from IndexedDB:', error);
       }
       
       // 2. IndexedDBにない場合は、Cookieから確認
@@ -159,7 +160,7 @@ const AppRoutes = () => {
       if (!googleLoginInProgress) {
         const urlParams = new URLSearchParams(window.location.search);
         if (urlParams.get('code')) {
-          console.log('App.tsx: Detected OAuth callback (code parameter found), setting googleLoginInProgress flag');
+          // OAuthコールバック検出
           googleLoginInProgress = true;
           await saveGoogleLoginInProgress();
           // フォールバックとして、Cookie、sessionStorage、localStorageにも保存
@@ -190,7 +191,7 @@ const AppRoutes = () => {
         try {
           loginUserType = await getLoginUserType();
         } catch (error) {
-          console.error('App.tsx: Failed to get loginUserType from IndexedDB:', error);
+          logError('App.tsx: Failed to get loginUserType from IndexedDB:', error);
         }
         
         // 2. IndexedDBにない場合は、Cookieから取得
@@ -221,28 +222,9 @@ const AppRoutes = () => {
           localStorage.setItem('loginUserType', loginUserType);
         }
         
-        // デバッグ用: IndexedDB、Cookie、localStorage、sessionStorageの全項目を確認
-        console.log('App.tsx: Google login - Authentication successful, checking storage:');
-        console.log('  IndexedDB: loginUserType will be checked asynchronously');
-        const cookieValue = document.cookie.split(';').find(c => c.trim().startsWith('loginUserType='));
-        console.log('  Cookie:', {
-          loginUserType: cookieValue ? cookieValue.split('=')[1] : null
-        });
-        console.log('  localStorage:', {
-          loginUserType: localStorage.getItem('loginUserType'),
-          googleLoginInProgress: localStorage.getItem('googleLoginInProgress'),
-          auth: localStorage.getItem('auth'),
-          userInfo: localStorage.getItem('userInfo')
-        });
-        console.log('  sessionStorage:', {
-          loginUserType: sessionStorage.getItem('loginUserType'),
-          googleLoginInProgress: sessionStorage.getItem('googleLoginInProgress')
-        });
-        console.log('App.tsx: Google login - userRole:', userRole, 'currentPath:', currentPath, 'loginUserType (used):', loginUserType);
-        
         if (!loginUserType) {
-          console.warn('App.tsx: Google login - loginUserType not found in IndexedDB, cookie, localStorage, or sessionStorage. This may cause incorrect redirection.');
-          console.warn('App.tsx: Google login - Will use userRole for redirection:', userRole);
+          warn('App.tsx: Google login - loginUserType not found in IndexedDB, cookie, localStorage, or sessionStorage. This may cause incorrect redirection.');
+          warn('App.tsx: Google login - Will use userRole for redirection:', userRole);
         }
         
         // loginUserTypeを優先的に使用してリダイレクト（管理者の場合でも、ユーザーの選択を尊重）
@@ -253,27 +235,19 @@ const AppRoutes = () => {
         if (!isAdminPath && !isEmployeePath) {
           // ログイン画面（/login）またはルート（/）にいる場合、loginUserTypeに基づいてリダイレクト
           if (loginUserType === 'employee') {
-            console.log('App.tsx: Google login - user selected employee, redirecting to employee screen');
             navigate('/employee/attendance', { replace: true });
             // リダイレクト後にloginUserTypeとgoogleLoginInProgressをクリア
             await removeLoginUserType();
             await removeGoogleLoginInProgress();
-            setTimeout(() => {
-              console.log('App.tsx: Google login - Removed flags after navigation to employee screen');
-            }, 500);
             return;
           } else if (loginUserType === 'admin') {
-            console.log('App.tsx: Google login - user selected admin, redirecting to admin screen');
             navigate('/admin/employees', { replace: true });
             // リダイレクト後にloginUserTypeとgoogleLoginInProgressをクリア
             await removeLoginUserType();
             await removeGoogleLoginInProgress();
-            setTimeout(() => {
-              console.log('App.tsx: Google login - Removed flags after navigation to admin screen');
-            }, 500);
             return;
           } else {
-            console.log('App.tsx: Google login - loginUserType not found, using userRole:', userRole);
+            log('App.tsx: Google login - loginUserType not found, using userRole:', userRole);
             if (userRole === 'admin') {
               navigate('/admin/employees', { replace: true });
             } else if (userRole === 'employee') {
@@ -281,39 +255,28 @@ const AppRoutes = () => {
             }
             await removeLoginUserType();
             await removeGoogleLoginInProgress();
-            setTimeout(() => {
-              console.log('App.tsx: Google login - Removed flags after navigation (fallback)');
-            }, 500);
             return;
           }
         } else {
           // 既に管理者画面または従業員画面にいる場合
           if (loginUserType === 'employee' && isAdminPath) {
-            console.log('App.tsx: Google login - user selected employee but on admin path, redirecting to employee screen');
             navigate('/employee/attendance', { replace: true });
             await removeLoginUserType();
             await removeGoogleLoginInProgress();
-            setTimeout(() => {
-              console.log('App.tsx: Google login - Removed flags after redirecting from admin to employee screen');
-            }, 500);
             return;
           } else if (loginUserType === 'admin' && isEmployeePath) {
-            console.log('App.tsx: Google login - user selected admin but on employee path, redirecting to admin screen');
             navigate('/admin/employees', { replace: true });
             await removeLoginUserType();
             await removeGoogleLoginInProgress();
-            setTimeout(() => {
-              console.log('App.tsx: Google login - Removed flags after redirecting from employee to admin screen');
-            }, 500);
             return;
           }
-          console.log('App.tsx: Google login - User already on target screen, removing flags. currentPath:', currentPath, 'loginUserType:', loginUserType);
+          // 既に適切な画面にいる
           await removeLoginUserType();
           await removeGoogleLoginInProgress();
         }
       } else {
         // エラー時（認証・認可が失敗した場合）、ログイン画面に留まる
-        console.log('App.tsx: Google login - Authentication or authorization failed, staying on login screen. isAuthenticated:', isAuthenticated, 'userRole:', userRole);
+        // 認証・認可失敗
         // Googleログインのフラグを削除（エラー時も、checkAuthStatusで既に削除されているが、念のため）
         await removeLoginUserType();
         await removeGoogleLoginInProgress();

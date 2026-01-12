@@ -13,6 +13,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Snackbar } from '../../components/Snackbar';
+import { ProgressBar } from '../../components/ProgressBar';
 import { Button, NewRegisterButton, CancelButton, RegisterButton, UpdateButton, EditButton } from '../../components/Button';
 import { ViewIcon } from '../../components/Icons';
 import { formatDate, formatCurrency } from '../../utils/formatters';
@@ -23,7 +24,7 @@ import { useSort } from '../../hooks/useSort';
 import { ChevronDownIcon, ChevronUpIcon } from '../../components/Icons';
 import { createEmployee, updateEmployee, getEmployees, CreateEmployeeRequest } from '../../utils/employeeApi';
 import { getAllowances } from '../../utils/allowanceApi';
-import { error as logError } from '../../utils/logger';
+import { error as logError, log, warn } from '../../utils/logger';
 import { translateApiError } from '../../utils/apiErrorTranslator';
 
 /**
@@ -104,73 +105,39 @@ export const EmployeeList: React.FC = () => {
     // 既にAPI呼び出しを行った場合は、再実行しない
     // React Strict Modeによる2回目の実行を防ぐ
     if (hasFetchedRef.current) {
-      console.log('EmployeeList: hasFetchedRef is true, skipping API call');
       return;
     }
 
     // 即座にフラグを設定して、2回目の実行（React Strict Mode）を防ぐ
-    // これにより、fetchEmployees()が非同期でも、useEffectの2回目の実行時には既にtrueになっている
     hasFetchedRef.current = true;
     isMountedRef.current = true;
     cleanupCalledRef.current = false; // クリーンアップフラグをリセット
-    console.log('EmployeeList: Starting fetchEmployees, hasFetchedRef set to true');
 
     const fetchEmployees = async () => {
       // マウント状態をチェック（コンポーネントがアンマウントされた場合は処理をスキップ）
       if (!isMountedRef.current) {
-        console.warn('EmployeeList: Component unmounted before fetchEmployees');
         return;
       }
 
-      console.log('EmployeeList: fetchEmployees started, isMountedRef.current:', isMountedRef.current);
       setIsLoadingEmployees(true);
       
       try {
-        console.log('EmployeeList: About to call getEmployees()');
         const fetchedEmployees = await getEmployees();
-        console.log('EmployeeList: getEmployees() completed');
-        console.log('EmployeeList: Fetched employees:', fetchedEmployees);
-        console.log('EmployeeList: fetchedEmployees is array?', Array.isArray(fetchedEmployees));
-        console.log('EmployeeList: Number of employees:', fetchedEmployees?.length || 0);
-        console.log('EmployeeList: isMountedRef.current after fetch:', isMountedRef.current);
-        console.log('EmployeeList: cleanupCalledRef.current after fetch:', cleanupCalledRef.current);
         
-        // 従業員データをマッピング（データが取得できた場合は、クリーンアップが呼ばれていても状態を更新する）
-        // React Strict Modeでは、再マウント/アンマウントサイクルが発生するが、
-        // 実際にコンポーネントが再マウントされる場合は、新しいインスタンスが作成されるため、
-        // 状態を更新しても問題ない
-        console.log('EmployeeList: Starting to map employees...');
-        const mappedEmployees = fetchedEmployees.map(emp => {
-          console.log('EmployeeList: Mapping employee:', emp.id, emp.firstName, emp.lastName);
-          return {
-            ...emp,
-            employmentType: emp.employmentType as 'FULL_TIME' | 'PART_TIME'
-          };
-        });
-        console.log('EmployeeList: Mapped employees:', mappedEmployees);
-        console.log('EmployeeList: Mapped employees length:', mappedEmployees.length);
-        console.log('EmployeeList: Current employees state before setEmployees:', employees.length);
-        console.log('EmployeeList: cleanupCalledRef.current before setEmployees:', cleanupCalledRef.current);
-        console.log('EmployeeList: isMountedRef.current before setEmployees:', isMountedRef.current);
+        // 従業員データをマッピング
+        const mappedEmployees = fetchedEmployees.map(emp => ({
+          ...emp,
+          employmentType: emp.employmentType as 'FULL_TIME' | 'PART_TIME'
+        }));
         
         // クリーンアップが呼ばれていない場合、またはクリーンアップが呼ばれていてもデータが取得できた場合は状態を更新
-        // React Strict Modeでは、クリーンアップが先に実行されることがあるが、
-        // データが取得できた場合は状態を更新する（再マウント時に正しく表示される）
         if (!cleanupCalledRef.current || (cleanupCalledRef.current && mappedEmployees.length > 0)) {
-          console.log('EmployeeList: Calling setEmployees with', mappedEmployees.length, 'items');
-          console.log('EmployeeList: mappedEmployees data:', JSON.stringify(mappedEmployees, null, 2));
           setEmployees(mappedEmployees);
-          console.log('EmployeeList: setEmployees called successfully');
-        } else {
-          console.warn('EmployeeList: Cleanup called and no data, skipping state update');
         }
         
         // 従業員一覧API取得成功後、手当マスタAPIを呼び出す
         try {
-          console.log('EmployeeList: About to call getAllowances()');
           const allowanceResponse = await getAllowances();
-          console.log('EmployeeList: getAllowances() completed');
-          console.log('EmployeeList: Fetched allowances:', allowanceResponse);
           
           // 手当マスタを状態に設定
           const fetchedAllowances: Allowance[] = allowanceResponse.allowances.map(allowance => ({
@@ -181,26 +148,21 @@ export const EmployeeList: React.FC = () => {
           }));
           
           if (isMountedRef.current) {
-            console.log('EmployeeList: Setting allowances:', fetchedAllowances.length, 'items');
             setAllowances(fetchedAllowances);
             
             // localStorageに手当マスタを保存（従業員登録・更新画面で使用）
             try {
               localStorage.setItem('allowances', JSON.stringify(fetchedAllowances));
-              console.log('EmployeeList: Allowances saved to localStorage');
             } catch (storageError) {
-              console.warn('EmployeeList: Failed to save allowances to localStorage:', storageError);
+              // 保存エラーは無視（ログは不要）
             }
           }
         } catch (allowanceError: any) {
           // 手当マスタ取得エラーは警告として記録するが、従業員一覧の表示は続行する
-          console.warn('EmployeeList: Failed to fetch allowances:', allowanceError);
           logError('Failed to fetch allowances:', allowanceError);
           // エラー時はダミーデータを使用する（既に初期値として設定済み）
         }
       } catch (error: any) {
-        // エラーログを出力
-        console.error('EmployeeList: Error in fetchEmployees:', error);
         logError('Failed to fetch employees:', error);
         const errorMessage = translateApiError(error);
         
@@ -230,69 +192,35 @@ export const EmployeeList: React.FC = () => {
         }
       } finally {
         // コンポーネントがマウントされている場合のみ状態を更新
-        console.log('EmployeeList: finally block, isMountedRef.current:', isMountedRef.current);
         if (isMountedRef.current) {
           setIsLoadingEmployees(false);
-          console.log('EmployeeList: setIsLoadingEmployees(false) called');
-        } else {
-          console.warn('EmployeeList: Component unmounted in finally block, skipping setIsLoadingEmployees');
         }
       }
     };
 
     // fetchEmployeesを実行
-    console.log('EmployeeList: About to call fetchEmployees()');
     const fetchPromise = fetchEmployees();
     
     // クリーンアップ関数: コンポーネントがアンマウントされた場合、クリーンアップフラグを設定
-    // 注意: React Strict Modeでは、再マウント/アンマウントサイクルが発生するため、
-    // isMountedRefを即座にfalseに設定せず、cleanupCalledRefでクリーンアップが呼ばれたことを記録する
-    // これにより、非同期処理中にクリーンアップが呼ばれても、データが取得できた場合は状態を更新できる
     return () => {
-      console.log('EmployeeList: useEffect cleanup called');
-      console.log('EmployeeList: cleanup - hasFetchedRef.current:', hasFetchedRef.current);
-      console.log('EmployeeList: cleanup - isMountedRef.current before:', isMountedRef.current);
-      console.log('EmployeeList: cleanup - cleanupCalledRef.current before:', cleanupCalledRef.current);
-      
       // クリーンアップフラグを設定（isMountedRefは後で設定）
       cleanupCalledRef.current = true;
       
-      // 注意: isMountedRefを即座にfalseに設定しない
-      // React Strict Modeでは、再マウントが発生する可能性があるため、
-      // クリーンアップが呼ばれたことを記録するだけで、isMountedRefは後で設定する
-      // 非同期処理が完了するまで待つため、少し遅延させてからisMountedRefをfalseに設定
-      
       // クリーンアップが呼ばれた後、非同期処理が完了するまで少し待ってからisMountedRefをfalseに設定
-      // これにより、非同期処理中にクリーンアップが呼ばれても、データが取得できた場合は状態を更新できる
-      // 500ms待ってからisMountedRefをfalseに設定（API呼び出しが完了するまでの時間を考慮）
       setTimeout(() => {
         if (cleanupCalledRef.current) {
           isMountedRef.current = false;
-          console.log('EmployeeList: cleanup - isMountedRef.current set to false after delay');
         }
-      }, 500); // 500ms待ってからisMountedRefをfalseに設定
-      
-      console.log('EmployeeList: cleanup - cleanupCalledRef.current after:', cleanupCalledRef.current);
-      
-      // 注意: hasFetchedRefはリセットしない（コンポーネントが再マウントされた場合でも、API呼び出しを1回のみ実行するため）
-      // コンポーネントが完全にアンマウントされ、再マウントされた場合は、新しいコンポーネントインスタンスが作成されるため、hasFetchedRefは自動的にリセットされる
+      }, 500);
       
       // fetchPromiseがまだ実行中の場合は、エラーハンドリングを追加
       fetchPromise.catch((error) => {
-        console.error('EmployeeList: Unhandled error in fetchEmployees (cleanup):', error);
         logError('Unhandled error in fetchEmployees (cleanup):', error);
       });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // 依存配列を空にして、マウント時のみ実行（React Strict Modeによる2回目の実行はhasFetchedRefで防ぐ）
   
-  // デバッグログ: employeesステートの変更を監視
-  useEffect(() => {
-    console.log('EmployeeList: employees state changed:', employees.length, 'items');
-    if (employees.length > 0) {
-      console.log('EmployeeList: First employee:', employees[0]);
-    }
-  }, [employees]);
   const [isSearchExpanded, setIsSearchExpanded] = useState<boolean>(false); // モバイル時の検索条件の展開状態
   const [formData, setFormData] = useState<Employee>({
     id: '',
@@ -323,33 +251,11 @@ export const EmployeeList: React.FC = () => {
   };
 
 
-  // デバッグログ: employeesステートの変更を監視
-  console.log('EmployeeList: employees state:', employees.length, 'items');
-  console.log('EmployeeList: filterEmploymentTypes:', filterEmploymentTypes);
-  console.log('EmployeeList: showActiveOnly:', showActiveOnly);
-  
   const filteredEmployees = employees.filter(emp => {
     const matchType = filterEmploymentTypes.length === 0 || filterEmploymentTypes.includes(emp.employmentType);
     const matchActive = !showActiveOnly || !emp.leaveDate;
-    const result = matchType && matchActive;
-    
-    // デバッグログ: すべての従業員についてフィルター結果を確認
-    console.log('EmployeeList: Filtering employee:', {
-      id: emp.id,
-      name: `${emp.firstName} ${emp.lastName}`, // 姓・名の順序で表示（firstName = 苗字/姓, lastName = 名前/名）
-      employmentType: emp.employmentType,
-      leaveDate: emp.leaveDate,
-      matchType,
-      matchActive,
-      result,
-      filterEmploymentTypes,
-      showActiveOnly
-    });
-    
-    return result;
+    return matchType && matchActive;
   });
-  
-  console.log('EmployeeList: Filtered employees:', filteredEmployees.length, 'out of', employees.length);
 
   // ソート機能を共通フックから取得
   const { handleSort, getSortIcon, sortedData: sortedEmployees } = useSort<Employee>(
@@ -445,6 +351,7 @@ export const EmployeeList: React.FC = () => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: isMobile ? 'auto' : '100%' }}>
+      {isLoadingEmployees && <ProgressBar />}
       {snackbar && (
         <Snackbar
           message={snackbar.message}

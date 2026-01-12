@@ -3,7 +3,7 @@
  */
 
 import { apiRequest } from '../config/apiConfig';
-import { error as logError } from './logger';
+import { error as logError, log, warn } from './logger';
 import { extractApiError, translateApiError } from './apiErrorTranslator';
 
 /**
@@ -102,9 +102,6 @@ export const getAllowance = async (allowanceId: string): Promise<Allowance> => {
  */
 export const createAllowance = async (payload: CreateAllowanceRequest): Promise<Allowance> => {
   try {
-    console.log('createAllowance: Starting request');
-    console.log('createAllowance: Request payload:', JSON.stringify(payload, null, 2));
-    
     // リクエストボディの検証
     if (!payload.name || !payload.name.trim()) {
       throw new Error('手当名は必須です');
@@ -114,23 +111,13 @@ export const createAllowance = async (payload: CreateAllowanceRequest): Promise<
     }
     
     const requestBody = JSON.stringify(payload);
-    console.log('createAllowance: Request body:', requestBody);
-    console.log('createAllowance: Request URL: /api/v1/allowances');
-    console.log('createAllowance: Request method: POST');
     
     const response = await apiRequest('/api/v1/allowances', {
       method: 'POST',
       body: requestBody,
     });
 
-    console.log('createAllowance: Response received');
-    console.log('createAllowance: Response status:', response.status, response.statusText);
-    console.log('createAllowance: Response headers:', Object.fromEntries(response.headers.entries()));
-
     if (!response.ok) {
-      console.error('createAllowance: Error response status:', response.status, response.statusText);
-      console.error('createAllowance: Response headers:', Object.fromEntries(response.headers.entries()));
-      
       // extractApiErrorがresponseを読み取るため、先にcloneを作成
       const clonedResponse = response.clone();
       
@@ -140,19 +127,17 @@ export const createAllowance = async (payload: CreateAllowanceRequest): Promise<
         const error = new Error(errorMessage);
         (error as any).status = apiError.statusCode;
         (error as any).apiError = apiError;
-        console.error('createAllowance: API Error:', apiError);
         throw error;
       } catch (parseError: any) {
         // extractApiErrorが失敗した場合（レスポンスがJSON形式でない場合など）
-        console.error('createAllowance: Failed to parse error response:', parseError);
+        logError('createAllowance: Failed to parse error response:', parseError);
         
         // 元のレスポンスを読み取って詳細を確認
         let responseText: string;
         try {
           responseText = await response.text();
-          console.error('createAllowance: Error response body:', responseText);
         } catch (textError) {
-          console.error('createAllowance: Failed to read error response body:', textError);
+          logError('createAllowance: Failed to read error response body:', textError);
           responseText = '';
         }
         
@@ -164,34 +149,26 @@ export const createAllowance = async (payload: CreateAllowanceRequest): Promise<
     }
 
     const responseText = await response.text();
-    console.log('createAllowance: Success response status:', response.status);
-    console.log('createAllowance: Success response body:', responseText);
     
     let data: any;
     try {
       data = JSON.parse(responseText);
-      console.log('createAllowance: Parsed response data:', JSON.stringify(data, null, 2));
     } catch (parseError) {
-      console.error('createAllowance: Failed to parse response as JSON:', parseError);
-      console.error('createAllowance: Raw response text:', responseText);
+      logError('createAllowance: Failed to parse response as JSON:', parseError);
       throw new Error('サーバーからのレスポンスの解析に失敗しました');
     }
     
     // レスポンス構造を確認: data.data または data のどちらか
-    // API仕様書では直接オブジェクトが返されるが、実際の実装では { statusCode, message, data } 形式の可能性がある
     if (data.data) {
-      console.log('createAllowance: Using data.data from response');
       return data.data;
     } else if (data.id) {
       // 直接オブジェクトが返される場合（API仕様書通りの形式）
-      console.log('createAllowance: Using direct response object');
       return data;
     } else {
-      console.error('createAllowance: Unexpected response structure:', data);
+      logError('createAllowance: Unexpected response structure:', data);
       throw new Error('予期しないレスポンス形式です');
     }
   } catch (error) {
-    console.error('createAllowance: Exception caught:', error);
     logError('Failed to create allowance:', error);
     throw error;
   }

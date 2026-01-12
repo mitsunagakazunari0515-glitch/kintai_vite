@@ -509,6 +509,31 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             setTimeout(() => setSnackbar(null), 5000);
           }
           
+          // 認証成功後に認可APIでエラーが発生した場合、Cognitoでは認証済みの状態のままになってしまうため、
+          // Cognitoの認証情報を削除（ログアウト）して再ログイン可能にする
+          // ログアウトを確実に完了させるため、複数回試行する
+          let signOutSuccess = false;
+          for (let i = 0; i < 3; i++) {
+            try {
+              await signOut();
+              log('🔐 Cognito認証情報を削除しました（認可APIエラーのため）');
+              signOutSuccess = true;
+              // ログアウト完了を待つため、少し待機
+              await new Promise(resolve => setTimeout(resolve, 500));
+              break;
+            } catch (signOutError) {
+              logError(`Failed to sign out after authorization error (attempt ${i + 1}/3):`, signOutError);
+              if (i < 2) {
+                // リトライ前に少し待機
+                await new Promise(resolve => setTimeout(resolve, 500));
+              }
+            }
+          }
+          
+          if (!signOutSuccess) {
+            logError('⚠️ Failed to sign out after 3 attempts. User may need to manually clear browser data.');
+          }
+          
           // 認証状態をリセットしてログイン画面に留まる
           setIsAuthenticated(false);
           setUserRole(null);
@@ -759,11 +784,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       // signInを呼ぶ前にloginUserTypeを設定（Hubリスナーが先に反応する可能性があるため）
       // 注意: Login.tsxのhandleSubmitでも設定されているが、念のためここでも設定
       if (role) {
-        console.log('AuthContext: login - Setting loginUserType to localStorage:', role);
         localStorage.setItem('loginUserType', role);
-        // 確認: localStorageに正しく設定されたか確認
-        const verifyLoginUserType = localStorage.getItem('loginUserType');
-        console.log('AuthContext: login - Verified loginUserType in localStorage:', verifyLoginUserType);
       }
 
       const { isSignedIn } = await signIn({ username: id, password });
@@ -790,8 +811,34 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           return true;
         } catch (authError: any) {
           // checkAuthStatus内でエラーが発生した場合（権限エラー、401、403など）
+          // 認証成功後に認可APIでエラーが発生した場合、Cognitoでは認証済みの状態のままになってしまうため、
+          // Cognitoの認証情報を削除（ログアウト）して再ログイン可能にする
           logError('Authorization check failed after login:', authError);
           localStorage.removeItem('loginUserType');
+          
+          // Cognitoの認証情報を削除（ログアウト）
+          // ログアウトを確実に完了させるため、複数回試行する
+          let signOutSuccess = false;
+          for (let i = 0; i < 3; i++) {
+            try {
+              await signOut();
+              log('🔐 Cognito認証情報を削除しました（認可APIエラーのため）');
+              signOutSuccess = true;
+              // ログアウト完了を待つため、少し待機
+              await new Promise(resolve => setTimeout(resolve, 500));
+              break;
+            } catch (signOutError) {
+              logError(`Failed to sign out after authorization error (attempt ${i + 1}/3):`, signOutError);
+              if (i < 2) {
+                // リトライ前に少し待機
+                await new Promise(resolve => setTimeout(resolve, 500));
+              }
+            }
+          }
+          
+          if (!signOutSuccess) {
+            logError('⚠️ Failed to sign out after 3 attempts. User may need to manually clear browser data.');
+          }
           
           // 認証状態を確実にリセット（checkAuthStatus内でもリセットされているが、念のため）
           setIsAuthenticated(false);
@@ -817,7 +864,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       // エラー時もloginUserTypeを削除
       localStorage.removeItem('loginUserType');
       logError('Login error:', err);
-      return false;
+      // UserAlreadyAuthenticatedExceptionなどのエラーはLogin.tsxでスナックバーに表示するため、再スロー
+      throw err;
     }
   };
 

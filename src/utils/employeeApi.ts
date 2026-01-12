@@ -4,7 +4,7 @@
  */
 
 import { apiRequest } from '../config/apiConfig';
-import { error as logError } from './logger';
+import { error as logError, log, warn } from './logger';
 import { extractApiError, translateApiError } from './apiErrorTranslator';
 
 /**
@@ -66,7 +66,7 @@ export type UpdateEmployeeRequest = CreateEmployeeRequest;
  */
 export const createEmployee = async (payload: CreateEmployeeRequest): Promise<void> => {
   try {
-    const response = await apiRequest('/api/v1/employees', {
+    const response = await apiRequest('/api/v1/employees/register', {
       method: 'POST',
       body: JSON.stringify(payload),
     });
@@ -140,7 +140,6 @@ export const getEmployees = async (): Promise<EmployeeResponse[]> => {
     }
 
     const data = await response.json();
-    console.log('getEmployees: Raw API response:', JSON.stringify(data, null, 2));
     
     // レスポンス構造の確認と処理
     // パターン1: { statusCode: 200, message: "success", data: { employees: [...], total: 1 } }
@@ -151,28 +150,19 @@ export const getEmployees = async (): Promise<EmployeeResponse[]> => {
     if (data.data && data.data.employees && Array.isArray(data.data.employees)) {
       // パターン1またはパターン2: { statusCode: 200, message: "success", data: { employees: [...], total: 1 } }
       employees = data.data.employees;
-      console.log('getEmployees: Extracted employees from data.data.employees:', employees.length, 'items');
-      if (employees.length > 0) {
-        console.log('getEmployees: First employee:', JSON.stringify(employees[0], null, 2));
-      }
     } else if (data.employees && Array.isArray(data.employees)) {
       // パターン3: { employees: [...] }
       employees = data.employees;
-      console.log('getEmployees: Extracted employees from data.employees:', employees.length, 'items');
     } else if (Array.isArray(data)) {
       // 配列が直接返される場合
       employees = data;
-      console.log('getEmployees: Response is directly an array:', employees.length, 'items');
     } else {
-      console.error('getEmployees: Unexpected response structure:', data);
-      console.error('getEmployees: data.data:', data.data);
-      console.error('getEmployees: data.employees:', data.employees);
+      logError('getEmployees: Unexpected response structure:', data);
       employees = [];
     }
     
-    console.log('getEmployees: Returning employees:', employees.length, 'items');
     if (employees.length === 0) {
-      console.warn('getEmployees: No employees found in response!');
+      warn('getEmployees: No employees found in response!');
     }
     return employees;
   } catch (error) {

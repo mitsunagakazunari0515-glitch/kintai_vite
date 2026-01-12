@@ -5,7 +5,7 @@
 
 import { getApiEndpoint as getAmplifyApiEndpoint } from './amplifyConfig';
 import { fetchAuthSession } from 'aws-amplify/auth';
-import { error as logError } from '../utils/logger';
+import { error as logError, log, warn } from '../utils/logger';
 import { encodeJapaneseString } from '../utils/japaneseEncoder';
 
 /**
@@ -194,16 +194,16 @@ export const apiRequest = async (
       const idToken = await getIdToken();
       if (idToken) {
         requestHeaders['Authorization'] = `Bearer ${idToken}`;
-        console.log('🔐 Authorization header set:', `Bearer ${idToken.substring(0, 20)}...`);
+        log('🔐 Authorization header set:', `Bearer ${idToken.substring(0, 20)}...`);
       } else {
-        console.warn('⚠️ ID Token not available. Request will fail with 401.');
+        warn('⚠️ ID Token not available. Request will fail with 401.');
         throw new Error('認証トークンを取得できませんでした。ログインしてください。');
       }
     } else {
-      console.log('🔐 Authorization header already set:', requestHeaders['Authorization'].substring(0, 20) + '...');
+      log('🔐 Authorization header already set:', requestHeaders['Authorization'].substring(0, 20) + '...');
     }
   } else {
-    console.log('ℹ️ Authentication not required for this request');
+    log('ℹ️ Authentication not required for this request');
   }
 
   // X-Request-Idを設定（自動生成が有効な場合）
@@ -233,7 +233,7 @@ export const apiRequest = async (
       requestHeaders['X-Requested-By'] = encodeJapaneseString(userInfo.requestedBy);
     } catch (error) {
       // エンコードに失敗した場合は、ヘッダーを設定しない（エラーを回避）
-      console.warn('Failed to encode X-Requested-By header, skipping:', error);
+      warn('Failed to encode X-Requested-By header, skipping:', error);
     }
   }
 
@@ -244,14 +244,14 @@ export const apiRequest = async (
   if (!isAuthEndpoint) {
     if (!requestHeaders['X-Employee-Id'] && userInfo.employeeId) {
       requestHeaders['X-Employee-Id'] = userInfo.employeeId;
-      console.log('🔐 X-Employee-Id header set:', userInfo.employeeId);
+      log('🔐 X-Employee-Id header set:', userInfo.employeeId);
     } else if (!requestHeaders['X-Employee-Id'] && !userInfo.employeeId) {
       // employeeIdが設定されていない場合の警告（認可APIを呼び出していない可能性）
-      console.warn('⚠️ Warning: X-Employee-Id header is not set. Please call GET /api/v1/auth/authorize first to get your employee ID.');
+      warn('⚠️ Warning: X-Employee-Id header is not set. Please call GET /api/v1/auth/authorize first to get your employee ID.');
       // 警告のみで、リクエストは続行（API側で400エラーが返される可能性がある）
     }
   } else {
-    console.log('ℹ️ Auth endpoint detected, skipping X-Employee-Id header');
+    log('ℹ️ Auth endpoint detected, skipping X-Employee-Id header');
   }
 
   // X-User-Roleを設定（認可API以外のすべてのAPIリクエストに必須）
@@ -267,17 +267,17 @@ export const apiRequest = async (
     // 従業員画面からのリクエストの場合は、常に'employee'として扱う
     if (isEmployeeScreen) {
       requestHeaders['X-User-Role'] = 'employee';
-      console.log('🔐 X-User-Role header set to "employee" (employee screen detected):', currentPath);
+      log('🔐 X-User-Role header set to "employee" (employee screen detected):', currentPath);
     } else if (userInfo.role) {
       requestHeaders['X-User-Role'] = userInfo.role; // 'admin' または 'employee'
-      console.log('🔐 X-User-Role header set:', userInfo.role);
+      log('🔐 X-User-Role header set:', userInfo.role);
     } else {
       // roleが設定されていない場合の警告（認可APIを呼び出していない可能性）
-      console.warn('⚠️ Warning: X-User-Role header is not set. Please call GET /api/v1/auth/authorize first to get your role.');
+      warn('⚠️ Warning: X-User-Role header is not set. Please call GET /api/v1/auth/authorize first to get your role.');
       // 警告のみで、リクエストは続行（API側で400エラーが返される可能性がある）
     }
   } else if (isAuthEndpoint) {
-    console.log('ℹ️ Auth endpoint detected, skipping X-User-Role header');
+    log('ℹ️ Auth endpoint detected, skipping X-User-Role header');
   }
 
   return fetch(url, {

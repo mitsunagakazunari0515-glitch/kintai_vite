@@ -94,7 +94,39 @@ export const getApplicationList = async (
     }
 
     const data = await response.json();
-    return data.data || { requests: [], total: 0 };
+    const responseData = data.data || { requests: [], total: 0 };
+    
+    // APIレスポンスのrequestIdをidにマッピング、typeを変換、leaveData/attendanceDataを構造化
+    if (responseData.requests && Array.isArray(responseData.requests)) {
+      responseData.requests = responseData.requests.map((req: any) => {
+        const mappedReq: any = {
+          ...req,
+          id: req.requestId || req.id, // requestIdを優先的に使用、なければidを使用
+          type: req.type === 'leave' ? 'leave_request' : req.type === 'attendance' ? 'attendance_correction_request' : req.type // APIの'leave'/'attendance'を'leave_request'/'attendance_correction_request'に変換
+        };
+        
+        // typeが'leave'の場合、leaveDataを構造化
+        if (req.type === 'leave' && (req.startDate || req.endDate || req.leaveType)) {
+          mappedReq.leaveData = {
+            startDate: req.startDate,
+            endDate: req.endDate,
+            days: req.days,
+            leaveType: req.leaveType,
+            reason: req.reason,
+            isHalfDay: req.isHalfDay || false
+          };
+        }
+        
+        // typeが'attendance'の場合、attendanceDataを構造化（必要に応じて）
+        if (req.type === 'attendance' && req.attendanceData) {
+          mappedReq.attendanceData = req.attendanceData;
+        }
+        
+        return mappedReq;
+      });
+    }
+    
+    return responseData;
   } catch (error) {
     logError('Failed to fetch application list:', error);
     throw error;
@@ -106,7 +138,7 @@ export const getApplicationList = async (
  */
 export interface UpdateApplicationStatusRequest {
   requestId: string;
-  type: 'leave_request' | 'attendance_correction_request';
+  type: 'leave' | 'attendance';
   action: 'approve' | 'reject';
   rejectionReason?: string;
 }

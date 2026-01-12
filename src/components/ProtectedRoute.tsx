@@ -1,5 +1,6 @@
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { log } from '../utils/logger';
 
 /**
  * 保護されたルートコンポーネントのプロパティを表すインターフェース。
@@ -43,7 +44,7 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requir
       // permissionDeniedをクリア（以前に設定されていた場合でも）
       const permissionDenied = localStorage.getItem('permissionDenied');
       if (permissionDenied) {
-        console.log('ProtectedRoute: Clearing permissionDenied for admin user');
+        log('ProtectedRoute: Clearing permissionDenied for admin user');
         localStorage.removeItem('permissionDenied');
       }
       // Googleログインのフラグは、App.tsxでリダイレクト処理が完了するまで削除しない
@@ -62,7 +63,7 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requir
     // 従業員が従業員画面にアクセスする場合は、そのまま許可
   }
 
-  console.log('ProtectedRoute: Access granted. userRole:', userRole, 'requiredRole:', requiredRole, 'path:', location.pathname);
+  log('ProtectedRoute: Access granted. userRole:', userRole, 'requiredRole:', requiredRole, 'path:', location.pathname);
   return <>{children}</>;
 };
 

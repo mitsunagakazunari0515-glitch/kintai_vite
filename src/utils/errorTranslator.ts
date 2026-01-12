@@ -78,6 +78,11 @@ export const translateAuthError = (error: unknown): string => {
     return 'パスワードのリセットが必要です。パスワード再設定画面から設定してください。';
   }
 
+  if (errorName === 'UserAlreadyAuthenticatedException' || errorMessage.includes('UserAlreadyAuthenticatedException') || 
+      errorMessage.includes('already a signed in user') || errorMessage.includes('既にログイン済み')) {
+    return '既にログイン済みのユーザーです。ページを再読み込みするか、一度ログアウトしてから再度ログインしてください。';
+  }
+
   if (errorMessage.includes('Amplifyが設定されていません') || errorMessage.includes('Amplify is not configured')) {
     return 'Amplifyが設定されていません。amplify_outputs.jsonが見つかりません。\n' +
            'npx ampx sandboxを実行してAmplifyサンドボックスを起動してください。';

@@ -3,6 +3,7 @@
  * APIの項目をイメージして作成
  */
 
+import { log } from '../../utils/logger';
 import employeesData from './employees.json';
 import allowancesData from './allowances.json';
 import deductionsData from './deductions.json';
@@ -154,9 +155,9 @@ export const getAttendanceLogsByEmployeeId = (employeeId: string): AttendanceLog
 
 export const getPayrollRecordsByEmployeeId = (employeeId: string): PayrollRecord[] => {
   const result = dummyPayrollRecords.filter(record => record.employeeId === employeeId);
-  console.log(`[getPayrollRecordsByEmployeeId] employeeId=${employeeId}, total records=${dummyPayrollRecords.length}, filtered=${result.length}`);
-  console.log(`[getPayrollRecordsByEmployeeId] All records:`, dummyPayrollRecords.map(r => ({ employeeId: r.employeeId, period: r.period, employeeName: r.employeeName })));
-  console.log(`[getPayrollRecordsByEmployeeId] Filtered records:`, result.map(r => ({ employeeId: r.employeeId, period: r.period, employeeName: r.employeeName })));
+  log(`[getPayrollRecordsByEmployeeId] employeeId=${employeeId}, total records=${dummyPayrollRecords.length}, filtered=${result.length}`);
+  log(`[getPayrollRecordsByEmployeeId] All records:`, dummyPayrollRecords.map(r => ({ employeeId: r.employeeId, period: r.period, employeeName: r.employeeName })));
+  log(`[getPayrollRecordsByEmployeeId] Filtered records:`, result.map(r => ({ employeeId: r.employeeId, period: r.period, employeeName: r.employeeName })));
   return result;
 };
 

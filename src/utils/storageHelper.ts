@@ -3,6 +3,8 @@
  * Googleログインのリダイレクト後も値を保持するためのユーティリティ
  */
 
+import { log, error as logError } from './logger';
+
 const DB_NAME = 'kintai_storage';
 const DB_VERSION = 1;
 const STORE_NAME = 'login_data';
@@ -39,9 +41,9 @@ export const saveLoginUserType = async (userType: 'admin' | 'employee'): Promise
       request.onsuccess = () => resolve();
       request.onerror = () => reject(request.error);
     });
-    console.log('✅ saveLoginUserType - Saved to IndexedDB:', userType);
+    log('✅ saveLoginUserType - Saved to IndexedDB:', userType);
   } catch (error) {
-    console.error('❌ saveLoginUserType - Failed to save to IndexedDB:', error);
+    logError('❌ saveLoginUserType - Failed to save to IndexedDB:', error);
     // IndexedDBに保存できない場合は、Cookie、sessionStorage、localStorageにも保存（フォールバック）
     const expirationDate = new Date();
     expirationDate.setTime(expirationDate.getTime() + 60 * 60 * 1000); // 1時間
@@ -65,11 +67,11 @@ export const getLoginUserType = async (): Promise<'admin' | 'employee' | null> =
       request.onerror = () => reject(request.error);
     });
     if (userType) {
-      console.log('✅ getLoginUserType - Retrieved from IndexedDB:', userType);
+      log('✅ getLoginUserType - Retrieved from IndexedDB:', userType);
     }
     return userType;
   } catch (error) {
-    console.error('❌ getLoginUserType - Failed to retrieve from IndexedDB:', error);
+    logError('❌ getLoginUserType - Failed to retrieve from IndexedDB:', error);
     // IndexedDBから取得できない場合は、Cookie、sessionStorage、localStorageから取得（フォールバック）
     // Cookieから取得
     const cookies = document.cookie.split(';');
@@ -77,20 +79,20 @@ export const getLoginUserType = async (): Promise<'admin' | 'employee' | null> =
       const [name, value] = cookie.trim().split('=');
       if (name === 'loginUserType') {
         const userType = decodeURIComponent(value) as 'admin' | 'employee';
-        console.log('✅ getLoginUserType - Retrieved from cookie:', userType);
+        log('✅ getLoginUserType - Retrieved from cookie:', userType);
         return userType;
       }
     }
     // sessionStorageから取得
     const fromSession = sessionStorage.getItem('loginUserType') as 'admin' | 'employee' | null;
     if (fromSession) {
-      console.log('✅ getLoginUserType - Retrieved from sessionStorage:', fromSession);
+      log('✅ getLoginUserType - Retrieved from sessionStorage:', fromSession);
       return fromSession;
     }
     // localStorageから取得
     const fromLocal = localStorage.getItem('loginUserType') as 'admin' | 'employee' | null;
     if (fromLocal) {
-      console.log('✅ getLoginUserType - Retrieved from localStorage:', fromLocal);
+      log('✅ getLoginUserType - Retrieved from localStorage:', fromLocal);
       return fromLocal;
     }
     return null;
@@ -110,9 +112,9 @@ export const removeLoginUserType = async (): Promise<void> => {
       request.onsuccess = () => resolve();
       request.onerror = () => reject(request.error);
     });
-    console.log('✅ removeLoginUserType - Removed from IndexedDB');
+    log('✅ removeLoginUserType - Removed from IndexedDB');
   } catch (error) {
-    console.error('❌ removeLoginUserType - Failed to remove from IndexedDB:', error);
+    logError('❌ removeLoginUserType - Failed to remove from IndexedDB:', error);
   }
   
   // Cookie、sessionStorage、localStorageからも削除（念のため）
@@ -134,9 +136,9 @@ export const saveGoogleLoginInProgress = async (): Promise<void> => {
       request.onsuccess = () => resolve();
       request.onerror = () => reject(request.error);
     });
-    console.log('✅ saveGoogleLoginInProgress - Saved to IndexedDB');
+    log('✅ saveGoogleLoginInProgress - Saved to IndexedDB');
   } catch (error) {
-    console.error('❌ saveGoogleLoginInProgress - Failed to save to IndexedDB:', error);
+    logError('❌ saveGoogleLoginInProgress - Failed to save to IndexedDB:', error);
     // IndexedDBに保存できない場合は、Cookie、sessionStorage、localStorageにも保存（フォールバック）
     const expirationDate = new Date();
     expirationDate.setTime(expirationDate.getTime() + 60 * 60 * 1000); // 1時間
@@ -160,11 +162,11 @@ export const getGoogleLoginInProgress = async (): Promise<boolean> => {
       request.onerror = () => reject(request.error);
     });
     if (value === 'true') {
-      console.log('✅ getGoogleLoginInProgress - Retrieved from IndexedDB: true');
+      log('✅ getGoogleLoginInProgress - Retrieved from IndexedDB: true');
       return true;
     }
   } catch (error) {
-    console.error('❌ getGoogleLoginInProgress - Failed to retrieve from IndexedDB:', error);
+    logError('❌ getGoogleLoginInProgress - Failed to retrieve from IndexedDB:', error);
   }
   
   // IndexedDBから取得できない場合は、Cookie、sessionStorage、localStorageから取得（フォールバック）
@@ -173,18 +175,18 @@ export const getGoogleLoginInProgress = async (): Promise<boolean> => {
   for (const cookie of cookies) {
     const [name, value] = cookie.trim().split('=');
     if (name === 'googleLoginInProgress' && value === 'true') {
-      console.log('✅ getGoogleLoginInProgress - Retrieved from cookie: true');
+      log('✅ getGoogleLoginInProgress - Retrieved from cookie: true');
       return true;
     }
   }
   // sessionStorageから取得
   if (sessionStorage.getItem('googleLoginInProgress') === 'true') {
-    console.log('✅ getGoogleLoginInProgress - Retrieved from sessionStorage: true');
+    log('✅ getGoogleLoginInProgress - Retrieved from sessionStorage: true');
     return true;
   }
   // localStorageから取得
   if (localStorage.getItem('googleLoginInProgress') === 'true') {
-    console.log('✅ getGoogleLoginInProgress - Retrieved from localStorage: true');
+    log('✅ getGoogleLoginInProgress - Retrieved from localStorage: true');
     return true;
   }
   return false;
@@ -203,9 +205,9 @@ export const removeGoogleLoginInProgress = async (): Promise<void> => {
       request.onsuccess = () => resolve();
       request.onerror = () => reject(request.error);
     });
-    console.log('✅ removeGoogleLoginInProgress - Removed from IndexedDB');
+    log('✅ removeGoogleLoginInProgress - Removed from IndexedDB');
   } catch (error) {
-    console.error('❌ removeGoogleLoginInProgress - Failed to remove from IndexedDB:', error);
+    logError('❌ removeGoogleLoginInProgress - Failed to remove from IndexedDB:', error);
   }
   
   // Cookie、sessionStorage、localStorageからも削除（念のため）

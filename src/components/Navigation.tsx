@@ -137,29 +137,6 @@ const AdminNavigation: React.FC<{ isMobile: boolean; location: ReturnType<typeof
           }}
         >
           申請一覧
-          {pendingRequestCount > 0 && (
-            <span
-              style={{
-                position: 'absolute',
-                top: '0',
-                right: '0',
-                backgroundColor: '#dc2626',
-                color: '#ffffff',
-                borderRadius: '50%',
-                width: '1.25rem',
-                height: '1.25rem',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: fontSizes.badge,
-                fontWeight: 'bold',
-                lineHeight: '1',
-                transform: 'translate(25%, -25%)'
-              }}
-            >
-              {pendingRequestCount > 9 ? '9+' : pendingRequestCount}
-            </span>
-          )}
         </Link>
         <div
           ref={masterButtonRef}

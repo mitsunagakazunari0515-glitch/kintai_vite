@@ -15,7 +15,7 @@ import { fontSizes } from '../config/fontSizes';
 import { ProgressBar } from '../components/ProgressBar';
 import { Snackbar } from '../components/Snackbar';
 import { translateAuthError } from '../utils/errorTranslator';
-import { error as logError } from '../utils/logger';
+import { error as logError, log, warn } from '../utils/logger';
 import { saveLoginUserType, saveGoogleLoginInProgress } from '../utils/storageHelper';
 
 /**
@@ -71,18 +71,18 @@ export const Login: React.FC = () => {
     const googleLoginInProgress = localStorage.getItem('googleLoginInProgress');
     // Googleログイン処理中（googleLoginInProgressが設定されている、またはauthLoadingがtrue）の場合
     if (googleLoginInProgress === 'true' || authLoading) {
-      console.log('Login.tsx: Google login in progress, setting isGoogleLoading to true');
+      // Googleログイン処理中
       setIsGoogleLoading(true);
     } else {
       // Googleログイン処理が完了した場合（認可API処理も完了、かつgoogleLoginInProgressフラグが削除された）
       // ただし、認証成功時（isAuthenticated && userRole）は、遷移処理が行われるため、ローディングを継続
       // エラー時（isAuthenticated=false または userRole=null）の場合のみ、ローディングを解除
       if (!isAuthenticated || !userRole) {
-        console.log('Login.tsx: Google login completed (with error), setting isGoogleLoading to false');
+        // Googleログイン完了（エラー）
         setIsGoogleLoading(false);
       } else {
         // 認証成功時は、遷移処理が完了するまでローディングを継続（App.tsxで処理される）
-        console.log('Login.tsx: Google login completed (success), keeping isGoogleLoading true until navigation');
+        // Googleログイン完了（成功、遷移待ち）
       }
     }
   }, [authLoading, isAuthenticated, userRole]);
@@ -93,7 +93,7 @@ export const Login: React.FC = () => {
   useEffect(() => {
     // Googleログインの場合は、App.tsxでリダイレクト処理が行われるため、ここでは処理しない
     if (localStorage.getItem('googleLoginInProgress') === 'true') {
-      console.log('Login.tsx: Google login in progress, skipping normal login navigation (App.tsx will handle it)');
+      // Googleログイン処理中（App.tsxで処理）
       return;
     }
 
@@ -115,7 +115,7 @@ export const Login: React.FC = () => {
       // 念のため、ログイン試行中（isLoading）の場合は遷移しない
       // エラーが発生した場合、isLoadingはfalseになっているはずだが、念のため確認
       if (isLoading) {
-        console.log('Login.tsx: Still loading, waiting...');
+        // ローディング中
         return;
       }
 
@@ -124,10 +124,7 @@ export const Login: React.FC = () => {
       const targetUserType = pendingLogin.userType; // pendingLogin.userTypeを直接使用
       const targetPath = targetUserType === 'admin' ? '/admin/employees' : '/employee/attendance';
       
-      // デバッグ用: localStorageからも取得して確認（ただし、pendingLogin.userTypeを優先）
-      const loginUserTypeFromStorage = localStorage.getItem('loginUserType') as 'admin' | 'employee' | null;
-      console.log('Login.tsx: Normal login - Authentication and authorization successful, navigating to:', targetPath);
-      console.log('Login.tsx: Normal login - Details: Role:', userRole, 'pendingLogin.userType:', pendingLogin.userType, 'loginUserType from localStorage:', loginUserTypeFromStorage, 'targetUserType (used):', targetUserType);
+      log('Login.tsx: Normal login - Authentication and authorization successful, navigating to:', targetPath);
       setPendingLogin(null); // 遷移フラグをクリア
       setLoginError(false); // エラー状態をクリア
       setIsGoogleLoading(false); // Googleログインのローディングを解除（遷移前に解除）
@@ -136,7 +133,7 @@ export const Login: React.FC = () => {
     } else {
       // 認証・認可が失敗した場合（401、403エラーなど）、ログイン画面に留まる
       // isAuthenticatedがfalse、またはuserRoleがnull、またはloginErrorがtrueの場合は失敗とみなす
-      console.log('Login.tsx: Normal login - Authentication or authorization failed, staying on login screen. isAuthenticated:', isAuthenticated, 'userRole:', userRole, 'loginError:', loginError);
+      // 認証・認可失敗
       setPendingLogin(null); // 遷移フラグをクリア
       setLoginError(false); // エラー状態をクリア（次のログイン試行に備える）
       setIsGoogleLoading(false); // Googleログインのローディングを解除（エラー時も解除）
@@ -223,7 +220,7 @@ export const Login: React.FC = () => {
         loginUserTypeFromStorage = localStorage.getItem('loginUserType');
       }
       
-      console.log('Login.tsx: Google login in progress, waiting for App.tsx to handle navigation. loginUserType:', loginUserTypeFromStorage);
+      // Googleログイン処理中（App.tsxで処理）
       // App.tsxのuseEffectでリダイレクト処理が行われるまで待機
       return null;
     }
@@ -252,15 +249,15 @@ export const Login: React.FC = () => {
       loginUserType = localStorage.getItem('loginUserType') as 'admin' | 'employee' | null;
     }
     if (loginUserType === 'employee') {
-      console.log('Login.tsx: Authenticated user accessing /login, loginUserType is employee, redirecting to employee screen');
+      // 認証済みユーザー（従業員）がログイン画面にアクセス
       return <Navigate to="/employee/attendance" replace />;
     } else if (loginUserType === 'admin') {
-      console.log('Login.tsx: Authenticated user accessing /login, loginUserType is admin, redirecting to admin screen');
+      // 認証済みユーザー（管理者）がログイン画面にアクセス
       return <Navigate to="/admin/employees" replace />;
     } else {
       // loginUserTypeが設定されていない場合は、userRoleまたはuserTypeを使用
       const role = userRole || userType;
-      console.log('Login.tsx: Authenticated user accessing /login, loginUserType not found, using role:', role);
+      log('Login.tsx: Authenticated user accessing /login, loginUserType not found, using role:', role);
       return <Navigate to={role === 'admin' ? '/admin/employees' : '/employee/attendance'} replace />;
     }
   }
@@ -279,36 +276,22 @@ export const Login: React.FC = () => {
     setPendingLogin(null);
     setLoginError(false);
     try {
-      // ログイン前にuserTypeをlocalStorageに保存（login関数内でも保存されるが、念のため）
-      console.log('Login.tsx: handleSubmit - Setting loginUserType to localStorage:', userType);
+      // ログイン前にuserTypeをlocalStorageに保存
       localStorage.setItem('loginUserType', userType);
-      // 確認: localStorageに正しく設定されたか確認
-      const verifyLoginUserType = localStorage.getItem('loginUserType');
-      console.log('Login.tsx: handleSubmit - Verified loginUserType in localStorage:', verifyLoginUserType);
       
       const success = await login(id, password, userType);
       if (success) {
         // 認証・認可が成功した場合のみ、pendingLoginを設定
         // login関数内でcheckAuthStatus(true)が呼ばれ、成功した場合のみtrueが返される
         // エラー時（401、403など）は例外がスローされ、successはfalseになる
-        console.log('Login.tsx: Login successful, waiting for authentication state to update...');
-        
         // checkAuthStatusの完了と状態更新を待つため、少し待機
-        // 注意: 状態更新は非同期で行われるため、useEffectで監視する方式を維持
         await new Promise(resolve => setTimeout(resolve, 300));
-        
-        // 認証状態を確認してからpendingLoginを設定
-        // この時点でisAuthenticatedとuserRoleが更新されているはず
-        // ただし、Reactの状態更新は非同期のため、useEffectで再度確認する
-        // 注意: エラーが発生した場合、isAuthenticated=false、userRole=nullになっているはず
-        // そのため、useEffectでisAuthenticated && userRoleを確認することで、エラー時は遷移しない
-        console.log('Login.tsx: Setting pendingLogin, useEffect will handle navigation');
         setPendingLogin({ userType });
         setLoginError(false); // エラー状態をクリア
       } else {
         // ログイン失敗時（認証・認可エラーなど）はloginUserTypeを削除
         // エラー時は確実に遷移しないようにする
-        console.log('Login.tsx: Login failed, staying on login screen');
+        // ログイン失敗
         localStorage.removeItem('loginUserType');
         setPendingLogin(null); // 遷移フラグをクリア（重要：エラー時は遷移しない）
         setLoginError(true); // エラー状態を設定（useEffectで遷移を防ぐ）
@@ -321,7 +304,11 @@ export const Login: React.FC = () => {
       localStorage.removeItem('loginUserType');
       setPendingLogin(null); // エラー時は遷移フラグをクリア
       setLoginError(true); // エラー状態を設定（useEffectで遷移を防ぐ）
-      setError(translateAuthError(err));
+      const errorMessage = translateAuthError(err);
+      setError(errorMessage);
+      // スナックバーにエラーメッセージを表示
+      setSnackbar({ message: errorMessage, type: 'error' });
+      setTimeout(() => setSnackbar(null), 5000);
     } finally {
       setIsLoading(false);
     }
@@ -333,10 +320,7 @@ export const Login: React.FC = () => {
       // リダイレクト後にストレージがクリアされる可能性があるため、URLパラメータとしても保存を試みる
       // ただし、AmplifyのsignInWithRedirectはURLパラメータを直接制御できないため、
       // コールバックURLにパラメータを追加するために、現在のURLを更新する
-      console.log('Login.tsx: handleGoogleLogin - Setting loginUserType:', userType);
-      
-      // リダイレクト後にストレージがクリアされる可能性があるため、IndexedDBに保存（最も永続的）
-      // IndexedDBは、sessionStorageやlocalStorageよりも永続的で、リダイレクト後も保持される可能性が高い
+      // リダイレクト後にストレージがクリアされる可能性があるため、IndexedDBに保存
       await saveLoginUserType(userType);
       await saveGoogleLoginInProgress();
       
@@ -351,16 +335,10 @@ export const Login: React.FC = () => {
       localStorage.setItem('loginUserType', userType);
       localStorage.setItem('googleLoginInProgress', 'true');
       
-      console.log('Login.tsx: handleGoogleLogin - Saved loginUserType and googleLoginInProgress to IndexedDB, cookie, sessionStorage, and localStorage:', userType);
-      
-      // 確認: sessionStorageとlocalStorageに正しく設定されたか確認（同期的に実行）
+      // 確認: sessionStorageに正しく設定されたか確認
       const verifyLoginUserTypeSession = sessionStorage.getItem('loginUserType');
-      const verifyLoginUserTypeLocal = localStorage.getItem('loginUserType');
-      console.log('Login.tsx: handleGoogleLogin - Verified loginUserType in sessionStorage:', verifyLoginUserTypeSession);
-      console.log('Login.tsx: handleGoogleLogin - Verified loginUserType in localStorage:', verifyLoginUserTypeLocal);
-      
       if (verifyLoginUserTypeSession !== userType) {
-        console.error('Login.tsx: handleGoogleLogin - ERROR: loginUserType was not set correctly in sessionStorage! Expected:', userType, 'Got:', verifyLoginUserTypeSession);
+        logError('Login.tsx: handleGoogleLogin - ERROR: loginUserType was not set correctly in sessionStorage! Expected:', userType, 'Got:', verifyLoginUserTypeSession);
       }
       
       setIsGoogleLoading(true);
@@ -502,6 +480,7 @@ export const Login: React.FC = () => {
               type="text"
               value={id}
               onChange={(e) => setId(e.target.value)}
+              autoComplete="username"
               style={{
                 width: '100%',
                 padding: '0.75rem',
@@ -521,6 +500,7 @@ export const Login: React.FC = () => {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
               style={{
                 width: '100%',
                 padding: '0.75rem',

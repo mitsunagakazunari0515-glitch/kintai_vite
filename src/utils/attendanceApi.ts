@@ -39,6 +39,7 @@ export interface AttendanceLog {
   status: 'not_started' | 'working' | 'on_break' | 'completed';
   overtimeMinutes?: number;
   lateNightMinutes?: number;
+  totalWorkMinutes?: number;
   memo?: string | null;
   updatedBy?: string;
   updatedAt: string;

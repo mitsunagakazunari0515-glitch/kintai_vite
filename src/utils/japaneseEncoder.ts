@@ -8,6 +8,8 @@
  * デコード方式: Base64 → UTF-8
  */
 
+import { error as logError, warn as logWarn } from './logger';
+
 /**
  * 文字列がISO-8859-1文字のみかどうかを判定します。
  * ISO-8859-1は0x00-0xFFの範囲の文字です。
@@ -52,7 +54,7 @@ export const encodeJapaneseString = (str: string): string => {
     // Base64エンコード
     return btoa(binaryString);
   } catch (error) {
-    console.error('Failed to encode Japanese string:', error);
+    logError('Failed to encode Japanese string:', error);
     throw new Error(`Failed to encode Japanese string: ${error}`);
   }
 };
@@ -87,7 +89,7 @@ export const decodeJapaneseString = (encodedStr: string): string => {
     // UTF-8デコード
     return new TextDecoder().decode(utf8Bytes);
   } catch (error) {
-    console.error('Failed to decode Japanese string:', error);
+    logError('Failed to decode Japanese string:', error);
     throw new Error(`Failed to decode Japanese string: ${error}`);
   }
 };
@@ -139,7 +141,7 @@ export const decodeFromHttpHeader = (
     return decodeJapaneseString(encodedValue);
   } catch (error) {
     // デコードに失敗した場合は、元の値を返す（後方互換性のため）
-    console.warn('Failed to decode header value, using original value:', error);
+    logWarn('Failed to decode header value, using original value:', error);
     return encodedValue;
   }
 };

@@ -117,18 +117,18 @@ export const EmployeeRegistration: React.FC = () => {
   // const generateEmployeeId = (): string => {
   //   // 実際の実装では、APIから既存の従業員リストを取得して最大の番号を計算する
   //   // ここでは、既存のダミーデータの最大番号（2）を考慮して、次のID（EMP003）を生成
-    // 実際の実装では、以下のようなロジックを使用：
-    // const existingIds = employees.map(emp => {
-    //   const match = emp.id.match(/^EMP(\d+)$/);
-    //   return match ? parseInt(match[1], 10) : 0;
-    // }).filter(num => num > 0);
-    // const maxNum = existingIds.length > 0 ? Math.max(...existingIds) : 0;
-    // const nextNum = maxNum + 1;
-    // return `EMP${String(nextNum).padStart(3, '0')}`;
-    const existingMaxNum = 2; // 実際の実装では、既存の従業員から最大の番号を取得
-    const nextNum = existingMaxNum + 1;
-    return `EMP${String(nextNum).padStart(3, '0')}`;
-  };
+  //   // 実際の実装では、以下のようなロジックを使用：
+  //   // const existingIds = employees.map(emp => {
+  //   //   const match = emp.id.match(/^EMP(\d+)$/);
+  //   //   return match ? parseInt(match[1], 10) : 0;
+  //   // }).filter(num => num > 0);
+  //   // const maxNum = existingIds.length > 0 ? Math.max(...existingIds) : 0;
+  //   // const nextNum = maxNum + 1;
+  //   // return `EMP${String(nextNum).padStart(3, '0')}`;
+  //   const existingMaxNum = 2; // 実際の実装では、既存の従業員から最大の番号を取得
+  //   const nextNum = existingMaxNum + 1;
+  //   return `EMP${String(nextNum).padStart(3, '0')}`;
+  // };
 
   useEffect(() => {
     const loadEmployeeData = async () => {

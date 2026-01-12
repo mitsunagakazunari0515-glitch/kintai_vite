@@ -51,13 +51,7 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requir
       // 注意: loginUserTypeとgoogleLoginInProgressは、App.tsxでリダイレクト処理が完了するまで保持する必要がある
     } else if (userRole === 'employee' && requiredRole !== 'employee') {
       // 従業員が管理者画面にアクセスしようとした場合
-      const permissionDenied = localStorage.getItem('permissionDenied');
-      if (!permissionDenied) {
-        localStorage.setItem('permissionDenied', JSON.stringify({
-          message: 'アクセス権限がありません。管理者権限が必要です。',
-          attemptedPath: location.pathname
-        }));
-      }
+      // ログイン画面にリダイレクト
       return <Navigate to="/login" replace />;
     }
     // 従業員が従業員画面にアクセスする場合は、そのまま許可

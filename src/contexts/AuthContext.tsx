@@ -476,6 +476,62 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             }
           });
           
+          // 権限チェック: 管理者画面にログインしようとしたが、実際の権限が従業員の場合
+          if (currentLoginUserType === 'admin' && role === 'employee') {
+            log('⚠️ Permission mismatch: User tried to login as admin but actual role is employee');
+            
+            // スナックバーでエラーメッセージを表示
+            const errorMessage = 'アクセス権限がありません。管理者権限が必要です。';
+            setSnackbar({ message: errorMessage, type: 'error' });
+            setTimeout(() => setSnackbar(null), 5000);
+            
+            // permissionDeniedを設定
+            localStorage.setItem('permissionDenied', JSON.stringify({
+              message: errorMessage,
+              attemptedPath: window.location.pathname
+            }));
+            
+            // loginUserTypeを削除して管理者画面への遷移を防ぐ
+            localStorage.removeItem('loginUserType');
+            sessionStorage.removeItem('loginUserType');
+            // Cookieからも削除
+            document.cookie = 'loginUserType=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+            
+            // Cognitoの認証情報を削除（ログアウト）
+            // ログアウトを確実に完了させるため、複数回試行する
+            let signOutSuccess = false;
+            for (let i = 0; i < 3; i++) {
+              try {
+                await signOut();
+                log('🔐 Cognito認証情報を削除しました（管理者権限不足のため）');
+                signOutSuccess = true;
+                // ログアウト完了を待つため、少し待機
+                await new Promise(resolve => setTimeout(resolve, 500));
+                break;
+              } catch (signOutError) {
+                logError(`Failed to sign out after permission denied (attempt ${i + 1}/3):`, signOutError);
+                if (i < 2) {
+                  // リトライ前に少し待機
+                  await new Promise(resolve => setTimeout(resolve, 500));
+                }
+              }
+            }
+            
+            if (!signOutSuccess) {
+              logError('⚠️ Failed to sign out after 3 attempts. User may need to manually clear browser data.');
+            }
+            
+            // 認証状態をリセット
+            setIsAuthenticated(false);
+            setUserRole(null);
+            setUserId(null);
+            setUserName(null);
+            localStorage.removeItem('auth');
+            localStorage.removeItem('userInfo');
+            setIsLoading(false);
+            return; // 早期リターンしてログイン画面に留まる
+          }
+          
           // Googleログインの場合、loginUserTypeが設定されていない場合は、エラーログを出力（デバッグ用）
           if (currentGoogleLoginInProgress === 'true' && !currentLoginUserType) {
             log('⚠️ WARNING: Google login in progress but loginUserType not found in cookie, localStorage, or sessionStorage!');

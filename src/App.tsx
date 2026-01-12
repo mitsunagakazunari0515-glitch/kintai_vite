@@ -227,20 +227,51 @@ const AppRoutes = () => {
           warn('App.tsx: Google login - Will use userRole for redirection:', userRole);
         }
         
+        // 権限チェックが完了するまで少し待機（checkAuthStatusでloginUserTypeが削除される可能性があるため）
+        // permissionDeniedが設定されている場合は、権限チェックでエラーが発生した可能性があるため、遷移しない
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        // 権限チェック後にloginUserTypeが削除されている場合は遷移しない（権限不足のため）
+        let finalLoginUserType: 'admin' | 'employee' | null = null;
+        try {
+          finalLoginUserType = await getLoginUserType();
+        } catch (error) {
+          // IndexedDBから取得できない場合は、localStorageから確認
+          finalLoginUserType = localStorage.getItem('loginUserType') as 'admin' | 'employee' | null;
+        }
+        
+        // loginUserTypeが削除されている場合は、権限チェックでエラーが発生した可能性があるため、遷移しない
+        if (!finalLoginUserType && loginUserType) {
+          log('App.tsx: loginUserType was removed after permission check, not redirecting');
+          await removeGoogleLoginInProgress();
+          return;
+        }
+        
+        // permissionDeniedが設定されている場合も遷移しない
+        const permissionDenied = localStorage.getItem('permissionDenied');
+        if (permissionDenied) {
+          log('App.tsx: permissionDenied is set, not redirecting');
+          await removeGoogleLoginInProgress();
+          return;
+        }
+        
         // loginUserTypeを優先的に使用してリダイレクト（管理者の場合でも、ユーザーの選択を尊重）
         // 現在のパスが管理者画面または従業員画面でない場合のみリダイレクト（既に適切な画面にいる場合はリダイレクトしない）
         const isAdminPath = currentPath.startsWith('/admin/');
         const isEmployeePath = currentPath.startsWith('/employee/');
         
+        // 最終的なloginUserTypeを使用（権限チェック後に削除されていない場合）
+        const targetLoginUserType = finalLoginUserType || loginUserType;
+        
         if (!isAdminPath && !isEmployeePath) {
           // ログイン画面（/login）またはルート（/）にいる場合、loginUserTypeに基づいてリダイレクト
-          if (loginUserType === 'employee') {
+          if (targetLoginUserType === 'employee') {
             navigate('/employee/attendance', { replace: true });
             // リダイレクト後にloginUserTypeとgoogleLoginInProgressをクリア
             await removeLoginUserType();
             await removeGoogleLoginInProgress();
             return;
-          } else if (loginUserType === 'admin') {
+          } else if (targetLoginUserType === 'admin') {
             navigate('/admin/employees', { replace: true });
             // リダイレクト後にloginUserTypeとgoogleLoginInProgressをクリア
             await removeLoginUserType();
@@ -259,12 +290,12 @@ const AppRoutes = () => {
           }
         } else {
           // 既に管理者画面または従業員画面にいる場合
-          if (loginUserType === 'employee' && isAdminPath) {
+          if (targetLoginUserType === 'employee' && isAdminPath) {
             navigate('/employee/attendance', { replace: true });
             await removeLoginUserType();
             await removeGoogleLoginInProgress();
             return;
-          } else if (loginUserType === 'admin' && isEmployeePath) {
+          } else if (targetLoginUserType === 'admin' && isEmployeePath) {
             navigate('/admin/employees', { replace: true });
             await removeLoginUserType();
             await removeGoogleLoginInProgress();

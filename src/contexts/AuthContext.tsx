@@ -675,18 +675,28 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
         
         if (!response || !response.ok) {
-          throw lastError || new Error(`Failed to load config after ${maxRetries} attempts`);
+          const statusText = response?.statusText || 'Unknown error';
+          const statusCode = response?.status || 0;
+          throw lastError || new Error(`Failed to load config after ${maxRetries} attempts. Status: ${statusCode} ${statusText}, Path: ${configPath}`);
         }
         
         if (response.ok) {
           const outputs = await response.json();
           log('📋 Loaded Amplify outputs:', outputs);
+          
+          // 必要な設定が含まれているか確認
+          if (!outputs.auth) {
+            throw new Error('Amplify outputs does not contain auth configuration');
+          }
+          
           Amplify.configure(outputs);
           
           // APIエンドポイントを設定（amplify_outputs.jsonから取得）
           if (outputs.api?.url) {
             setAmplifyApiEndpoint(outputs.api.url);
             log('✅ API endpoint set from amplify_outputs.json:', outputs.api.url);
+          } else {
+            warn('⚠️ API endpoint not found in amplify_outputs.json. Using environment variable or default.');
           }
           
           setIsAmplifyConfigured(true);
@@ -695,15 +705,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         } else {
           throw new Error(`Config file not found: ${configPath} (status: ${response.status})`);
         }
-      } catch (error) {
+      } catch (error: any) {
         // 設定ファイルが存在しない場合は警告を表示
         const environment = getAmplifyEnvironment();
+        const configPath = getAmplifyConfigPath();
         logError('❌ Failed to load Amplify config:', error);
+        logError(`Environment: ${environment}, Config path: ${configPath}`);
+        logError(`Error details: ${error?.message || error}`);
+        
         if (environment === 'development') {
           warn("amplify_outputs.json not found. Please run 'npx ampx sandbox' to generate it.");
           warn("Authentication features will not work until amplify_outputs.json is generated.");
         } else {
-          logError("amplify_outputs.production.json not found. Please create production config file.");
+          logError("amplify_outputs.production.json not found or failed to load.");
+          logError("Please ensure the file exists in the public directory and is included in the build output.");
+          logError("Check the browser console for the exact error message.");
           logError("Authentication features will not work until production config is set up.");
         }
         setIsAmplifyConfigured(false);
@@ -831,10 +847,37 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const login = async (id: string, password: string, role: UserRole): Promise<boolean> => {
     try {
-      // Amplifyが設定されていない場合、エラーを返す
+      // Amplifyが設定されていない場合、設定が完了するまで待機（最大5秒）
       if (!isAmplifyConfigured) {
-        logError('Amplify is not configured. Please run npx ampx sandbox.');
-        return false;
+        log('⏳ Waiting for Amplify configuration...');
+        const maxWaitTime = 5000; // 5秒
+        const checkInterval = 100; // 100msごとにチェック
+        let waitedTime = 0;
+        
+        while (!isAmplifyConfigured && waitedTime < maxWaitTime) {
+          await new Promise(resolve => setTimeout(resolve, checkInterval));
+          waitedTime += checkInterval;
+        }
+        
+        if (!isAmplifyConfigured) {
+          const environment = getAmplifyEnvironment();
+          const configPath = getAmplifyConfigPath();
+          logError(`❌ Amplify configuration timeout after ${maxWaitTime}ms`);
+          logError(`Environment: ${environment}, Config path: ${configPath}`);
+          if (environment === 'production') {
+            logError('Please ensure amplify_outputs.production.json exists in the public directory and is included in the build output.');
+          } else {
+            logError('Please run npx ampx sandbox to generate amplify_outputs.json.');
+          }
+          setSnackbar({ 
+            message: environment === 'production' 
+              ? '設定ファイルの読み込みに失敗しました。ページをリロードしてください。'
+              : 'Amplify設定が完了していません。設定ファイルを確認してください。', 
+            type: 'error' 
+          });
+          setTimeout(() => setSnackbar(null), 5000);
+          return false;
+        }
       }
 
       // signInを呼ぶ前にloginUserTypeを設定（Hubリスナーが先に反応する可能性があるため）

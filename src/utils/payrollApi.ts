@@ -243,7 +243,7 @@ export const convertPayrollListResponseToRecord = (
     id: response.payrollId,
     year: response.year,
     month: response.month,
-    type: response.statementType,
+    type: response.statementType === 'salary' ? 'payroll' : response.statementType,
     employeeId: '', // 一覧レスポンスには含まれないため、後で設定が必要
     employeeName,
     companyName,

@@ -63,7 +63,7 @@ const getColorName = (colorCode: string): string => {
 export const AllowanceMaster: React.FC = () => {
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const [allowances, setAllowances] = useState<Allowance[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [_isLoading, setIsLoading] = useState<boolean>(true);
   const [formData, setFormData] = useState<Omit<Allowance, 'id'>>({
     name: '',
     color: defaultColors[0].code,

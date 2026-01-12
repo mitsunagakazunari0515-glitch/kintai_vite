@@ -11,6 +11,7 @@
       "allowances": ["allowance1", "allowance2"],
       "isAdmin": true,
       "baseSalary": 2500,
+      "defaultBreakTime": 60,
       "paidLeaves": [
         {
           "grantDate": "2024-04-01",
@@ -31,6 +32,7 @@
       "allowances": ["allowance1"],
       "isAdmin": false,
       "baseSalary": 1200,
+      "defaultBreakTime": 60,
       "paidLeaves": [
         {
           "grantDate": "2024-04-01",
@@ -51,6 +53,7 @@
       "allowances": ["allowance1", "allowance3"],
       "isAdmin": false,
       "baseSalary": 2800,
+      "defaultBreakTime": 60,
       "paidLeaves": [
         {
           "grantDate": "2024-04-01",
@@ -71,6 +74,7 @@
       "allowances": [],
       "isAdmin": false,
       "baseSalary": 1100,
+      "defaultBreakTime": 60,
       "paidLeaves": [
         {
           "grantDate": "2024-04-01",

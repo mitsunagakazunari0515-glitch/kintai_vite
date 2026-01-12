@@ -840,7 +840,6 @@ export const Attendance: React.FC = () => {
   
   // 現在時刻を取得して5時を過ぎたかどうかを判定
   const currentTime = now;
-  const currentHour = currentTime.getHours();
   
   // APIから取得したtodayLogを優先的に使用（todayLogがある場合は表示する）
   // todayLogがない場合は、logsから今日の日付で検索
@@ -2052,9 +2051,9 @@ export const Attendance: React.FC = () => {
                           if (breakItem.startIso && breakItem.endIso) {
                             // YYYY-MM-DD HH:MM:SS形式から時刻を抽出して計算
                             try {
-                              const startDate = parseJSTDateTime(breakItem.startIso);
+                              const startDate = breakItem.startIso ? parseJSTDateTime(breakItem.startIso) : null;
                               const endDate = breakItem.endIso ? parseJSTDateTime(breakItem.endIso) : null;
-                              if (endDate) {
+                              if (startDate && endDate) {
                                 const diffMs = endDate.getTime() - startDate.getTime();
                                 const diffMinutes = Math.floor(diffMs / (1000 * 60));
                                 breakMinutes += Math.max(0, diffMinutes);

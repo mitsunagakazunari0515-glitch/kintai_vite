@@ -15,7 +15,7 @@ import { fontSizes } from '../config/fontSizes';
 import { ProgressBar } from '../components/ProgressBar';
 import { Snackbar } from '../components/Snackbar';
 import { translateAuthError } from '../utils/errorTranslator';
-import { error as logError, log, warn } from '../utils/logger';
+import { error as logError, log } from '../utils/logger';
 import { saveLoginUserType, saveGoogleLoginInProgress } from '../utils/storageHelper';
 
 /**

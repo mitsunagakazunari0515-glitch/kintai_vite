@@ -22,7 +22,7 @@ import {
 } from '../../utils/applicationApi';
 import { getEmployees, EmployeeResponse } from '../../utils/employeeApi';
 import { createLeaveRequest } from '../../utils/leaveRequestApi';
-import { getLeaveTypeLabel, getLeaveTypeCodeFromLabel, getLeaveRequestStatusLabel } from '../../utils/codeTranslator';
+import { getLeaveTypeLabel, getLeaveTypeCodeFromLabel } from '../../utils/codeTranslator';
 import { log, error as logError } from '../../utils/logger';
 import { translateApiError } from '../../utils/apiErrorTranslator';
 import { ProgressBar } from '../../components/ProgressBar';
@@ -570,7 +570,7 @@ export const RequestApproval: React.FC = () => {
       const days = registerFormData.isHalfDay ? 0.5 : 
         Math.ceil((new Date(finalEndDate).getTime() - new Date(registerFormData.startDate).getTime()) / (1000 * 60 * 60 * 24)) + 1;
       
-      const apiRequest = await createLeaveRequest({
+      await createLeaveRequest({
         employeeId: registerFormData.employeeId,
         startDate: registerFormData.startDate,
         endDate: finalEndDate,
@@ -579,12 +579,6 @@ export const RequestApproval: React.FC = () => {
         days: days,
         isHalfDay: registerFormData.isHalfDay
       });
-
-      // 従業員名を取得
-      const selectedEmployee = employees.find(emp => emp.id === registerFormData.employeeId);
-      const employeeName = selectedEmployee 
-        ? `${selectedEmployee.firstName} ${selectedEmployee.lastName}`
-        : '不明な従業員';
 
       // 申請一覧を再取得
       await fetchApplications();

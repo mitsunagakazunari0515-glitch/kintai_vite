@@ -37,7 +37,7 @@ interface Deduction {
 export const DeductionMaster: React.FC = () => {
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const [deductions, setDeductions] = useState<Deduction[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [_isLoading, setIsLoading] = useState<boolean>(true);
   const [formData, setFormData] = useState<Omit<Deduction, 'id'>>({
     name: ''
   });

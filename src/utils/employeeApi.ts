@@ -4,7 +4,7 @@
  */
 
 import { apiRequest } from '../config/apiConfig';
-import { error as logError } from './logger';
+import { error as logError, warn } from './logger';
 import { extractApiError, translateApiError } from './apiErrorTranslator';
 
 /**

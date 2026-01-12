@@ -28,7 +28,7 @@ interface NavigationProps {
 const AdminNavigation: React.FC<{ isMobile: boolean; location: ReturnType<typeof useLocation>; pendingRequestCount?: number }> = ({
   isMobile,
   location,
-  pendingRequestCount = 0
+  pendingRequestCount: _pendingRequestCount = 0
 }) => {
   const [showMasterMenu, setShowMasterMenu] = useState(false);
   const masterButtonRef = useRef<HTMLDivElement>(null);

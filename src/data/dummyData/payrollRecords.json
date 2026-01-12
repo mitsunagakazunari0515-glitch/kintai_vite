@@ -95,7 +95,8 @@
           "deduction1": 62500,
           "deduction2": 75000,
           "deduction3": 2500,
-          "deduction4": 35000
+          "deduction4": 35000,
+          "deduction5": 0
         },
         "totalDeductions": 175000,
         "netPay": 325000

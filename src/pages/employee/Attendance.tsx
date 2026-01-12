@@ -33,7 +33,7 @@ import {
 } from '../../utils/attendanceApi';
 import { error as logError } from '../../utils/logger';
 import { translateApiError } from '../../utils/apiErrorTranslator';
-import { getAttendanceStatusLabel, getAttendanceStatusStyle } from '../../utils/codeTranslator';
+import { getAttendanceStatusLabel } from '../../utils/codeTranslator';
 import { getUserInfo } from '../../config/apiConfig';
 
 /**
@@ -839,7 +839,6 @@ export const Attendance: React.FC = () => {
   const today = getTodayDate();
   
   // 現在時刻を取得して5時を過ぎたかどうかを判定
-  const currentTime = now;
   
   // APIから取得したtodayLogを優先的に使用（todayLogがある場合は表示する）
   // todayLogがない場合は、logsから今日の日付で検索

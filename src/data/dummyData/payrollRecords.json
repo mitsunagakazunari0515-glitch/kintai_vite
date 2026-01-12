@@ -78,7 +78,6 @@
       "employeeName": "山田太郎",
       "companyName": "株式会社A・1インテリア",
       "period": "2025年 12月",
-      "type": "bonus",
       "detail": {
         "workingDays": 0,
         "holidayWork": 0,
@@ -94,21 +93,11 @@
         "allowances": {},
         "totalEarnings": 500000,
         "deductions": {
-          "healthInsurance": 62500,
-          "employeePension": 75000,
-          "employmentInsurance": 2500,
-          "incomeTax": 35000
+          "deduction1": 62500,
+          "deduction2": 75000,
+          "deduction3": 2500,
+          "deduction4": 35000
         },
-        "totalDeductions": 175000,
-        "netPay": 325000
-      },
-      "bonusDetail": {
-        "bonus": 500000,
-        "totalEarnings": 500000,
-        "healthInsurance": 62500,
-        "employeePension": 75000,
-        "employmentInsurance": 2500,
-        "incomeTax": 35000,
         "totalDeductions": 175000,
         "netPay": 325000
       },

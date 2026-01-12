@@ -106,6 +106,7 @@ export interface PayrollRecord {
   employeeName: string;
   companyName: string;
   period: string;
+  type?: 'payroll' | 'bonus';
   detail: {
     workingDays: number;
     holidayWork: number;

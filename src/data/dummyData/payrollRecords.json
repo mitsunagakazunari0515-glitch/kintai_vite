@@ -90,7 +90,6 @@
         "overtimeAllowance": 0,
         "lateNightAllowance": 0,
         "mealAllowance": 0,
-        "allowances": {},
         "totalEarnings": 500000,
         "deductions": {
           "deduction1": 62500,

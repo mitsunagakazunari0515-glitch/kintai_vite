@@ -33,7 +33,6 @@ import {
 } from '../../utils/attendanceApi';
 import { error as logError } from '../../utils/logger';
 import { translateApiError } from '../../utils/apiErrorTranslator';
-import { getAttendanceStatusLabel } from '../../utils/codeTranslator';
 import { getUserInfo } from '../../config/apiConfig';
 
 /**

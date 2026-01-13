@@ -70,6 +70,21 @@ export const setAmplifyApiEndpoint = (endpoint: string): void => {
 };
 
 /**
+ * APIプレフィックスを取得
+ * 環境変数 VITE_API_PREFIX が設定されている場合はそれを使用
+ * 例: dev環境 → "dev", 本番環境 → "prod"
+ * @returns {string} APIプレフィックス（設定されていない場合は空文字列）
+ */
+export const getApiPrefix = (): string => {
+  const prefix = import.meta.env.VITE_API_PREFIX;
+  if (prefix) {
+    // プレフィックスが設定されている場合、先頭のスラッシュを削除して正規化
+    return prefix.trim().replace(/^\/+/, '');
+  }
+  return '';
+};
+
+/**
  * 既存のAPI Gatewayエンドポイントを取得
  * 環境に応じて異なるエンドポイントを使用できます
  * 優先順位: amplify_outputs.json > VITE_API_ENDPOINT

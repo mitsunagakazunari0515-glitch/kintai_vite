@@ -3,7 +3,7 @@
  * 既存のAPI Gatewayエンドポイントを環境変数から取得
  */
 
-import { getApiEndpoint as getAmplifyApiEndpoint } from './amplifyConfig';
+import { getApiEndpoint as getAmplifyApiEndpoint, getApiPrefix } from './amplifyConfig';
 import { fetchAuthSession } from 'aws-amplify/auth';
 import { error as logError, log, warn } from '../utils/logger';
 import { encodeJapaneseString } from '../utils/japaneseEncoder';
@@ -151,7 +151,17 @@ export const apiRequest = async (
   if (!endpoint) {
     throw new Error('APIエンドポイントが設定されていません。amplify_outputs.jsonを確認するか、VITE_API_ENDPOINT環境変数を設定してください。');
   }
-  const url = `${endpoint}${path.startsWith('/') ? path : `/${path}`}`;
+  
+  // APIプレフィックスを取得（例: "dev" または "prod"）
+  const prefix = getApiPrefix();
+  
+  // パスを正規化（先頭のスラッシュを確保）
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  
+  // プレフィックスがある場合は、パスの前に追加（例: /dev/api/v1/... または /prod/api/v1/...）
+  const prefixedPath = prefix ? `/${prefix}${normalizedPath}` : normalizedPath;
+  
+  const url = `${endpoint}${prefixedPath}`;
 
   const {
     requiresAuth = true,

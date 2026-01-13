@@ -691,9 +691,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           
           // 環境変数で上書き可能な設定を適用
           // 1. APIエンドポイントの上書き（環境変数が設定されている場合）
-          const envApiEndpoint = environment === 'production' 
-            ? import.meta.env.VITE_API_ENDPOINT_PRODUCTION 
-            : import.meta.env.VITE_API_ENDPOINT;
+          // すべての環境でVITE_API_ENDPOINTを使用
+          const envApiEndpoint = import.meta.env.VITE_API_ENDPOINT;
           
           if (envApiEndpoint) {
             if (!outputs.custom) {

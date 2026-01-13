@@ -81,17 +81,7 @@ export const getApiEndpoint = (): string => {
     return amplifyEndpoint;
   }
   
-  const env = getAmplifyEnvironment();
-  
-  // 環境固有のエンドポイントがある場合はそれを使用
-  if (env === 'production') {
-    const prodEndpoint = import.meta.env.VITE_API_ENDPOINT_PRODUCTION;
-    if (prodEndpoint) {
-      return prodEndpoint;
-    }
-  }
-  
-  // デフォルトのエンドポイント
+  // 環境変数からエンドポイントを取得（すべての環境でVITE_API_ENDPOINTを使用）
   const endpoint = import.meta.env.VITE_API_ENDPOINT;
   if (endpoint) {
     return endpoint;

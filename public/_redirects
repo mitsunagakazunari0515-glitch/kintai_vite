@@ -1,9 +1,5 @@
 # SPAルーティング: すべてのパスをindex.htmlにリライト（200リライト）
 # これにより、存在しないファイルへのアクセスでもindex.htmlが返される
+# 末尾スラッシュ付きパスも含めてすべてのパスをindex.htmlにリライト
 /*    /index.html   200
-
-# 末尾スラッシュを削除するリダイレクト（React RouterのRoute定義と一致させるため）
-# 主要なパスに対して301リダイレクトを設定
-/login/    /login    301
-/signup/    /signup    301
-/password-reset/    /password-reset    301
+/*/    /index.html   200

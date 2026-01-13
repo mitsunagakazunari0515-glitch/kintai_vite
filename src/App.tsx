@@ -360,11 +360,13 @@ const AppRoutes = () => {
 
   return (
     <Routes>
+      {/* 末尾スラッシュなしのパス */}
       <Route path="/login" element={<Login />} />
-      <Route path="/login/" element={<Navigate to="/login" replace />} />
       <Route path="/signup" element={<SignUp />} />
-      <Route path="/signup/" element={<Navigate to="/signup" replace />} />
       <Route path="/password-reset" element={<PasswordReset />} />
+      {/* 末尾スラッシュ付きのパスから末尾スラッシュなしにリダイレクト */}
+      <Route path="/login/" element={<Navigate to="/login" replace />} />
+      <Route path="/signup/" element={<Navigate to="/signup" replace />} />
       <Route path="/password-reset/" element={<Navigate to="/password-reset" replace />} />
       <Route
         path="/admin/*"

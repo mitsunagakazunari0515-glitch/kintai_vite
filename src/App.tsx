@@ -1,5 +1,5 @@
-import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
-import { useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
+import { useEffect, useRef } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { Layout } from './components/Layout';
@@ -66,24 +66,32 @@ const EmployeeRoutes = () => (
 const AppRoutes = () => {
   const { isLoading, isAuthenticated, userRole } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const normalizedRef = useRef<string | null>(null);
   
   // URLの正規化: 末尾スラッシュを削除（/login/ → /login）
+  // 同じパス名に対しては一度だけ実行する
   useEffect(() => {
-    const normalizeUrl = () => {
-      const pathname = window.location.pathname;
-      // ルートパス（/）以外で末尾にスラッシュがある場合、削除
-      if (pathname !== '/' && pathname.endsWith('/')) {
-        const newPath = pathname.slice(0, -1);
-        const search = window.location.search;
-        const hash = window.location.hash;
-        const newUrl = newPath + search + hash;
-        window.history.replaceState({}, '', newUrl);
-        // URLが変更されたため、ページをリロードせずに正しいRouteにマッチさせるためにnavigateを使用
-        navigate(newPath + search, { replace: true });
-      }
-    };
-    normalizeUrl();
-  }, [navigate]);
+    const pathname = location.pathname;
+    // 既に正規化済みのパス名の場合はスキップ
+    if (normalizedRef.current === pathname) {
+      return;
+    }
+    
+    // ルートパス（/）以外で末尾にスラッシュがある場合、削除
+    if (pathname !== '/' && pathname.endsWith('/')) {
+      const newPath = pathname.slice(0, -1);
+      const search = location.search;
+      const hash = location.hash;
+      // 正規化済みフラグを設定
+      normalizedRef.current = newPath;
+      // navigateのみを使用してリダイレクト
+      navigate(newPath + search + hash, { replace: true });
+    } else {
+      // 正規化不要な場合は現在のパス名を記録
+      normalizedRef.current = pathname;
+    }
+  }, [location.pathname, location.search, location.hash, navigate]);
 
   // コンポーネントマウント時に、IndexedDB、URLパラメータ、CookieからloginUserTypeを取得してストレージに保存
   // これにより、Googleログインのリダイレクト後も値を保持できる

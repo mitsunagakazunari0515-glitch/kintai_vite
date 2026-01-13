@@ -1,5 +1,5 @@
 # SPAルーティング: すべてのパスをindex.htmlにリライト（200リライト）
 # これにより、存在しないファイルへのアクセスでもindex.htmlが返される
 # 末尾スラッシュ付きパスも含めてすべてのパスをindex.htmlにリライト
+# 注意: この設定により、/login/も/loginも両方index.htmlにリライトされ、React Routerで処理される
 /*    /index.html   200
-/*/    /index.html   200

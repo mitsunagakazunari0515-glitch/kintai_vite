@@ -692,11 +692,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           Amplify.configure(outputs);
           
           // APIエンドポイントを設定（amplify_outputs.jsonから取得）
+          // 優先順位: outputs.api.url > outputs.custom.apiEndpoint > 環境変数
           if (outputs.api?.url) {
             setAmplifyApiEndpoint(outputs.api.url);
-            log('✅ API endpoint set from amplify_outputs.json:', outputs.api.url);
+            log('✅ API endpoint set from amplify_outputs.json (api.url):', outputs.api.url);
+          } else if (outputs.custom?.apiEndpoint && outputs.custom.apiEndpoint !== 'YOUR_PRODUCTION_API_GATEWAY_ENDPOINT') {
+            setAmplifyApiEndpoint(outputs.custom.apiEndpoint);
+            log('✅ API endpoint set from amplify_outputs.json (custom.apiEndpoint):', outputs.custom.apiEndpoint);
           } else {
             warn('⚠️ API endpoint not found in amplify_outputs.json. Using environment variable or default.');
+            if (outputs.custom?.apiEndpoint === 'YOUR_PRODUCTION_API_GATEWAY_ENDPOINT') {
+              warn('⚠️ custom.apiEndpoint is still set to placeholder value. Please update amplify_outputs.production.json with the actual API Gateway endpoint.');
+            }
           }
           
           setIsAmplifyConfigured(true);

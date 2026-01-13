@@ -73,16 +73,18 @@ const AppRoutes = () => {
   // 同じパス名に対しては一度だけ実行する
   useEffect(() => {
     const pathname = location.pathname;
-    // 既に正規化済みのパス名の場合はスキップ
-    if (normalizedRef.current === pathname) {
-      return;
-    }
     
     // ルートパス（/）以外で末尾にスラッシュがある場合、削除
     if (pathname !== '/' && pathname.endsWith('/')) {
       const newPath = pathname.slice(0, -1);
       const search = location.search;
       const hash = location.hash;
+      
+      // 既に正規化済みのパス名の場合はスキップ（無限ループ防止）
+      if (normalizedRef.current === newPath) {
+        return;
+      }
+      
       // 正規化済みフラグを設定
       normalizedRef.current = newPath;
       // navigateのみを使用してリダイレクト

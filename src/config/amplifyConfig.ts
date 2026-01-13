@@ -88,6 +88,7 @@ export const getApiEndpoint = (): string => {
   }
   
   // エンドポイントが設定されていない場合の警告（開発環境のみ）
+  const env = getAmplifyEnvironment();
   if (env === 'development') {
     warn('VITE_API_ENDPOINT is not set. Please configure in .env file or run "npx ampx sandbox" to generate amplify_outputs.json.');
   }

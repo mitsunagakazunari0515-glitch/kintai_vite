@@ -681,7 +681,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
         
         if (response.ok) {
-          const outputs = await response.json();
+          let outputs = await response.json();
           log('📋 Loaded Amplify outputs:', outputs);
           
           // 必要な設定が含まれているか確認
@@ -689,11 +689,42 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             throw new Error('Amplify outputs does not contain auth configuration');
           }
           
+          // 環境変数で上書き可能な設定を適用
+          // 1. APIエンドポイントの上書き（環境変数が設定されている場合）
+          const envApiEndpoint = environment === 'production' 
+            ? import.meta.env.VITE_API_ENDPOINT_PRODUCTION 
+            : import.meta.env.VITE_API_ENDPOINT;
+          
+          if (envApiEndpoint) {
+            if (!outputs.custom) {
+              outputs.custom = {};
+            }
+            outputs.custom.apiEndpoint = envApiEndpoint;
+            log('✅ API endpoint overridden from environment variable:', envApiEndpoint);
+          }
+          
+          // 2. OAuthリダイレクトURLの上書き（環境変数が設定されている場合）
+          const envRedirectSignIn = import.meta.env.VITE_OAUTH_REDIRECT_SIGN_IN;
+          const envRedirectSignOut = import.meta.env.VITE_OAUTH_REDIRECT_SIGN_OUT;
+          
+          if (envRedirectSignIn && outputs.auth?.oauth) {
+            outputs.auth.oauth.redirect_sign_in_uri = envRedirectSignIn.split(',').map(url => url.trim());
+            log('✅ OAuth redirect_sign_in_uri overridden from environment variable:', outputs.auth.oauth.redirect_sign_in_uri);
+          }
+          
+          if (envRedirectSignOut && outputs.auth?.oauth) {
+            outputs.auth.oauth.redirect_sign_out_uri = envRedirectSignOut.split(',').map(url => url.trim());
+            log('✅ OAuth redirect_sign_out_uri overridden from environment variable:', outputs.auth.oauth.redirect_sign_out_uri);
+          }
+          
           Amplify.configure(outputs);
           
           // APIエンドポイントを設定（amplify_outputs.jsonから取得）
-          // 優先順位: outputs.api.url > outputs.custom.apiEndpoint > 環境変数
-          if (outputs.api?.url) {
+          // 優先順位: 環境変数 > outputs.api.url > outputs.custom.apiEndpoint
+          if (envApiEndpoint) {
+            setAmplifyApiEndpoint(envApiEndpoint);
+            log('✅ API endpoint set from environment variable:', envApiEndpoint);
+          } else if (outputs.api?.url) {
             setAmplifyApiEndpoint(outputs.api.url);
             log('✅ API endpoint set from amplify_outputs.json (api.url):', outputs.api.url);
           } else if (outputs.custom?.apiEndpoint && outputs.custom.apiEndpoint !== 'YOUR_PRODUCTION_API_GATEWAY_ENDPOINT') {
@@ -702,7 +733,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           } else {
             warn('⚠️ API endpoint not found in amplify_outputs.json. Using environment variable or default.');
             if (outputs.custom?.apiEndpoint === 'YOUR_PRODUCTION_API_GATEWAY_ENDPOINT') {
-              warn('⚠️ custom.apiEndpoint is still set to placeholder value. Please update amplify_outputs.production.json with the actual API Gateway endpoint.');
+              warn('⚠️ custom.apiEndpoint is still set to placeholder value. Please update amplify_outputs.production.json or set VITE_API_ENDPOINT_PRODUCTION environment variable.');
             }
           }
           

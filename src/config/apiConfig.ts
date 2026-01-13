@@ -155,11 +155,20 @@ export const apiRequest = async (
   // APIプレフィックスを取得（例: "dev" または "prod"）
   const prefix = getApiPrefix();
   
+  // エンドポイントの末尾をチェック（既にプレフィックスが含まれている場合は追加しない）
+  const endpointEndsWithPrefix = prefix && (
+    endpoint.endsWith(`/${prefix}`) || 
+    endpoint.endsWith(`/${prefix}/`)
+  );
+  
   // パスを正規化（先頭のスラッシュを確保）
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;
   
-  // プレフィックスがある場合は、パスの前に追加（例: /dev/api/v1/... または /prod/api/v1/...）
-  const prefixedPath = prefix ? `/${prefix}${normalizedPath}` : normalizedPath;
+  // プレフィックスがある場合、かつエンドポイントに含まれていない場合のみ追加
+  // 例: /dev/api/v1/... または /prod/api/v1/...
+  const prefixedPath = (prefix && !endpointEndsWithPrefix) 
+    ? `/${prefix}${normalizedPath}` 
+    : normalizedPath;
   
   const url = `${endpoint}${prefixedPath}`;
 

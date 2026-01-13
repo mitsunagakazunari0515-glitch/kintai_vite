@@ -67,6 +67,24 @@ const AppRoutes = () => {
   const { isLoading, isAuthenticated, userRole } = useAuth();
   const navigate = useNavigate();
   
+  // URLの正規化: 末尾スラッシュを削除（/login/ → /login）
+  useEffect(() => {
+    const normalizeUrl = () => {
+      const pathname = window.location.pathname;
+      // ルートパス（/）以外で末尾にスラッシュがある場合、削除
+      if (pathname !== '/' && pathname.endsWith('/')) {
+        const newPath = pathname.slice(0, -1);
+        const search = window.location.search;
+        const hash = window.location.hash;
+        const newUrl = newPath + search + hash;
+        window.history.replaceState({}, '', newUrl);
+        // URLが変更されたため、ページをリロードせずに正しいRouteにマッチさせるためにnavigateを使用
+        navigate(newPath + search, { replace: true });
+      }
+    };
+    normalizeUrl();
+  }, [navigate]);
+
   // コンポーネントマウント時に、IndexedDB、URLパラメータ、CookieからloginUserTypeを取得してストレージに保存
   // これにより、Googleログインのリダイレクト後も値を保持できる
   useEffect(() => {
@@ -333,8 +351,11 @@ const AppRoutes = () => {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/login/" element={<Navigate to="/login" replace />} />
       <Route path="/signup" element={<SignUp />} />
+      <Route path="/signup/" element={<Navigate to="/signup" replace />} />
       <Route path="/password-reset" element={<PasswordReset />} />
+      <Route path="/password-reset/" element={<Navigate to="/password-reset" replace />} />
       <Route
         path="/admin/*"
         element={

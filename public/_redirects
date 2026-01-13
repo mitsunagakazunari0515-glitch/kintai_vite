@@ -1,1 +1,6 @@
-/* /index.html 200
+/*    /index.html   200
+
+# 末尾スラッシュを削除（React RouterのRoute定義と一致させるため）
+/login/    /login    301
+/signup/    /signup    301
+/password-reset/    /password-reset    301

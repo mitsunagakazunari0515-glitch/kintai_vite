@@ -70,20 +70,31 @@ const AppRoutes = () => {
   const normalizedRef = useRef<string | null>(null);
   
   // URLの正規化: 末尾スラッシュを削除（/login/ → /login）
-  // 注意: Amplifyコンソールのリダイレクト設定と競合する可能性があるため、
-  // React Routerで対応できる主要なパス（/login, /signup, /password-reset）では実行しない
+  // サーバー側（Amplify/CloudFront）で末尾スラッシュが追加される場合があるため、
+  // クライアント側で正規化してReact Routerで処理できるようにする
   useEffect(() => {
     const pathname = location.pathname;
     
-    // React Routerで対応できる主要なパス（末尾スラッシュ付き）はスキップ
-    // Amplifyコンソールのリダイレクト設定またはReact Routerで処理される
-    const skipPaths = ['/login/', '/signup/', '/password-reset/'];
-    if (skipPaths.includes(pathname)) {
-      normalizedRef.current = pathname;
+    // 主要なパス（/login, /signup, /password-reset）で末尾スラッシュがある場合、削除
+    const pathsToNormalize = ['/login/', '/signup/', '/password-reset/'];
+    if (pathsToNormalize.includes(pathname)) {
+      const newPath = pathname.slice(0, -1);
+      const search = location.search;
+      const hash = location.hash;
+      
+      // 既に正規化済みのパス名の場合はスキップ（無限ループ防止）
+      if (normalizedRef.current === newPath) {
+        return;
+      }
+      
+      // 正規化済みフラグを設定
+      normalizedRef.current = newPath;
+      // navigateのみを使用してリダイレクト
+      navigate(newPath + search + hash, { replace: true });
       return;
     }
     
-    // ルートパス（/）以外で末尾にスラッシュがある場合、削除
+    // その他のパスで末尾スラッシュがある場合も削除（ルートパス（/）を除く）
     if (pathname !== '/' && pathname.endsWith('/')) {
       const newPath = pathname.slice(0, -1);
       const search = location.search;

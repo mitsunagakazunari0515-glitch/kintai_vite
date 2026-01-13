@@ -708,12 +708,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           const envRedirectSignOut = import.meta.env.VITE_OAUTH_REDIRECT_SIGN_OUT;
           
           if (envRedirectSignIn && outputs.auth?.oauth) {
-            outputs.auth.oauth.redirect_sign_in_uri = envRedirectSignIn.split(',').map(url => url.trim());
+            outputs.auth.oauth.redirect_sign_in_uri = envRedirectSignIn.split(',').map((url: string) => url.trim());
             log('✅ OAuth redirect_sign_in_uri overridden from environment variable:', outputs.auth.oauth.redirect_sign_in_uri);
           }
           
           if (envRedirectSignOut && outputs.auth?.oauth) {
-            outputs.auth.oauth.redirect_sign_out_uri = envRedirectSignOut.split(',').map(url => url.trim());
+            outputs.auth.oauth.redirect_sign_out_uri = envRedirectSignOut.split(',').map((url: string) => url.trim());
             log('✅ OAuth redirect_sign_out_uri overridden from environment variable:', outputs.auth.oauth.redirect_sign_out_uri);
           }
           

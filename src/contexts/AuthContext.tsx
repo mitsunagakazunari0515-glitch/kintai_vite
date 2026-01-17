@@ -203,6 +203,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
     }
     
+    // ログイン画面で既に認証済みの場合、APIを呼ばずに早期リターン（ブラウザの戻るボタンなどで戻った場合）
+    // ただし、forceCheckがtrueの場合（ログイン試行時）は、APIを呼び出す必要がある
+    if (isLoginPage && !forceCheck && isAuthenticated && userRole) {
+      log('ℹ️ Login page detected - already authenticated, skipping auth check (will redirect via Login.tsx)');
+      setIsLoading(false);
+      return;
+    }
+    
     if (isLoginPage && !forceCheck && !loginUserType && !googleLoginInProgress) {
       log('ℹ️ Login page detected - skipping auth check (no login attempt detected)');
       setIsLoading(false);
@@ -637,7 +645,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     } finally {
       setIsLoading(false);
     }
-  }, [fetchUserRole]);
+  }, [fetchUserRole, isAuthenticated, userRole]);
 
   useEffect(() => {
     // Amplifyの設定（まだ設定されていない場合）

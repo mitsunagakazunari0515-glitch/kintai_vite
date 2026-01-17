@@ -180,10 +180,51 @@ export const Login: React.FC = () => {
     }
   }, [pendingLogin, isAuthenticated, userRole, authLoading, isLoading, loginError, navigate]);
 
+  // 既に認証済みの場合の処理（レンダリング時のリダイレクト）
+  // 注意: ログイン画面（/login）に直接アクセスした場合のみ自動リダイレクト
+  // 従業員画面（/employee/*）などに直接アクセスしようとした場合は、ProtectedRouteが処理するため、ここではリダイレクトしない
+  // これにより、管理者が従業員画面に直接アクセスできるようになる
+  // Googleログインのフラグがある場合は、App.tsxでloginUserTypeを考慮してリダイレクト処理が行われるため、ここではリダイレクトしない
+  // 既に認証済みの場合は、ローディングを表示せずに即座にリダイレクト
+  const googleLoginInProgress = localStorage.getItem('googleLoginInProgress') === 'true' ||
+    sessionStorage.getItem('googleLoginInProgress') === 'true' ||
+    document.cookie.includes('googleLoginInProgress=true');
+  
+  if (isAuthenticated && userRole && location.pathname === '/login') {
+    // Googleログインのフラグがある場合はApp.tsxで処理されるので、ここではリダイレクトしない
+    if (googleLoginInProgress) {
+      // Googleログイン処理中（App.tsxで処理）
+      // ローディングを表示
+      if (authLoading || isGoogleLoading) {
+        return (
+          <>
+            <ProgressBar isLoading={true} />
+            <div style={{ 
+              height: '100vh',
+              backgroundColor: '#fff'
+            }} />
+          </>
+        );
+      }
+      return null; // App.tsxで処理されるまで待機
+    }
+    
+    // 既に認証済みの場合は、userRoleに基づいてリダイレクト
+    const targetRole = userRole || userType;
+    const targetPath = targetRole === 'admin' ? '/admin/employees' : '/employee/attendance';
+    
+    log('Login.tsx: Already authenticated (render) - redirecting to:', targetPath, {
+      userRole,
+      userType,
+      targetRole
+    });
+    
+    return <Navigate to={targetPath} replace />;
+  }
+
   // 認証状態の復元中、またはGoogleログイン処理中はローディングを表示
   // Googleログイン処理中（googleLoginInProgressフラグが設定されている、またはisGoogleLoadingがtrue）の場合も、ローディングを表示
-  const googleLoginInProgress = localStorage.getItem('googleLoginInProgress');
-  if (authLoading || googleLoginInProgress === 'true' || isGoogleLoading) {
+  if (authLoading || googleLoginInProgress || isGoogleLoading) {
     return (
       <>
         <ProgressBar isLoading={true} />
@@ -194,14 +235,6 @@ export const Login: React.FC = () => {
       </>
     );
   }
-
-  // 既に認証済みの場合の処理（レンダリング時のリダイレクト）
-  // 注意: ログイン画面（/login）に直接アクセスした場合のみ自動リダイレクト
-  // 従業員画面（/employee/*）などに直接アクセスしようとした場合は、ProtectedRouteが処理するため、ここではリダイレクトしない
-  // これにより、管理者が従業員画面に直接アクセスできるようになる
-  // Googleログインのフラグがある場合は、App.tsxでloginUserTypeを考慮してリダイレクト処理が行われるため、ここではリダイレクトしない
-  // 注意: authLoadingがtrueの場合は、認証状態の確認中なのでリダイレクトしない（useEffectで処理される）
-  if (isAuthenticated && userRole && !authLoading && location.pathname === '/login') {
     // Googleログインのフラグがある場合はApp.tsxで処理されるので、ここではリダイレクトしない
     // Cookie、sessionStorage、localStorageの順で確認（リダイレクト時にストレージがクリアされる可能性があるため）
     let googleLoginInProgress: string | null = null;

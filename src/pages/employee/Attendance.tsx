@@ -197,9 +197,9 @@ const calculateWorkTime = (log: AttendanceLog): string => {
   }
 
   const workMinutes = log.totalWorkMinutes;
-  const workHours = Math.floor(workMinutes / 60);
-  const workMins = workMinutes % 60;
-  return `${String(workHours).padStart(2, '0')}:${String(workMins).padStart(2, '0')}`;
+    const workHours = Math.floor(workMinutes / 60);
+    const workMins = workMinutes % 60;
+    return `${String(workHours).padStart(2, '0')}:${String(workMins).padStart(2, '0')}`;
 };
 
 /**
@@ -796,9 +796,9 @@ export const Attendance: React.FC = () => {
       // APIから取得した労働時間（totalWorkMinutes）を使用
       if (log.totalWorkMinutes !== undefined && log.totalWorkMinutes !== null) {
         totalWorkMinutes += log.totalWorkMinutes;
-        
-        // 残業時間（8時間を超える分）
-        const standardWorkMinutes = 8 * 60;
+            
+            // 残業時間（8時間を超える分）
+            const standardWorkMinutes = 8 * 60;
         if (log.totalWorkMinutes > standardWorkMinutes) {
           totalOvertimeMinutes += log.totalWorkMinutes - standardWorkMinutes;
         }
@@ -2058,17 +2058,17 @@ export const Attendance: React.FC = () => {
                               }
                             } catch (error) {
                               // パースエラーの場合は従来の方法で計算
-                              if (breakItem.start && breakItem.end) {
-                                const [bStartHour, bStartMinute] = breakItem.start.split(':').map(Number);
-                                const [bEndHour, bEndMinute] = breakItem.end.split(':').map(Number);
-                                const bStartMinutes = bStartHour * 60 + bStartMinute;
-                                const bEndMinutes = bEndHour * 60 + bEndMinute;
-                                breakMinutes += Math.max(0, bEndMinutes - bStartMinutes);
-                              }
-                            }
+                          if (breakItem.start && breakItem.end) {
+                            const [bStartHour, bStartMinute] = breakItem.start.split(':').map(Number);
+                            const [bEndHour, bEndMinute] = breakItem.end.split(':').map(Number);
+                            const bStartMinutes = bStartHour * 60 + bStartMinute;
+                            const bEndMinutes = bEndHour * 60 + bEndMinute;
+                            breakMinutes += Math.max(0, bEndMinutes - bStartMinutes);
+                          }
+                      }
                           }
                         });
-                        breakTime = `${String(Math.floor(breakMinutes / 60)).padStart(2, '0')}:${String(breakMinutes % 60).padStart(2, '0')}`;
+                      breakTime = `${String(Math.floor(breakMinutes / 60)).padStart(2, '0')}:${String(breakMinutes % 60).padStart(2, '0')}`;
                       } else {
                         breakTime = '00:00';
                       }

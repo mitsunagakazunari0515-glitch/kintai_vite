@@ -87,6 +87,34 @@ export const Login: React.FC = () => {
     }
   }, [authLoading, isAuthenticated, userRole]);
 
+  // 既に認証済みのユーザーがログイン画面に戻った場合の自動リダイレクト処理
+  // ログイン試行がない場合でも、既に認証済みの場合は即座にリダイレクトする
+  useEffect(() => {
+    // 認証状態の確認が完了した後（authLoading=false）にのみ処理を実行
+    if (authLoading) {
+      return; // 認証状態の確認中は何もしない
+    }
+
+    // 既に認証済みで、ログイン試行がない場合（ブラウザの戻るボタンなどでログイン画面に戻った場合）
+    if (isAuthenticated && userRole && !pendingLogin) {
+      // Googleログインのフラグがある場合はApp.tsxで処理されるので、ここではリダイレクトしない
+      const googleLoginInProgress = localStorage.getItem('googleLoginInProgress') === 'true' ||
+        sessionStorage.getItem('googleLoginInProgress') === 'true' ||
+        document.cookie.includes('googleLoginInProgress=true');
+      
+      if (googleLoginInProgress) {
+        // Googleログイン処理中（App.tsxで処理）
+        return;
+      }
+
+      // 既に認証済みの場合は、userRoleに基づいてリダイレクト
+      const targetPath = userRole === 'admin' ? '/admin/employees' : '/employee/attendance';
+      log('Login.tsx: Already authenticated - redirecting to:', targetPath);
+      navigate(targetPath, { replace: true });
+      return;
+    }
+  }, [isAuthenticated, userRole, authLoading, pendingLogin, navigate]);
+
   // ログイン成功後の遷移処理（userRoleが正しく設定された時点で実行）
   // エラー時（401、403など）はログイン画面に留まる
   // 注意: Googleログインの場合は、App.tsxでリダイレクト処理が行われるため、ここでは処理しない
@@ -158,12 +186,13 @@ export const Login: React.FC = () => {
     );
   }
 
-  // 既に認証済みの場合の処理
+  // 既に認証済みの場合の処理（レンダリング時のリダイレクト）
   // 注意: ログイン画面（/login）に直接アクセスした場合のみ自動リダイレクト
   // 従業員画面（/employee/*）などに直接アクセスしようとした場合は、ProtectedRouteが処理するため、ここではリダイレクトしない
   // これにより、管理者が従業員画面に直接アクセスできるようになる
   // Googleログインのフラグがある場合は、App.tsxでloginUserTypeを考慮してリダイレクト処理が行われるため、ここではリダイレクトしない
-  if (isAuthenticated && location.pathname === '/login') {
+  // 注意: authLoadingがtrueの場合は、認証状態の確認中なのでリダイレクトしない（useEffectで処理される）
+  if (isAuthenticated && userRole && !authLoading && location.pathname === '/login') {
     // Googleログインのフラグがある場合はApp.tsxで処理されるので、ここではリダイレクトしない
     // Cookie、sessionStorage、localStorageの順で確認（リダイレクト時にストレージがクリアされる可能性があるため）
     let googleLoginInProgress: string | null = null;
@@ -248,18 +277,20 @@ export const Login: React.FC = () => {
     if (!loginUserType) {
       loginUserType = localStorage.getItem('loginUserType') as 'admin' | 'employee' | null;
     }
-    if (loginUserType === 'employee') {
-      // 認証済みユーザー（従業員）がログイン画面にアクセス
-      return <Navigate to="/employee/attendance" replace />;
-    } else if (loginUserType === 'admin') {
-      // 認証済みユーザー（管理者）がログイン画面にアクセス
-      return <Navigate to="/admin/employees" replace />;
-    } else {
-      // loginUserTypeが設定されていない場合は、userRoleまたはuserTypeを使用
-      const role = userRole || userType;
-      log('Login.tsx: Authenticated user accessing /login, loginUserType not found, using role:', role);
-      return <Navigate to={role === 'admin' ? '/admin/employees' : '/employee/attendance'} replace />;
-    }
+    
+    // userRoleが設定されている場合は、それを優先的に使用（既に認証済みのユーザーが戻ってきた場合）
+    // loginUserTypeはログイン試行時に設定されるが、既に認証済みの場合は設定されていない可能性がある
+    const targetRole = userRole || loginUserType || userType;
+    const targetPath = targetRole === 'admin' ? '/admin/employees' : '/employee/attendance';
+    
+    log('Login.tsx: Authenticated user accessing /login, redirecting to:', targetPath, {
+      userRole,
+      loginUserType,
+      userType,
+      targetRole
+    });
+    
+    return <Navigate to={targetPath} replace />;
   }
 
   const handleSubmit = async (e: React.FormEvent) => {

@@ -221,73 +221,73 @@ export const RequestApproval: React.FC = () => {
 
   // APIから申請一覧を取得
   const fetchApplications = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      // 従業員一覧を取得してマップを作成
-      const employeesList = await getEmployees();
-      setEmployees(employeesList);
-      const employeeMap = new Map<string, string>();
-      employeesList.forEach(emp => employeeMap.set(emp.id, `${emp.firstName} ${emp.lastName}`));
+      setIsLoading(true);
+      try {
+        // 従業員一覧を取得してマップを作成
+        const employeesList = await getEmployees();
+        setEmployees(employeesList);
+        const employeeMap = new Map<string, string>();
+        employeesList.forEach(emp => employeeMap.set(emp.id, `${emp.firstName} ${emp.lastName}`));
 
-      // 申請一覧を取得
-      const response = await getApplicationList(
+        // 申請一覧を取得
+        const response = await getApplicationList(
         apiSearchYearMonthFrom || undefined,
         apiSearchYearMonthTo || undefined,
         apiFilterType === 'all' ? undefined : (apiFilterType === '休暇申請' ? 'leave_request' : apiFilterType === '打刻修正申請' ? 'attendance_correction_request' : undefined),
         apiFilterStatus === 'all' ? undefined : (apiFilterStatus === '申請中' ? 'pending' : apiFilterStatus === '承認' ? 'approved' : apiFilterStatus === '取消' ? 'rejected' : apiFilterStatus === '削除済み' ? 'deleted' : undefined)
-      );
+        );
 
-      // APIレスポンスをUI用の形式に変換
-      const convertedRequests: UnifiedRequest[] = response.requests.map(apiReq => {
-        const baseRequest: UnifiedRequest = {
-          id: apiReq.id,
-          type: apiReq.type === 'leave_request' ? '休暇申請' : '打刻修正申請',
-          employeeId: apiReq.employeeId,
-          employeeName: employeeMap.get(apiReq.employeeId) || apiReq.employeeName || '不明な従業員',
-          status: apiReq.status === 'pending' ? '申請中' : apiReq.status === 'approved' ? '承認' : apiReq.status === 'rejected' ? '取消' : '削除済み',
-          requestedAt: apiReq.requestedAt
-        };
-
-        if (apiReq.type === 'leave_request' && apiReq.leaveData) {
-          baseRequest.leaveData = {
-            startDate: apiReq.leaveData.startDate,
-            endDate: apiReq.leaveData.endDate,
-            days: apiReq.leaveData.days,
-            leaveType: getLeaveTypeLabel(apiReq.leaveData.leaveType) as '有給' | '特別休暇' | '病気休暇' | '欠勤' | 'その他',
-            reason: apiReq.leaveData.reason,
-            isHalfDay: apiReq.leaveData.isHalfDay
+        // APIレスポンスをUI用の形式に変換
+        const convertedRequests: UnifiedRequest[] = response.requests.map(apiReq => {
+          const baseRequest: UnifiedRequest = {
+            id: apiReq.id,
+            type: apiReq.type === 'leave_request' ? '休暇申請' : '打刻修正申請',
+            employeeId: apiReq.employeeId,
+            employeeName: employeeMap.get(apiReq.employeeId) || apiReq.employeeName || '不明な従業員',
+            status: apiReq.status === 'pending' ? '申請中' : apiReq.status === 'approved' ? '承認' : apiReq.status === 'rejected' ? '取消' : '削除済み',
+            requestedAt: apiReq.requestedAt
           };
-        } else if (apiReq.type === 'attendance_correction_request' && apiReq.attendanceData) {
-          baseRequest.attendanceData = {
-            date: apiReq.attendanceData.date,
-            originalClockIn: apiReq.attendanceData.originalClockIn,
-            originalClockOut: apiReq.attendanceData.originalClockOut,
-            requestedClockIn: apiReq.attendanceData.requestedClockIn,
-            requestedClockOut: apiReq.attendanceData.requestedClockOut,
-            requestedBreaks: apiReq.attendanceData.requestedBreaks,
-            reason: apiReq.attendanceData.reason
-          };
-        }
 
-        return baseRequest;
-      });
+          if (apiReq.type === 'leave_request' && apiReq.leaveData) {
+            baseRequest.leaveData = {
+              startDate: apiReq.leaveData.startDate,
+              endDate: apiReq.leaveData.endDate,
+              days: apiReq.leaveData.days,
+              leaveType: getLeaveTypeLabel(apiReq.leaveData.leaveType) as '有給' | '特別休暇' | '病気休暇' | '欠勤' | 'その他',
+              reason: apiReq.leaveData.reason,
+              isHalfDay: apiReq.leaveData.isHalfDay
+            };
+          } else if (apiReq.type === 'attendance_correction_request' && apiReq.attendanceData) {
+            baseRequest.attendanceData = {
+              date: apiReq.attendanceData.date,
+              originalClockIn: apiReq.attendanceData.originalClockIn,
+              originalClockOut: apiReq.attendanceData.originalClockOut,
+              requestedClockIn: apiReq.attendanceData.requestedClockIn,
+              requestedClockOut: apiReq.attendanceData.requestedClockOut,
+              requestedBreaks: apiReq.attendanceData.requestedBreaks,
+              reason: apiReq.attendanceData.reason
+            };
+          }
 
-      setAllRequests(convertedRequests);
-    } catch (error) {
-      logError('Failed to fetch applications:', error);
-      const errorMessage = translateApiError(error);
-      setSnackbar({ message: errorMessage, type: 'error' });
-      setTimeout(() => setSnackbar(null), 5000);
-    } finally {
-      setIsLoading(false);
-    }
+          return baseRequest;
+        });
+
+        setAllRequests(convertedRequests);
+      } catch (error) {
+        logError('Failed to fetch applications:', error);
+        const errorMessage = translateApiError(error);
+        setSnackbar({ message: errorMessage, type: 'error' });
+        setTimeout(() => setSnackbar(null), 5000);
+      } finally {
+        setIsLoading(false);
+      }
   }, [apiSearchYearMonthFrom, apiSearchYearMonthTo, apiFilterType, apiFilterStatus]);
 
   // 初期表示時にAPIを呼ぶ
   useEffect(() => {
     if (isInitialMount.current) {
       isInitialMount.current = false;
-      fetchApplications();
+    fetchApplications();
     }
   }, []); // 初期表示時のみ実行
 
@@ -330,7 +330,7 @@ export const RequestApproval: React.FC = () => {
       filterStatus
     });
   }, [searchYearMonthFrom, searchYearMonthTo, filterType, filterStatus]);
-
+    
   // フィルタリング処理（フロントエンド側のフィルタリングは不要、APIでフィルタリング済み）
   const filteredRequests = allRequests;
 

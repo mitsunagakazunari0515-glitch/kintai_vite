@@ -94,14 +94,14 @@ export const LeaveRequest: React.FC = () => {
         // APIから返されるステータスコード（pending, approved, rejected, deleted）を日本語に変換
         const convertedRequests: LeaveRequest[] = response.requests.map(req => ({
           id: req.id || (req as any).leaveRequestId || '', // idがundefinedの場合、leaveRequestIdをフォールバックとして使用
-            employeeId: req.employeeId,
-            startDate: req.startDate,
-            endDate: req.endDate,
-            days: req.days,
-            type: getLeaveTypeLabel(req.leaveType) as LeaveRequest['type'], // 英語コード→日本語
-            reason: req.reason,
-            status: (req.status === 'rejected' ? '削除済み' : getLeaveRequestStatusLabel(req.status)) as LeaveRequest['status'], // 英語コード→日本語（rejectedは「取消」として扱うが、UIでは「削除済み」として表示）
-            isHalfDay: req.isHalfDay
+          employeeId: req.employeeId,
+          startDate: req.startDate,
+          endDate: req.endDate,
+          days: req.days,
+          type: getLeaveTypeLabel(req.leaveType) as LeaveRequest['type'], // 英語コード→日本語
+          reason: req.reason,
+          status: (req.status === 'rejected' ? '削除済み' : getLeaveRequestStatusLabel(req.status)) as LeaveRequest['status'], // 英語コード→日本語（rejectedは「取消」として扱うが、UIでは「削除済み」として表示）
+          isHalfDay: req.isHalfDay
         }));
         setRequests(convertedRequests);
       } catch (error) {

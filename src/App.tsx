@@ -68,6 +68,7 @@ const AppRoutes = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const normalizedRef = useRef<string | null>(null);
+  const redirectRef = useRef<boolean>(false); // リダイレクト処理の重複実行を防ぐ
   
   // URLの正規化: 末尾スラッシュを削除（/login/ → /login）
   // サーバー側（Amplify/CloudFront）で末尾スラッシュが追加される場合があるため、
@@ -364,6 +365,41 @@ const AppRoutes = () => {
     
     handleGoogleLoginRedirect();
   }, [isLoading, isAuthenticated, userRole, navigate]);
+
+  // ログイン画面で既に認証済みの場合の自動リダイレクト処理
+  // Login.tsxでも処理されるが、念のためApp.tsxでも処理（ルーティングレベルでの処理）
+  useEffect(() => {
+    // 認証状態の確認が完了していない場合は何もしない
+    if (isLoading) {
+      return;
+    }
+
+    // 既にリダイレクト処理が実行されている場合はスキップ
+    if (redirectRef.current) {
+      return;
+    }
+
+    // ログイン画面にいて、既に認証済みの場合
+    const isLoginPage = location.pathname === '/login' || location.pathname === '/login/' || location.pathname === '/';
+    if (isLoginPage && isAuthenticated && userRole) {
+      // Googleログインのフラグがある場合は、Googleログイン処理中なのでスキップ
+      const googleLoginInProgress = localStorage.getItem('googleLoginInProgress') === 'true' ||
+        sessionStorage.getItem('googleLoginInProgress') === 'true' ||
+        document.cookie.includes('googleLoginInProgress=true');
+      
+      if (googleLoginInProgress) {
+        return;
+      }
+
+      // リダイレクト処理を実行中にマーク
+      redirectRef.current = true;
+
+      // 既に認証済みの場合は、userRoleに基づいてリダイレクト
+      const targetPath = userRole === 'admin' ? '/admin/employees' : '/employee/attendance';
+      log('App.tsx: Already authenticated on login page - redirecting to:', targetPath);
+      navigate(targetPath, { replace: true });
+    }
+  }, [isLoading, isAuthenticated, userRole, location.pathname, navigate]);
 
   // 認証状態の復元中はプログレスバーのみを表示
   if (isLoading) {

@@ -8,7 +8,7 @@
  *   - 認証処理
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, Navigate, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { fontSizes } from '../config/fontSizes';
@@ -89,10 +89,16 @@ export const Login: React.FC = () => {
 
   // 既に認証済みのユーザーがログイン画面に戻った場合の自動リダイレクト処理
   // ログイン試行がない場合でも、既に認証済みの場合は即座にリダイレクトする
+  const redirectRef = useRef<boolean>(false); // リダイレクト処理の重複実行を防ぐ
   useEffect(() => {
     // 認証状態の確認が完了した後（authLoading=false）にのみ処理を実行
     if (authLoading) {
       return; // 認証状態の確認中は何もしない
+    }
+
+    // 既にリダイレクト処理が実行されている場合はスキップ
+    if (redirectRef.current) {
+      return;
     }
 
     // 既に認証済みで、ログイン試行がない場合（ブラウザの戻るボタンなどでログイン画面に戻った場合）
@@ -106,6 +112,9 @@ export const Login: React.FC = () => {
         // Googleログイン処理中（App.tsxで処理）
         return;
       }
+
+      // リダイレクト処理を実行中にマーク
+      redirectRef.current = true;
 
       // 既に認証済みの場合は、userRoleに基づいてリダイレクト
       const targetPath = userRole === 'admin' ? '/admin/employees' : '/employee/attendance';

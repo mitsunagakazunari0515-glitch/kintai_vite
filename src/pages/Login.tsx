@@ -89,6 +89,7 @@ export const Login: React.FC = () => {
 
   // 既に認証済みのユーザーがログイン画面に戻った場合の自動リダイレクト処理
   // ログイン試行がない場合でも、既に認証済みの場合は即座にリダイレクトする
+  // 管理者と従業員の両方に対応（管理者→/admin/employees、従業員→/employee/attendance）
   const redirectRef = useRef<boolean>(false); // リダイレクト処理の重複実行を防ぐ
   useEffect(() => {
     // 認証状態の確認が完了した後（authLoading=false）にのみ処理を実行
@@ -117,8 +118,12 @@ export const Login: React.FC = () => {
       redirectRef.current = true;
 
       // 既に認証済みの場合は、userRoleに基づいてリダイレクト
+      // 管理者の場合は従業員一覧画面、従業員の場合は勤怠画面にリダイレクト
       const targetPath = userRole === 'admin' ? '/admin/employees' : '/employee/attendance';
-      log('Login.tsx: Already authenticated - redirecting to:', targetPath);
+      log('Login.tsx: Already authenticated - redirecting to:', targetPath, {
+        userRole,
+        targetPath
+      });
       navigate(targetPath, { replace: true });
       return;
     }
@@ -186,6 +191,7 @@ export const Login: React.FC = () => {
   // これにより、管理者が従業員画面に直接アクセスできるようになる
   // Googleログインのフラグがある場合は、App.tsxでloginUserTypeを考慮してリダイレクト処理が行われるため、ここではリダイレクトしない
   // 既に認証済みの場合は、ローディングを表示せずに即座にリダイレクト
+  // 管理者と従業員の両方に対応（管理者→/admin/employees、従業員→/employee/attendance）
   const googleLoginInProgress = localStorage.getItem('googleLoginInProgress') === 'true' ||
     sessionStorage.getItem('googleLoginInProgress') === 'true' ||
     document.cookie.includes('googleLoginInProgress=true');
@@ -210,13 +216,15 @@ export const Login: React.FC = () => {
     }
     
     // 既に認証済みの場合は、userRoleに基づいてリダイレクト
+    // 管理者の場合は従業員一覧画面、従業員の場合は勤怠画面にリダイレクト
     const targetRole = userRole || userType;
     const targetPath = targetRole === 'admin' ? '/admin/employees' : '/employee/attendance';
     
     log('Login.tsx: Already authenticated (render) - redirecting to:', targetPath, {
       userRole,
       userType,
-      targetRole
+      targetRole,
+      targetPath
     });
     
     return <Navigate to={targetPath} replace />;

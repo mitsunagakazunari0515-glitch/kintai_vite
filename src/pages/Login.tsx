@@ -9,7 +9,7 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate, Navigate, Link, useLocation } from 'react-router-dom';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { fontSizes } from '../config/fontSizes';
 import { ProgressBar } from '../components/ProgressBar';
@@ -48,6 +48,14 @@ export const Login: React.FC = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth <= 768);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   // 権限不足のメッセージをチェック（ProtectedRouteからリダイレクトされた場合）
   useEffect(() => {
     const permissionDeniedStr = localStorage.getItem('permissionDenied');
@@ -65,16 +73,49 @@ export const Login: React.FC = () => {
     }
   }, []);
 
-  // Googleログイン処理中のローディング状態を管理
-  // googleLoginInProgressフラグが設定されている間、またはauthLoadingがtrueの間、ローディングを継続
+  // ログイン画面に戻った際に、認証状態をリセットする
+  // ブラウザの戻るボタンで戻った場合、ストレージに認証情報が残っている可能性があるため、
+  // ログイン画面では認証状態をリセットして、常に未認証状態として扱う
+  // ただし、userInfoは削除しない（認可APIから取得したemployeeIdなどが含まれているため）
   useEffect(() => {
-    const googleLoginInProgress = localStorage.getItem('googleLoginInProgress');
-    // Googleログイン処理中（googleLoginInProgressが設定されている、またはauthLoadingがtrue）の場合
-    if (googleLoginInProgress === 'true' || authLoading) {
+    // ログイン画面にいる場合のみ実行
+    if (location.pathname === '/login' || location.pathname === '/login/') {
+      // URLパラメータにcodeがある場合（OAuthコールバック時）は、認証状態をリセットしない
+      const urlParams = new URLSearchParams(window.location.search);
+      const hasCode = urlParams.get('code') !== null;
+      
+      if (!hasCode) {
+        // ログイン処理中でない場合のみ、認証状態をリセット
+        // ログイン処理中（pendingLoginが設定されている場合）は、認証状態をリセットしない
+        if (!pendingLogin) {
+          // ストレージの認証情報をクリア（ただし、userInfoは削除しない）
+          // userInfoには認可APIから取得したemployeeIdなどが含まれているため、削除しない
+          // これにより、ブラウザの戻るボタンで戻った場合でも、ログイン画面が表示される
+          log('Login.tsx: Resetting auth state on login page (browser back detected)');
+          // 注意: AuthContextの状態は直接変更できないため、ストレージの認証情報のみをクリア
+          // AuthContextの状態は、checkAuthStatusが実行されない限り、リセットされない
+          // ただし、checkAuthStatusがログイン画面で実行された場合、早期リターンするため、状態はリセットされない
+          localStorage.removeItem('auth');
+          // userInfoは削除しない（employeeIdなどが含まれているため）
+          localStorage.removeItem('loginUserType');
+          sessionStorage.removeItem('loginUserType');
+          document.cookie = 'loginUserType=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+        }
+      }
+    }
+  }, [location.pathname, pendingLogin]);
+
+  // Googleログイン処理中のローディング状態を管理
+  // URLパラメータにcodeがある場合（OAuthコールバック時）は、ローディングを継続
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const hasCode = urlParams.get('code') !== null;
+    // Googleログイン処理中（URLパラメータにcodeがある場合、またはauthLoadingがtrue）の場合
+    if (hasCode || authLoading) {
       // Googleログイン処理中
       setIsGoogleLoading(true);
     } else {
-      // Googleログイン処理が完了した場合（認可API処理も完了、かつgoogleLoginInProgressフラグが削除された）
+      // Googleログイン処理が完了した場合（認可API処理も完了、かつURLパラメータにcodeがない）
       // ただし、認証成功時（isAuthenticated && userRole）は、遷移処理が行われるため、ローディングを継続
       // エラー時（isAuthenticated=false または userRole=null）の場合のみ、ローディングを解除
       if (!isAuthenticated || !userRole) {
@@ -87,9 +128,10 @@ export const Login: React.FC = () => {
     }
   }, [authLoading, isAuthenticated, userRole]);
 
-  // 既に認証済みのユーザーがログイン画面に戻った場合の自動リダイレクト処理
-  // ログイン試行がない場合でも、既に認証済みの場合は即座にリダイレクトする
-  // 管理者と従業員の両方に対応（管理者→/admin/employees、従業員→/employee/attendance）
+  // 既に認証済みのユーザーがログイン画面に戻った場合の処理
+  // ブラウザの戻るボタンで戻った場合や、role:adminの従業員が従業員側としてログインしたい場合などに対応
+  // Googleログインのコールバック時のみ、自動リダイレクトを実行する
+  // Googleログインのコールバックは、URLパラメータにcodeがあることで判定する（googleLoginInProgressフラグは使用しない）
   const redirectRef = useRef<boolean>(false); // リダイレクト処理の重複実行を防ぐ
   useEffect(() => {
     // 認証状態の確認が完了した後（authLoading=false）にのみ処理を実行
@@ -104,27 +146,22 @@ export const Login: React.FC = () => {
 
     // 既に認証済みで、ログイン試行がない場合（ブラウザの戻るボタンなどでログイン画面に戻った場合）
     if (isAuthenticated && userRole && !pendingLogin) {
-      // Googleログインのフラグがある場合はApp.tsxで処理されるので、ここではリダイレクトしない
-      const googleLoginInProgress = localStorage.getItem('googleLoginInProgress') === 'true' ||
-        sessionStorage.getItem('googleLoginInProgress') === 'true' ||
-        document.cookie.includes('googleLoginInProgress=true');
+      // URLパラメータにcodeがある場合（OAuthコールバック時）
+      const urlParams = new URLSearchParams(window.location.search);
+      const hasCode = urlParams.get('code') !== null;
       
-      if (googleLoginInProgress) {
+      if (hasCode) {
         // Googleログイン処理中（App.tsxで処理）
         return;
       }
 
-      // リダイレクト処理を実行中にマーク
-      redirectRef.current = true;
-
-      // 既に認証済みの場合は、userRoleに基づいてリダイレクト
-      // 管理者の場合は従業員一覧画面、従業員の場合は勤怠画面にリダイレクト
-      const targetPath = userRole === 'admin' ? '/admin/employees' : '/employee/attendance';
-      log('Login.tsx: Already authenticated - redirecting to:', targetPath, {
+      // それ以外の場合は、ログイン画面を表示する（自動リダイレクトしない）
+      log('Login.tsx: Already authenticated, but showing login screen (user may want to switch role)', {
         userRole,
-        targetPath
+        pendingLogin,
+        hasCode
       });
-      navigate(targetPath, { replace: true });
+      redirectRef.current = true; // リダイレクトしないことをマーク
       return;
     }
   }, [isAuthenticated, userRole, authLoading, pendingLogin, navigate]);
@@ -134,7 +171,10 @@ export const Login: React.FC = () => {
   // 注意: Googleログインの場合は、App.tsxでリダイレクト処理が行われるため、ここでは処理しない
   useEffect(() => {
     // Googleログインの場合は、App.tsxでリダイレクト処理が行われるため、ここでは処理しない
-    if (localStorage.getItem('googleLoginInProgress') === 'true') {
+    // URLパラメータにcodeがある場合（OAuthコールバック時）は、App.tsxで処理される
+    const urlParams = new URLSearchParams(window.location.search);
+    const hasCode = urlParams.get('code') !== null;
+    if (hasCode) {
       // Googleログイン処理中（App.tsxで処理）
       return;
     }
@@ -172,33 +212,20 @@ export const Login: React.FC = () => {
       setIsGoogleLoading(false); // Googleログインのローディングを解除（遷移前に解除）
       localStorage.removeItem('loginUserType'); // 不要になったので削除
       navigate(targetPath, { replace: true });
-    } else {
-      // 認証・認可が失敗した場合（401、403エラーなど）、ログイン画面に留まる
-      // isAuthenticatedがfalse、またはuserRoleがnull、またはloginErrorがtrueの場合は失敗とみなす
-      // 認証・認可失敗
-      setPendingLogin(null); // 遷移フラグをクリア
-      setLoginError(false); // エラー状態をクリア（次のログイン試行に備える）
-      setIsGoogleLoading(false); // Googleログインのローディングを解除（エラー時も解除）
-      localStorage.removeItem('loginUserType');
-      // エラーメッセージは既にスナックバーで表示されている（checkAuthStatus内で設定）
-      // ここでは遷移フラグをクリアするだけで、エラーメッセージは既に表示されている
     }
-  }, [pendingLogin, isAuthenticated, userRole, authLoading, isLoading, loginError, navigate]);
+  }, [authLoading, pendingLogin, isAuthenticated, userRole, loginError, isLoading, navigate]);
 
-  // 既に認証済みの場合の処理（レンダリング時のリダイレクト）
-  // 注意: ログイン画面（/login）に直接アクセスした場合のみ自動リダイレクト
-  // 従業員画面（/employee/*）などに直接アクセスしようとした場合は、ProtectedRouteが処理するため、ここではリダイレクトしない
-  // これにより、管理者が従業員画面に直接アクセスできるようになる
-  // Googleログインのフラグがある場合は、App.tsxでloginUserTypeを考慮してリダイレクト処理が行われるため、ここではリダイレクトしない
-  // 既に認証済みの場合は、ローディングを表示せずに即座にリダイレクト
-  // 管理者と従業員の両方に対応（管理者→/admin/employees、従業員→/employee/attendance）
-  const googleLoginInProgress = localStorage.getItem('googleLoginInProgress') === 'true' ||
-    sessionStorage.getItem('googleLoginInProgress') === 'true' ||
-    document.cookie.includes('googleLoginInProgress=true');
+  // 既に認証済みの場合でも、ログイン画面を表示する
+  // ブラウザの戻るボタンで戻った場合や、role:adminの従業員が従業員側としてログインしたい場合などに対応
+  // Googleログインのコールバック時のみ、自動リダイレクトを実行する
+  // Googleログインのコールバックは、URLパラメータにcodeがあることで判定する（googleLoginInProgressフラグは使用しない）
+  // URLパラメータにcodeがある場合（OAuthコールバック時）
+  const urlParams = new URLSearchParams(window.location.search);
+  const hasCode = urlParams.get('code') !== null;
   
   if (isAuthenticated && userRole && location.pathname === '/login') {
-    // Googleログインのフラグがある場合はApp.tsxで処理されるので、ここではリダイレクトしない
-    if (googleLoginInProgress) {
+    // Googleログインのコールバック時のみ、自動リダイレクトを実行
+    if (hasCode) {
       // Googleログイン処理中（App.tsxで処理）
       // ローディングを表示
       if (authLoading || isGoogleLoading) {
@@ -212,27 +239,23 @@ export const Login: React.FC = () => {
           </>
         );
       }
+      // Googleログインのコールバック時は、App.tsxでリダイレクト処理が行われるため、ここでは待機
       return null; // App.tsxで処理されるまで待機
     }
     
-    // 既に認証済みの場合は、userRoleに基づいてリダイレクト
-    // 管理者の場合は従業員一覧画面、従業員の場合は勤怠画面にリダイレクト
-    const targetRole = userRole || userType;
-    const targetPath = targetRole === 'admin' ? '/admin/employees' : '/employee/attendance';
-    
-    log('Login.tsx: Already authenticated (render) - redirecting to:', targetPath, {
+    // それ以外の場合は、ログイン画面を表示する（自動リダイレクトしない）
+    log('Login.tsx: Already authenticated, but showing login screen (user may want to switch role)', {
       userRole,
       userType,
-      targetRole,
-      targetPath
+      hasCode
     });
-    
-    return <Navigate to={targetPath} replace />;
   }
 
   // 認証状態の復元中、またはGoogleログイン処理中はローディングを表示
-  // Googleログイン処理中（googleLoginInProgressフラグが設定されている、またはisGoogleLoadingがtrue）の場合も、ローディングを表示
-  if (authLoading || googleLoginInProgress || isGoogleLoading) {
+  // Googleログインのコールバック時（URLパラメータにcodeがある場合）も、ローディングを表示
+  const urlParamsForLoading = new URLSearchParams(window.location.search);
+  const hasCodeForLoading = urlParamsForLoading.get('code') !== null;
+  if (authLoading || hasCodeForLoading || isGoogleLoading) {
     return (
       <>
         <ProgressBar isLoading={true} />

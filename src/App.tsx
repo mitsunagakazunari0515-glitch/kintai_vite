@@ -366,26 +366,57 @@ const AppRoutes = () => {
   }, [isLoading, isAuthenticated, userRole, navigate]);
 
 
-  // ログイン画面で既に認証済みの場合、Routesをレンダリングする前にリダイレクト
-  // これにより、AttendanceコンポーネントやEmployeeListコンポーネントがマウントされる前にリダイレクトできる
-  // isLoadingがtrueでも、既に認証済みの場合はリダイレクトする（checkAuthStatusの完了を待たない）
-  // 管理者と従業員の両方に対応（管理者→/admin/employees、従業員→/employee/attendance）
+  // ログイン画面で既に認証済みの場合でも、ログイン画面を表示する
+  // ブラウザの戻るボタンで戻った場合や、role:adminの従業員が従業員側としてログインしたい場合などに対応
+  // Googleログインのコールバック時のみ、自動リダイレクトを実行する
+  // Googleログインのコールバックは、URLパラメータにcodeがあることで判定する（googleLoginInProgressフラグは使用しない）
   const isLoginPage = location.pathname === '/login' || location.pathname === '/login/' || location.pathname === '/';
-  if (isLoginPage && isAuthenticated && userRole) {
-    // Googleログインのフラグがある場合は、Googleログイン処理中なのでスキップ
-    const googleLoginInProgress = localStorage.getItem('googleLoginInProgress') === 'true' ||
-      sessionStorage.getItem('googleLoginInProgress') === 'true' ||
-      document.cookie.includes('googleLoginInProgress=true');
+  
+  // ログイン画面の場合は、Googleログインのコールバック時のみ自動リダイレクトを実行
+  // それ以外の場合は、認証状態に関係なくログイン画面を表示する
+  // ただし、ログイン処理中（localStorageにloginUserTypeが設定されている場合）は、Login.tsxの遷移処理を待つ
+  if (isLoginPage) {
+    // URLパラメータにcodeがある場合（OAuthコールバック時）のみ、自動リダイレクトを実行
+    const urlParams = new URLSearchParams(window.location.search);
+    const hasCode = urlParams.get('code') !== null;
     
-    if (!googleLoginInProgress) {
-      // 既に認証済みの場合は、userRoleに基づいてリダイレクト
-      // 管理者の場合は従業員一覧画面、従業員の場合は勤怠画面にリダイレクト
+    // ログイン処理中かどうかを判定（localStorageにloginUserTypeが設定されている場合）
+    // ただし、OAuthコールバックでない場合は、loginUserTypeを無視する（ブラウザの戻るボタンで戻った場合など）
+    // OAuthコールバック時のみ、loginUserTypeを有効にする
+    const loginUserType = hasCode ? localStorage.getItem('loginUserType') : null;
+    const isLoginInProgress = loginUserType !== null;
+    
+    if (hasCode && isAuthenticated && userRole) {
+      // Googleログインのコールバック時のみ、自動リダイレクトを実行
       const targetPath = userRole === 'admin' ? '/admin/employees' : '/employee/attendance';
-      log('App.tsx: Already authenticated on login page (before Routes) - redirecting to:', targetPath, {
+      log('App.tsx: Google login callback detected (code parameter found) - redirecting to:', targetPath, {
         userRole,
-        targetPath
+        targetPath,
+        hasCode
       });
       return <Navigate to={targetPath} replace />;
+    }
+    
+    // ログイン処理中の場合は、Login.tsxの遷移処理を待つ（ログイン画面を表示する）
+    // Login.tsxのuseEffectで遷移処理が実行されるため、Routesをレンダリングする必要がある
+    if (isLoginInProgress && isAuthenticated && userRole) {
+      log('App.tsx: Login in progress, Login.tsx will handle redirect', {
+        userRole,
+        loginUserType,
+        isAuthenticated
+      });
+      // Login.tsxの遷移処理を待つため、Routesをレンダリングする（ログイン画面が表示される）
+    }
+    
+    // それ以外の場合は、ログイン画面を表示する（認証状態に関係なく）
+    // ブラウザの戻るボタンで戻った場合でも、ログイン画面を表示する
+    if (isAuthenticated && userRole && !isLoginInProgress) {
+      log('App.tsx: Already authenticated on login page, but showing login screen (user may want to switch role)', {
+        userRole,
+        isAuthenticated,
+        hasCode,
+        isLoginInProgress
+      });
     }
   }
 
@@ -395,7 +426,7 @@ const AppRoutes = () => {
     return (
       <>
         <ProgressBar isLoading={true} />
-        <div style={{ 
+        <div style={{
           height: '100vh',
           backgroundColor: '#fff'
         }} />

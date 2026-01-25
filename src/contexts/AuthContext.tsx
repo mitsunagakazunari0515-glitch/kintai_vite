@@ -65,6 +65,29 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [snackbar, setSnackbar] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [isApiLoading, setIsApiLoading] = useState<boolean>(false); // API通信中のローディング状態
 
+  // 初期ロード時にログイン画面の場合は、認証状態をリセットする
+  // ブラウザの戻るボタンで戻った場合、ストレージに認証情報が残っている可能性があるため、
+  // ログイン画面では認証状態をリセットして、常に未認証状態として扱う
+  useEffect(() => {
+    const currentPath = window.location.pathname;
+    const isLoginPage = currentPath === '/login' || currentPath === '/login/' || currentPath === '/';
+    
+    if (isLoginPage) {
+      // URLパラメータにcodeがある場合（OAuthコールバック時）は、認証状態をリセットしない
+      const urlParams = new URLSearchParams(window.location.search);
+      const hasCode = urlParams.get('code') !== null;
+      
+      if (!hasCode) {
+        // ログイン画面では認証状態をリセットして、常に未認証状態として扱う
+        log('ℹ️ Login page detected on mount - resetting auth state');
+        setIsAuthenticated(false);
+        setUserRole(null);
+        setUserId(null);
+        setUserName(null);
+      }
+    }
+  }, []); // マウント時のみ実行
+
   // 認可情報を取得してロールを判定する関数
   const fetchUserRole = useCallback(async (): Promise<UserRole> => {
     setIsApiLoading(true);
@@ -116,14 +139,20 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   // 認証状態をチェックする関数（useCallbackでメモ化）
   const checkAuthStatus = useCallback(async (forceCheck: boolean = false) => {
+    console.log('🔍 [checkAuthStatus] START', { forceCheck, pathname: window.location.pathname });
+    
     // ログイン画面の場合は、API通信をスキップ（ログインボタン押下時のみAPI通信）
     // ただし、forceCheckがtrueの場合や、loginUserType/googleLoginInProgressが設定されている場合は実行
     const currentPath = window.location.pathname;
     const isLoginPage = currentPath === '/login' || currentPath === '/';
     
+    console.log('🔍 [checkAuthStatus] isLoginPage check', { isLoginPage, currentPath, forceCheck });
+    
     // URLパラメータまたはCookieからloginUserTypeを取得（リダイレクト後のコールバック時に使用）
     const urlParams = new URLSearchParams(window.location.search);
     let loginUserTypeFromUrl = urlParams.get('loginUserType');
+    
+    console.log('🔍 [checkAuthStatus] URL params check', { loginUserTypeFromUrl });
     
     // URLパラメータにない場合は、Cookieから取得を試みる
     if (!loginUserTypeFromUrl || (loginUserTypeFromUrl !== 'admin' && loginUserTypeFromUrl !== 'employee')) {
@@ -132,6 +161,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         const [name, value] = cookie.trim().split('=');
         if (name === 'loginUserType') {
           loginUserTypeFromUrl = decodeURIComponent(value);
+          console.log('🔍 [checkAuthStatus] Found loginUserType in cookie', { loginUserTypeFromUrl });
           break;
         }
       }
@@ -159,9 +189,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     if (!googleLoginInProgress) {
       googleLoginInProgress = localStorage.getItem('googleLoginInProgress');
     }
+    
+    console.log('🔍 [checkAuthStatus] Storage check', { loginUserType, googleLoginInProgress });
+    
     // Googleログイン後のコールバックの可能性がある場合、フラグを設定
     // AmplifyのコールバックURLには通常、codeパラメータが含まれる
     if (!googleLoginInProgress && urlParams.get('code')) {
+      console.log('🔍 [checkAuthStatus] OAuth callback detected, setting googleLoginInProgress');
       log('🔍 checkAuthStatus - Detected OAuth callback (code parameter found), setting googleLoginInProgress flag');
       googleLoginInProgress = 'true';
       
@@ -203,24 +237,71 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
     }
     
-    // ログイン画面で既に認証済みの場合、APIを呼ばずに早期リターン（ブラウザの戻るボタンなどで戻った場合）
+    console.log('🔍 [checkAuthStatus] Before login page check', { 
+      isLoginPage, 
+      forceCheck, 
+      isAuthenticated, 
+      userRole,
+      loginUserType,
+      googleLoginInProgress 
+    });
+    
+    // ログイン画面で既に認証済みの場合、認証状態をリセットしてから早期リターン（ブラウザの戻るボタンなどで戻った場合）
     // ただし、forceCheckがtrueの場合（ログイン試行時）は、APIを呼び出す必要がある
-    if (isLoginPage && !forceCheck && isAuthenticated && userRole) {
-      log('ℹ️ Login page detected - already authenticated, skipping auth check (will redirect via Login.tsx)');
+    // ブラウザの戻るボタンで戻った場合、ストレージに認証情報が残っている可能性があるが、
+    // ログイン画面では認証状態をリセットし、常に未認証状態として扱う
+    if (isLoginPage && !forceCheck) {
+      console.log('🔍 [checkAuthStatus] Login page detected, checking auth state', { 
+        isAuthenticated, 
+        userRole 
+      });
+      
+      // 既に認証済みの状態が設定されている場合は、認証状態をリセットしてから早期リターン
+      if (isAuthenticated && userRole) {
+        console.log('🔍 [checkAuthStatus] Resetting auth state (browser back detected)');
+        log('ℹ️ Login page detected - resetting auth state (browser back detected)');
+        // ログイン画面では認証状態をリセットして、常に未認証状態として扱う
+        setIsAuthenticated(false);
+        setUserRole(null);
+        setUserId(null);
+        setUserName(null);
+        setIsLoading(false);
+        console.log('🔍 [checkAuthStatus] Auth state reset, returning early');
+        return;
+      }
+      
+      // ログイン画面では、ストレージから状態を復元しない
+      // ブラウザの戻るボタンで戻った場合でも、認証状態を復元せず、常に未認証状態として扱う
+      // これにより、ユーザーが明示的にログイン操作を行うまで、認証状態が復元されない
+      console.log('🔍 [checkAuthStatus] Skipping auth check (no auth state set)');
+      log('ℹ️ Login page detected - skipping auth check (user may want to switch role, not restoring from storage)');
       setIsLoading(false);
+      console.log('🔍 [checkAuthStatus] Returning early (login page, no forceCheck)');
       return;
     }
     
+    console.log('🔍 [checkAuthStatus] After login page check', { 
+      isLoginPage, 
+      forceCheck, 
+      loginUserType, 
+      googleLoginInProgress 
+    });
+    
     if (isLoginPage && !forceCheck && !loginUserType && !googleLoginInProgress) {
+      console.log('🔍 [checkAuthStatus] Skipping auth check (no login attempt)');
       log('ℹ️ Login page detected - skipping auth check (no login attempt detected)');
       setIsLoading(false);
+      console.log('🔍 [checkAuthStatus] Returning early (no login attempt)');
       return;
     }
     
     // ログイン試行が検出された場合は、ログイン画面でもAPI通信を実行
     if (isLoginPage && (forceCheck || loginUserType || googleLoginInProgress)) {
+      console.log('🔍 [checkAuthStatus] Login attempt found, proceeding with auth check');
       log('ℹ️ Login page detected but login attempt found - proceeding with auth check');
     }
+    
+    console.log('🔍 [checkAuthStatus] Starting API call');
     
     try {
       // ユーザーが認証されているかチェック
@@ -793,8 +874,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             checkAuthStatus(isOAuthCallback);
           }, 100);
         } else {
-          // ログイン画面でOAuthコールバックでない場合は、API通信をスキップして読み込みを終了
-          log('ℹ️ Login page detected - skipping initial auth check');
+          // ログイン画面でOAuthコールバックでない場合
+          // ブラウザの戻るボタンで戻った場合でも、APIから認証情報を取得しない
+          // ログイン画面では、ユーザーが明示的にログイン操作を行うまで、認証状態を復元しない
+          // これにより、ブラウザの戻るボタンで戻った場合でも、ログイン画面が表示される
+          log('ℹ️ Login page detected - skipping initial auth check (user may want to switch role)');
           setIsLoading(false);
         }
       } else {
@@ -931,7 +1015,30 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         localStorage.setItem('loginUserType', role);
       }
 
-      const { isSignedIn } = await signIn({ username: id, password });
+      let signInResult;
+      try {
+        signInResult = await signIn({ username: id, password });
+      } catch (signInError: any) {
+        // UserAlreadyAuthenticatedExceptionの場合は、ログアウトしてから再度試行
+        if (signInError?.name === 'UserAlreadyAuthenticatedException' || signInError?.message?.includes('already a signed in user')) {
+          log('既にログイン済みのユーザーが検出されました。ログアウトしてから再度試行します。');
+          try {
+            await signOut();
+            // ログアウト後に少し待機（状態の更新を待つ）
+            await new Promise(resolve => setTimeout(resolve, 500));
+            // 再度ログインを試行
+            signInResult = await signIn({ username: id, password });
+          } catch (retryError) {
+            logError('ログアウト後の再ログインに失敗しました:', retryError);
+            throw new Error('既にログイン済みのユーザーです。ページを再読み込みしてください。');
+          }
+        } else {
+          // その他のエラーは再スロー
+          throw signInError;
+        }
+      }
+      
+      const { isSignedIn } = signInResult;
       
       if (isSignedIn) {
         // 認証状態を再チェック
@@ -945,12 +1052,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           // 認証状態とuserRoleは正しく設定されているはず
           // 少し待機してから状態を確認（状態更新の完了を待つ）
           await new Promise(resolve => setTimeout(resolve, 100));
-          
-          // 認証状態が正しく設定されているか確認
-          // 注意: この時点でのisAuthenticatedとuserRoleの値を直接参照できないため、
-          // checkAuthStatusが例外をスローしなかった場合は成功とみなす
-          // checkAuthStatus内でエラーが発生した場合は例外がスローされるため、
-          // ここに到達した場合は認証・認可が成功したことを意味する
           
           return true;
         } catch (authError: any) {

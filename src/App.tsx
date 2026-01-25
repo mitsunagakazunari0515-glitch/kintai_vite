@@ -14,6 +14,7 @@ import { AllowanceMaster } from './pages/admin/AllowanceMaster';
 import { DeductionMaster } from './pages/admin/DeductionMaster';
 import { RequestApproval } from './pages/admin/RequestApproval';
 import { AttendanceList } from './pages/admin/AttendanceList';
+import { EmployeeAttendance } from './pages/admin/EmployeeAttendance';
 import { Attendance } from './pages/employee/Attendance';
 import { LeaveRequest } from './pages/employee/LeaveRequest';
 import { getLoginUserType, getGoogleLoginInProgress, removeLoginUserType, removeGoogleLoginInProgress, saveGoogleLoginInProgress } from './utils/storageHelper';
@@ -33,6 +34,7 @@ const AdminRoutes = () => (
       <Route path="/employees/edit/:id" element={<EmployeeRegistration />} />
       <Route path="/employees/:employeeId/payroll" element={<EmployeePayroll />} />
       <Route path="/attendance" element={<AttendanceList />} />
+      <Route path="/employee-attendance" element={<EmployeeAttendance />} />
       <Route path="/allowances" element={<AllowanceMaster />} />
       <Route path="/deductions" element={<DeductionMaster />} />
       <Route path="/requests" element={<RequestApproval />} />

@@ -24,6 +24,7 @@ import { useSort } from '../../hooks/useSort';
 import { ChevronDownIcon, ChevronUpIcon } from '../../components/Icons';
 import { createEmployee, updateEmployee, getEmployees, CreateEmployeeRequest } from '../../utils/employeeApi';
 import { getAllowances } from '../../utils/allowanceApi';
+import { getAttendanceList } from '../../utils/attendanceApi';
 import { error as logError } from '../../utils/logger';
 import { translateApiError } from '../../utils/apiErrorTranslator';
 
@@ -96,6 +97,7 @@ export const EmployeeList: React.FC = () => {
   const [showActiveOnly, setShowActiveOnly] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
+  const [isEditingMode, setIsEditingMode] = useState<boolean>(false);
   const hasFetchedRef = useRef<boolean>(false); // 既にAPI呼び出しを行ったかどうかのフラグ
   const isMountedRef = useRef<boolean>(true); // コンポーネントがマウントされているかどうかのフラグ
   const cleanupCalledRef = useRef<boolean>(false); // クリーンアップ関数が呼ばれたかどうかのフラグ
@@ -285,7 +287,12 @@ export const EmployeeList: React.FC = () => {
   const handleEdit = (employee: Employee) => {
     setEditingEmployee(employee);
     setFormData({ ...employee });
+    setIsEditingMode(false); // 編集時は最初はラベル表示
     setShowModal(true);
+  };
+
+  const handleStartEdit = () => {
+    setIsEditingMode(true);
   };
 
   const handleSave = async () => {
@@ -328,6 +335,7 @@ export const EmployeeList: React.FC = () => {
 
       setShowModal(false);
       setEditingEmployee(null);
+      setIsEditingMode(false);
     } catch (error) {
       logError('Failed to save employee:', error);
       const errorMessage = translateApiError(error);
@@ -338,6 +346,7 @@ export const EmployeeList: React.FC = () => {
   const handleCancel = () => {
     setShowModal(false);
     setEditingEmployee(null);
+    setIsEditingMode(false);
   };
 
   const handleAllowanceToggle = (allowanceId: string) => {
@@ -664,18 +673,22 @@ export const EmployeeList: React.FC = () => {
                       <ViewIcon size={16} color="#2563eb" />
                       明細
                     </Button>
-                    {isMobile ? (
-                      <EditButton
-                        onClick={() => handleEdit(emp)}
-                        size="small"
-                      />
-                    ) : (
-                      <Button
-                        variant="icon-edit"
-                        onClick={() => handleEdit(emp)}
-                        title="編集"
-                      />
-                    )}
+                    <Button
+                      variant="primary"
+                      size="small"
+                      onClick={() => handleEdit(emp)}
+                      title="勤怠情報を閲覧"
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.05rem',
+                        minWidth: '100px',
+                        fontSize: fontSizes.button
+                      }}
+                    >
+                      <ViewIcon size={16} color="#2563eb" />
+                      勤怠
+                    </Button>
                   </div>
                 </div>
                 <div style={{ 
@@ -705,10 +718,6 @@ export const EmployeeList: React.FC = () => {
                     <span style={{ fontWeight: 'bold' }}>{getEmploymentTypeLabel(emp.employmentType)}</span>
                   </div>
                   <div>
-                    <span style={{ color: '#6b7280' }}>基本給:</span>{' '}
-                    <span style={{ fontWeight: 'bold' }}>{formatCurrency(emp.baseSalary)}{emp.employmentType === 'FULL_TIME' ? '/月' : '/時'}</span>
-                  </div>
-                  <div>
                     <span style={{ color: '#6b7280' }}>入社日:</span>{' '}
                     {formatDate(emp.joinDate)}
                   </div>
@@ -722,40 +731,7 @@ export const EmployeeList: React.FC = () => {
                       {formatDate(emp.leaveDate)}
                     </div>
                   )}
-                  <div>
-                    <span style={{ color: '#6b7280' }}>有給日数:</span>{' '}
-                    <span style={{ fontWeight: 'bold' }}>{emp.paidLeaves.reduce((sum, pl) => sum + pl.days, 0)}日</span>
-                  </div>
                 </div>
-                {emp.allowances.length > 0 && (
-                  <div>
-                    <div style={{ fontSize: fontSizes.medium, color: '#6b7280', marginBottom: '0.5rem' }}>
-                      手当:
-                    </div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-                      {emp.allowances.map((allowanceId) => {
-                        const allowance = getAllowanceById(allowanceId);
-                        if (!allowance) return null;
-                        return (
-                          <span
-                            key={allowanceId}
-                            style={{
-                              padding: '0.25rem 0.75rem',
-                              borderRadius: '16px',
-                              backgroundColor: 'white',
-                              color: allowance.color,
-                              fontSize: fontSizes.input,
-                              fontWeight: 'bold',
-                              border: `1px solid ${allowance.color}40`
-                            }}
-                          >
-                            {allowance.name}
-                          </span>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
               </div>
             ))}
           </div>
@@ -796,12 +772,6 @@ export const EmployeeList: React.FC = () => {
                   </th>
                   <th 
                     style={{ padding: '0.75rem', textAlign: 'left', cursor: 'pointer', userSelect: 'none' }}
-                    onClick={() => handleSort('baseSalary')}
-                  >
-                    {getSortIcon('baseSalary')} 基本給
-                  </th>
-                  <th 
-                    style={{ padding: '0.75rem', textAlign: 'left', cursor: 'pointer', userSelect: 'none' }}
                     onClick={() => handleSort('email')}
                   >
                     {getSortIcon('email')} メールアドレス
@@ -818,13 +788,6 @@ export const EmployeeList: React.FC = () => {
                   >
                     {getSortIcon('leaveDate')} 退社日
                   </th>
-                  <th 
-                    style={{ padding: '0.75rem', textAlign: 'left', cursor: 'pointer', userSelect: 'none' }}
-                    onClick={() => {}}
-                  >
-                    有給合計日数
-                  </th>
-                  <th style={{ padding: '0.75rem', textAlign: 'left' }}>手当</th>
                   <th style={{ padding: '0.75rem', textAlign: 'left' }}>更新者</th>
                   <th 
                     style={{ padding: '0.75rem', textAlign: 'left', cursor: 'pointer', userSelect: 'none' }}
@@ -833,7 +796,7 @@ export const EmployeeList: React.FC = () => {
                     {getSortIcon('updatedAt')} 更新日時
                   </th>
                   <th style={{ padding: '0.75rem', textAlign: 'center' }}>給与明細</th>
-                  <th style={{ padding: '0.75rem', textAlign: 'center' }}>編集</th>
+                  <th style={{ padding: '0.75rem', textAlign: 'center' }}>勤怠情報</th>
                 </tr>
               </thead>
               <tbody>
@@ -869,43 +832,14 @@ export const EmployeeList: React.FC = () => {
                         {getEmploymentTypeLabel(emp.employmentType)}
                       </span>
                     </td>
-                    <td style={{ padding: '0.75rem', fontWeight: 'bold' }}>
-                      {formatCurrency(emp.baseSalary)}{emp.employmentType === 'FULL_TIME' ? '/月' : '/時'}
+                    <td style={{ padding: '0.75rem' }}>
+                      {emp.email}
                     </td>
-                    <td style={{ padding: '0.75rem' }}>{emp.email}</td>
                     <td style={{ padding: '0.75rem' }}>
                       {formatDate(emp.joinDate)}
                     </td>
                     <td style={{ padding: '0.75rem' }}>
                       {emp.leaveDate ? formatDate(emp.leaveDate) : '-'}
-                    </td>
-                    <td style={{ padding: '0.75rem', fontWeight: 'bold' }}>
-                      {emp.paidLeaves.reduce((sum, pl) => sum + pl.days, 0)}日
-                    </td>
-                    <td style={{ padding: '0.75rem' }}>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-                        {emp.allowances.map((allowanceId) => {
-                          const allowance = getAllowanceById(allowanceId);
-                          if (!allowance) return null;
-                          return (
-                            <span
-                              key={allowanceId}
-                              style={{
-                                padding: '0.25rem 0.75rem',
-                                borderRadius: '16px',
-                                backgroundColor: allowance.color + '20',
-                                color: allowance.color,
-                                fontSize: fontSizes.input,
-                                fontWeight: 'bold',
-                                border: `1px solid ${allowance.color}40`
-                              }}
-                            >
-                              {allowance.name}
-                            </span>
-                          );
-                        })}
-                        {emp.allowances.length === 0 && <span style={{ color: '#9ca3af' }}>-</span>}
-                      </div>
                     </td>
                     <td style={{ padding: '0.75rem' }}>
                       {emp.updatedBy || '-'}
@@ -938,18 +872,22 @@ export const EmployeeList: React.FC = () => {
                       </Button>
                     </td>
                     <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                      {isMobile ? (
-                        <EditButton
-                          onClick={() => handleEdit(emp)}
-                          size="small"
-                        />
-                      ) : (
-                        <Button
-                          variant="icon-edit"
-                          onClick={() => handleEdit(emp)}
-                          title="編集"
-                        />
-                      )}
+                      <Button
+                        variant="primary"
+                        size="small"
+                        onClick={() => handleEdit(emp)}
+                        title="勤怠情報を閲覧"
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.05rem',
+                          minWidth: '100px',
+                          fontSize: fontSizes.button
+                        }}
+                      >
+                        <ViewIcon size={16} color="#2563eb" />
+                        閲覧
+                      </Button>
                     </td>
                   </tr>
                 ))}
@@ -989,9 +927,26 @@ export const EmployeeList: React.FC = () => {
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 style={{ marginBottom: '1.05rem', fontSize: isMobile ? '1.125rem' : '0.875rem' }}>
-              {editingEmployee ? '従業員編集' : '新規登録'}
-            </h3>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.05rem' }}>
+              <h3 style={{ margin: 0, fontSize: isMobile ? '1.125rem' : '0.875rem' }}>
+                勤怠情報詳細
+              </h3>
+              {editingEmployee && (
+                <Button
+                  variant="primary"
+                  size="medium"
+                  onClick={() => {
+                    handleCancel();
+                    navigate(`/admin/employee-attendance?employeeId=${editingEmployee.id}`);
+                  }}
+                  style={{
+                    minWidth: '150px'
+                  }}
+                >
+                  出勤簿を閲覧
+                </Button>
+              )}
+            </div>
             <form onSubmit={(e) => { e.preventDefault(); handleSave(); }}>
               <div style={{ marginBottom: '1rem' }}>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
@@ -1017,97 +972,20 @@ export const EmployeeList: React.FC = () => {
               </div>
 
               <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
-                  氏名 *
+                <label style={{ fontWeight: 'bold' }}>
+                  氏名 {!editingEmployee && '*'}
                 </label>
-                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '0.75rem' }}>
-                  <div>
-                    <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: fontSizes.medium, color: '#6b7280' }}>
-                      姓
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.firstName}
-                      onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                      maxLength={50}
-                      style={{
-                        width: '100%',
-                        padding: '0.75rem',
-                        border: '1px solid #d1d5db',
-                        borderRadius: '4px',
-                        fontSize: fontSizes.input,
-                        boxSizing: 'border-box'
-                      }}
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: fontSizes.medium, color: '#6b7280' }}>
-                      名
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.lastName}
-                      onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                      maxLength={50}
-                      style={{
-                        width: '100%',
-                        padding: '0.75rem',
-                        border: '1px solid #d1d5db',
-                        borderRadius: '4px',
-                        fontSize: fontSizes.input,
-                        boxSizing: 'border-box'
-                      }}
-                      required
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
-                  雇用形態 *
-                </label>
-                <div style={{ display: 'flex', gap: '1rem' }}>
-                  {employmentTypes.map((type) => (
-                    <label key={type.code} style={{ 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      cursor: 'pointer',
-                      padding: '0.75rem',
-                      borderRadius: '4px',
-                      backgroundColor: formData.employmentType === type.code ? '#dbeafe' : 'transparent',
-                      border: `2px solid ${formData.employmentType === type.code ? '#2563eb' : '#d1d5db'}`,
-                      flex: 1
-                    }}>
-                      <input
-                        type="radio"
-                        checked={formData.employmentType === type.code}
-                        onChange={() => setFormData({ ...formData, employmentType: type.code as 'FULL_TIME' | 'PART_TIME' })}
-                        style={{ marginRight: '0.5rem' }}
-                      />
-                      {type.label}
-                    </label>
-                  ))}
-                </div>
-              </div>
-
-              <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
-                  給与 *
-                </label>
-                {formData.employmentType === 'FULL_TIME' ? (
-                  <>
-                    <div style={{ marginBottom: '0.75rem' }}>
+                {isEditingMode || !editingEmployee ? (
+                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '0.75rem', marginTop: '0.5rem' }}>
+                    <div>
                       <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: fontSizes.medium, color: '#6b7280' }}>
-                        基本給（月給）
+                        姓
                       </label>
                       <input
-                        type="number"
-                        value={formData.baseSalary || ''}
-                        onChange={(e) => setFormData({ ...formData, baseSalary: Number(e.target.value) })}
-                        min="0"
-                        step="1000"
+                        type="text"
+                        value={formData.firstName}
+                        onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
+                        maxLength={50}
                         style={{
                           width: '100%',
                           padding: '0.75rem',
@@ -1119,358 +997,639 @@ export const EmployeeList: React.FC = () => {
                         required
                       />
                     </div>
-                    <div style={{
-                      padding: '0.75rem',
-                      backgroundColor: '#f9fafb',
-                      borderRadius: '4px',
-                      border: '1px solid #e5e7eb'
-                    }}>
-                      <div style={{ marginBottom: '0.5rem' }}>
-                        <span style={{ fontSize: fontSizes.medium, color: '#6b7280' }}>日給: </span>
-                        <span style={{ fontWeight: 'bold' }}>
-                          {formatCurrency(Math.round(formData.baseSalary / 20.5))}円
-                        </span>
-                        <span style={{ fontSize: fontSizes.medium, color: '#6b7280', marginLeft: '0.5rem' }}>
-                          （基本給 ÷ 20.5）
-                        </span>
-                      </div>
-                      <div>
-                        <span style={{ fontSize: fontSizes.medium, color: '#6b7280' }}>時給: </span>
-                        <span style={{ fontWeight: 'bold' }}>
-                          {formatCurrency(Math.round((formData.baseSalary / 20.5) / 7.5))}円
-                        </span>
-                        <span style={{ fontSize: fontSizes.medium, color: '#6b7280', marginLeft: '0.5rem' }}>
-                          （日給 ÷ 7.5）
-                        </span>
-                      </div>
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: fontSizes.medium, color: '#6b7280' }}>
+                        名
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.lastName}
+                        onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
+                        maxLength={50}
+                        style={{
+                          width: '100%',
+                          padding: '0.75rem',
+                          border: '1px solid #d1d5db',
+                          borderRadius: '4px',
+                          fontSize: fontSizes.input,
+                          boxSizing: 'border-box'
+                        }}
+                        required
+                      />
                     </div>
-                  </>
+                  </div>
                 ) : (
-                  <div>
-                    <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: fontSizes.medium, color: '#6b7280' }}>
-                      時給
-                    </label>
-                    <input
-                      type="number"
-                      value={formData.baseSalary || ''}
-                      onChange={(e) => setFormData({ ...formData, baseSalary: Number(e.target.value) })}
-                      min="0"
-                      step="10"
-                      style={{
-                        width: '100%',
-                        padding: '0.75rem',
-                        border: '1px solid #d1d5db',
-                        borderRadius: '4px',
-                        fontSize: fontSizes.input,
-                        boxSizing: 'border-box'
-                      }}
-                      required
-                    />
+                  <div style={{
+                    padding: '0.75rem',
+                    backgroundColor: '#f9fafb',
+                    borderRadius: '4px',
+                    border: '1px solid #e5e7eb',
+                    fontSize: fontSizes.input,
+                    marginTop: '0.5rem'
+                  }}>
+                    {formData.firstName} {formData.lastName}
                   </div>
                 )}
               </div>
 
               <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
-                  基本休憩時間
+                <label style={{ fontWeight: 'bold' }}>
+                  雇用形態 {!editingEmployee && '*'}
                 </label>
-                <select
-                  value={formData.defaultBreakTime}
-                  onChange={(e) => setFormData({ ...formData, defaultBreakTime: Number(e.target.value) })}
-                  style={{
-                    width: '100%',
+                {isEditingMode || !editingEmployee ? (
+                  <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem' }}>
+                    {employmentTypes.map((type) => (
+                      <label key={type.code} style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        cursor: 'pointer',
+                        padding: '0.75rem',
+                        borderRadius: '4px',
+                        backgroundColor: formData.employmentType === type.code ? '#dbeafe' : 'transparent',
+                        border: `2px solid ${formData.employmentType === type.code ? '#2563eb' : '#d1d5db'}`,
+                        flex: 1
+                      }}>
+                        <input
+                          type="radio"
+                          checked={formData.employmentType === type.code}
+                          onChange={() => setFormData({ ...formData, employmentType: type.code as 'FULL_TIME' | 'PART_TIME' })}
+                          style={{ marginRight: '0.5rem' }}
+                        />
+                        {type.label}
+                      </label>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{
                     padding: '0.75rem',
-                    border: '1px solid #d1d5db',
+                    backgroundColor: '#f9fafb',
                     borderRadius: '4px',
+                    border: '1px solid #e5e7eb',
                     fontSize: fontSizes.input,
-                    boxSizing: 'border-box'
-                  }}
-                >
-                  <option value={0}>なし</option>
-                  <option value={30}>30分</option>
-                  <option value={60}>60分</option>
-                  <option value={90}>90分</option>
-                </select>
+                    marginTop: '0.5rem'
+                  }}>
+                    {getEmploymentTypeLabel(formData.employmentType)}
+                  </div>
+                )}
               </div>
 
-              <div style={{ marginBottom: '1.5rem' }}>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
-                  有給情報
-                </label>
-                <div style={{
-                  padding: '1rem',
-                  backgroundColor: 'white',
-                  borderRadius: '4px',
-                  border: '1px solid #d1d5db'
-                }}>
-                  {formData.paidLeaves.length === 0 ? (
-                    <p style={{ color: '#6b7280', fontSize: fontSizes.medium, margin: 0 }}>
-                      有給情報が登録されていません
-                    </p>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                      {formData.paidLeaves.map((paidLeave, index) => (
-                        <div key={index} style={{
-                          display: 'grid',
-                          gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr auto',
-                          gap: '0.75rem',
-                          alignItems: 'end',
+              <div style={{ marginBottom: '1rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                  <label style={{ fontWeight: 'bold' }}>
+                    給与 {!editingEmployee && '*'}
+                  </label>
+                </div>
+                {isEditingMode || !editingEmployee ? (
+                  <>
+                    {formData.employmentType === 'FULL_TIME' ? (
+                      <>
+                        <div style={{ marginBottom: '0.75rem' }}>
+                          <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: fontSizes.medium, color: '#6b7280' }}>
+                            基本給（月給）
+                          </label>
+                          <input
+                            type="number"
+                            value={formData.baseSalary || ''}
+                            onChange={(e) => setFormData({ ...formData, baseSalary: Number(e.target.value) })}
+                            min="0"
+                            step="1000"
+                            style={{
+                              width: '100%',
+                              padding: '0.75rem',
+                              border: '1px solid #d1d5db',
+                              borderRadius: '4px',
+                              fontSize: fontSizes.input,
+                              boxSizing: 'border-box'
+                            }}
+                            required
+                          />
+                        </div>
+                        <div style={{
                           padding: '0.75rem',
                           backgroundColor: '#f9fafb',
                           borderRadius: '4px',
                           border: '1px solid #e5e7eb'
                         }}>
+                          <div style={{ marginBottom: '0.5rem' }}>
+                            <span style={{ fontSize: fontSizes.medium, color: '#6b7280' }}>日給: </span>
+                            <span style={{ fontWeight: 'bold' }}>
+                              {formatCurrency(Math.round(formData.baseSalary / 20.5))}円
+                            </span>
+                            <span style={{ fontSize: fontSizes.medium, color: '#6b7280', marginLeft: '0.5rem' }}>
+                              （基本給 ÷ 20.5）
+                            </span>
+                          </div>
                           <div>
-                            <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: fontSizes.medium, color: '#6b7280' }}>
-                              有給付与日
-                            </label>
-                            <input
-                              type="date"
-                              value={paidLeave.grantDate}
-                              onChange={(e) => {
-                                const newPaidLeaves = [...formData.paidLeaves];
-                                newPaidLeaves[index] = { ...paidLeave, grantDate: e.target.value };
+                            <span style={{ fontSize: fontSizes.medium, color: '#6b7280' }}>時給: </span>
+                            <span style={{ fontWeight: 'bold' }}>
+                              {formatCurrency(Math.round((formData.baseSalary / 20.5) / 7.5))}円
+                            </span>
+                            <span style={{ fontSize: fontSizes.medium, color: '#6b7280', marginLeft: '0.5rem' }}>
+                              （日給 ÷ 7.5）
+                            </span>
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: fontSizes.medium, color: '#6b7280' }}>
+                          時給
+                        </label>
+                        <input
+                          type="number"
+                          value={formData.baseSalary || ''}
+                          onChange={(e) => setFormData({ ...formData, baseSalary: Number(e.target.value) })}
+                          min="0"
+                          step="10"
+                          style={{
+                            width: '100%',
+                            padding: '0.75rem',
+                            border: '1px solid #d1d5db',
+                            borderRadius: '4px',
+                            fontSize: fontSizes.input,
+                            boxSizing: 'border-box'
+                          }}
+                          required
+                        />
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div style={{
+                    padding: '0.75rem',
+                    backgroundColor: '#f9fafb',
+                    borderRadius: '4px',
+                    border: '1px solid #e5e7eb',
+                    fontSize: fontSizes.input,
+                    fontWeight: 'bold'
+                  }}>
+                    {formatCurrency(formData.baseSalary || 0)}{formData.employmentType === 'FULL_TIME' ? '/月' : '/時'}
+                  </div>
+                )}
+              </div>
+
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ fontWeight: 'bold' }}>
+                  基本休憩時間
+                </label>
+                {isEditingMode || !editingEmployee ? (
+                  <select
+                    value={formData.defaultBreakTime}
+                    onChange={(e) => setFormData({ ...formData, defaultBreakTime: Number(e.target.value) })}
+                    style={{
+                      width: '100%',
+                      padding: '0.75rem',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '4px',
+                      fontSize: fontSizes.input,
+                      boxSizing: 'border-box',
+                      marginTop: '0.5rem'
+                    }}
+                  >
+                    <option value={0}>なし</option>
+                    <option value={30}>30分</option>
+                    <option value={60}>60分</option>
+                    <option value={90}>90分</option>
+                  </select>
+                ) : (
+                  <div style={{
+                    padding: '0.75rem',
+                    backgroundColor: '#f9fafb',
+                    borderRadius: '4px',
+                    border: '1px solid #e5e7eb',
+                    fontSize: fontSizes.input,
+                    marginTop: '0.5rem'
+                  }}>
+                    {formData.defaultBreakTime === 0 ? 'なし' : `${formData.defaultBreakTime}分`}
+                  </div>
+                )}
+              </div>
+
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label style={{ fontWeight: 'bold' }}>
+                  有給情報
+                </label>
+                {isEditingMode || !editingEmployee ? (
+                  <div style={{
+                    padding: '1rem',
+                    backgroundColor: 'white',
+                    borderRadius: '4px',
+                    border: '1px solid #d1d5db',
+                    marginTop: '0.5rem'
+                  }}>
+                    {formData.paidLeaves.length === 0 ? (
+                      <p style={{ color: '#6b7280', fontSize: fontSizes.medium, margin: 0 }}>
+                        有給情報が登録されていません
+                      </p>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                        {formData.paidLeaves.map((paidLeave, index) => (
+                          <div key={index} style={{
+                            display: 'grid',
+                            gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr auto',
+                            gap: '0.75rem',
+                            alignItems: 'end',
+                            padding: '0.75rem',
+                            backgroundColor: '#f9fafb',
+                            borderRadius: '4px',
+                            border: '1px solid #e5e7eb'
+                          }}>
+                            <div>
+                              <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: fontSizes.medium, color: '#6b7280' }}>
+                                有給付与日
+                              </label>
+                              <input
+                                type="date"
+                                value={paidLeave.grantDate}
+                                onChange={(e) => {
+                                  const newPaidLeaves = [...formData.paidLeaves];
+                                  newPaidLeaves[index] = { ...paidLeave, grantDate: e.target.value };
+                                  setFormData({ ...formData, paidLeaves: newPaidLeaves });
+                                }}
+                                style={{
+                                  width: '100%',
+                                  padding: '0.75rem',
+                                  border: '1px solid #d1d5db',
+                                  borderRadius: '4px',
+                                  fontSize: fontSizes.input,
+                                  boxSizing: 'border-box'
+                                }}
+                                required
+                              />
+                            </div>
+                            <div>
+                              <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: fontSizes.medium, color: '#6b7280' }}>
+                                日数
+                              </label>
+                              <input
+                                type="number"
+                                value={paidLeave.days}
+                                onChange={(e) => {
+                                  const newPaidLeaves = [...formData.paidLeaves];
+                                  newPaidLeaves[index] = { ...paidLeave, days: Number(e.target.value) };
+                                  setFormData({ ...formData, paidLeaves: newPaidLeaves });
+                                }}
+                                min="0"
+                                step="0.5"
+                                style={{
+                                  width: '100%',
+                                  padding: '0.75rem',
+                                  border: '1px solid #d1d5db',
+                                  borderRadius: '4px',
+                                  fontSize: fontSizes.input,
+                                  boxSizing: 'border-box'
+                                }}
+                                required
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newPaidLeaves = formData.paidLeaves.filter((_, i) => i !== index);
                                 setFormData({ ...formData, paidLeaves: newPaidLeaves });
                               }}
                               style={{
-                                width: '100%',
-                                padding: '0.75rem',
-                                border: '1px solid #d1d5db',
+                                padding: '0.75rem 1rem',
+                                backgroundColor: '#ef4444',
+                                color: 'white',
+                                border: 'none',
                                 borderRadius: '4px',
-                                fontSize: fontSizes.input,
-                                boxSizing: 'border-box'
+                                fontSize: fontSizes.button,
+                                cursor: 'pointer',
+                                whiteSpace: 'nowrap',
+                                boxShadow: 'none',
+                                minHeight: 'auto',
+                                minWidth: 'auto'
                               }}
-                              required
-                            />
+                            >
+                              削除
+                            </button>
                           </div>
-                          <div>
-                            <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: fontSizes.medium, color: '#6b7280' }}>
-                              日数
-                            </label>
-                            <input
-                              type="number"
-                              value={paidLeave.days}
-                              onChange={(e) => {
-                                const newPaidLeaves = [...formData.paidLeaves];
-                                newPaidLeaves[index] = { ...paidLeave, days: Number(e.target.value) };
-                                setFormData({ ...formData, paidLeaves: newPaidLeaves });
-                              }}
-                              min="0"
-                              step="0.5"
-                              style={{
-                                width: '100%',
-                                padding: '0.75rem',
-                                border: '1px solid #d1d5db',
-                                borderRadius: '4px',
-                                fontSize: fontSizes.input,
-                                boxSizing: 'border-box'
-                              }}
-                              required
-                            />
-                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFormData({
+                          ...formData,
+                          paidLeaves: [...formData.paidLeaves, { grantDate: '', days: 0 }]
+                        });
+                      }}
+                      style={{
+                        marginTop: '0.75rem',
+                        padding: '0.5rem 1rem',
+                        backgroundColor: '#10b981',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        fontSize: fontSizes.button,
+                        cursor: 'pointer',
+                        width: '100%',
+                        boxShadow: 'none',
+                        minHeight: 'auto',
+                        minWidth: 'auto'
+                      }}
+                    >
+                      + 有給情報を追加
+                    </button>
+                    <div style={{ marginTop: '0.5rem', fontSize: fontSizes.medium, color: '#6b7280' }}>
+                      合計: {formData.paidLeaves.reduce((sum, pl) => sum + pl.days, 0)}日
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{
+                    padding: '0.75rem',
+                    backgroundColor: '#f9fafb',
+                    borderRadius: '4px',
+                    border: '1px solid #e5e7eb',
+                    fontSize: fontSizes.input,
+                    fontWeight: 'bold',
+                    marginTop: '0.5rem'
+                  }}>
+                    {formData.paidLeaves.reduce((sum, pl) => sum + pl.days, 0)}日
+                  </div>
+                )}
+              </div>
+
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ fontWeight: 'bold' }}>
+                  管理者フラグ
+                </label>
+                {isEditingMode || !editingEmployee ? (
+                  <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', gap: '0.5rem', marginTop: '0.5rem' }}>
+                    <input
+                      type="checkbox"
+                      checked={formData.isAdmin}
+                      onChange={(e) => setFormData({ ...formData, isAdmin: e.target.checked })}
+                      style={{ width: '20px', height: '20px', cursor: 'pointer' }}
+                    />
+                    <span style={{ fontWeight: 'bold' }}>管理者フラグ</span>
+                  </label>
+                ) : (
+                  <div style={{
+                    padding: '0.75rem',
+                    backgroundColor: '#f9fafb',
+                    borderRadius: '4px',
+                    border: '1px solid #e5e7eb',
+                    fontSize: fontSizes.input,
+                    marginTop: '0.5rem'
+                  }}>
+                    {formData.isAdmin ? 'あり' : 'なし'}
+                  </div>
+                )}
+              </div>
+
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ fontWeight: 'bold' }}>
+                  メールアドレス {!editingEmployee && '*'}
+                </label>
+                {isEditingMode || !editingEmployee ? (
+                  <input
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    style={{
+                      width: '100%',
+                      padding: '0.75rem',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '4px',
+                      fontSize: fontSizes.input,
+                      boxSizing: 'border-box',
+                      marginTop: '0.5rem'
+                    }}
+                    required
+                  />
+                ) : (
+                  <div style={{
+                    padding: '0.75rem',
+                    backgroundColor: '#f9fafb',
+                    borderRadius: '4px',
+                    border: '1px solid #e5e7eb',
+                    fontSize: fontSizes.input,
+                    marginTop: '0.5rem'
+                  }}>
+                    {formData.email}
+                  </div>
+                )}
+              </div>
+
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ fontWeight: 'bold' }}>
+                  入社日 {!editingEmployee && '*'}
+                </label>
+                {isEditingMode || !editingEmployee ? (
+                  <input
+                    type="date"
+                    value={formData.joinDate}
+                    onChange={(e) => setFormData({ ...formData, joinDate: e.target.value })}
+                    style={{
+                      width: '100%',
+                      padding: '0.75rem',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '4px',
+                      fontSize: fontSizes.input,
+                      boxSizing: 'border-box',
+                      marginTop: '0.5rem'
+                    }}
+                    required
+                  />
+                ) : (
+                  <div style={{
+                    padding: '0.75rem',
+                    backgroundColor: '#f9fafb',
+                    borderRadius: '4px',
+                    border: '1px solid #e5e7eb',
+                    fontSize: fontSizes.input,
+                    marginTop: '0.5rem'
+                  }}>
+                    {formatDate(formData.joinDate)}
+                  </div>
+                )}
+              </div>
+
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ fontWeight: 'bold' }}>
+                  退社日
+                </label>
+                {isEditingMode || !editingEmployee ? (
+                  <input
+                    type="date"
+                    value={formData.leaveDate || ''}
+                    onChange={(e) => setFormData({ ...formData, leaveDate: e.target.value || null })}
+                    min={formData.joinDate}
+                    style={{
+                      width: '100%',
+                      padding: '0.75rem',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '4px',
+                      fontSize: fontSizes.input,
+                      boxSizing: 'border-box',
+                      marginTop: '0.5rem'
+                    }}
+                  />
+                ) : (
+                  <div style={{
+                    padding: '0.75rem',
+                    backgroundColor: '#f9fafb',
+                    borderRadius: '4px',
+                    border: '1px solid #e5e7eb',
+                    fontSize: fontSizes.input,
+                    marginTop: '0.5rem'
+                  }}>
+                    {formData.leaveDate ? formatDate(formData.leaveDate) : '-'}
+                  </div>
+                )}
+              </div>
+
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ fontWeight: 'bold' }}>
+                  手当（複数選択可能）
+                </label>
+                {isEditingMode || !editingEmployee ? (
+                  <div style={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: '0.75rem',
+                    padding: '1rem',
+                    backgroundColor: 'white',
+                    borderRadius: '4px',
+                    border: '1px solid #d1d5db',
+                    minHeight: '80px',
+                    marginTop: '0.5rem'
+                  }}>
+                    {allowances.length === 0 ? (
+                      <p style={{ color: '#6b7280', fontSize: fontSizes.medium }}>
+                        手当マスタで手当を登録してください
+                      </p>
+                    ) : (
+                      allowances.map((allowance) => {
+                        const isSelected = formData.allowances.includes(allowance.id);
+                        return (
                           <button
+                            key={allowance.id}
                             type="button"
-                            onClick={() => {
-                              const newPaidLeaves = formData.paidLeaves.filter((_, i) => i !== index);
-                              setFormData({ ...formData, paidLeaves: newPaidLeaves });
-                            }}
+                            onClick={() => handleAllowanceToggle(allowance.id)}
                             style={{
-                              padding: '0.75rem 1rem',
-                              backgroundColor: '#ef4444',
-                              color: 'white',
-                              border: 'none',
-                              borderRadius: '4px',
-                              fontSize: fontSizes.button,
+                              padding: '0.25rem 0.75rem',
+                              borderRadius: '16px',
+                              background: isSelected ? allowance.color + '20' : 'white',
+                              backgroundColor: isSelected ? allowance.color + '20' : 'white',
+                              color: isSelected ? allowance.color : '#6b7280',
+                              border: isSelected ? `1px solid ${allowance.color}40` : '1px solid #d1d5db',
+                              fontSize: fontSizes.input,
+                              fontWeight: isSelected ? 'bold' : 'normal',
                               cursor: 'pointer',
-                              whiteSpace: 'nowrap',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.5rem',
                               boxShadow: 'none',
                               minHeight: 'auto',
                               minWidth: 'auto'
                             }}
                           >
-                            削除
+                            <div style={{
+                              width: '12px',
+                              height: '12px',
+                              borderRadius: '50%',
+                              backgroundColor: allowance.color
+                            }} />
+                            {allowance.name}
                           </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setFormData({
-                        ...formData,
-                        paidLeaves: [...formData.paidLeaves, { grantDate: '', days: 0 }]
-                      });
-                    }}
-                    style={{
-                      marginTop: '0.75rem',
-                      padding: '0.5rem 1rem',
-                      backgroundColor: '#10b981',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '4px',
-                      fontSize: fontSizes.button,
-                      cursor: 'pointer',
-                      width: '100%',
-                      boxShadow: 'none',
-                      minHeight: 'auto',
-                      minWidth: 'auto'
-                    }}
-                  >
-                    + 有給情報を追加
-                  </button>
-                  <div style={{ marginTop: '0.5rem', fontSize: fontSizes.medium, color: '#6b7280' }}>
-                    合計: {formData.paidLeaves.reduce((sum, pl) => sum + pl.days, 0)}日
+                        );
+                      })
+                    )}
                   </div>
-                </div>
-              </div>
-
-              <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', gap: '0.5rem' }}>
-                  <input
-                    type="checkbox"
-                    checked={formData.isAdmin}
-                    onChange={(e) => setFormData({ ...formData, isAdmin: e.target.checked })}
-                    style={{ width: '20px', height: '20px', cursor: 'pointer' }}
-                  />
-                  <span style={{ fontWeight: 'bold' }}>管理者フラグ</span>
-                </label>
-              </div>
-
-              <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
-                  メールアドレス *
-                </label>
-                <input
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  style={{
-                    width: '100%',
-                    padding: '0.75rem',
-                    border: '1px solid #d1d5db',
-                    borderRadius: '4px',
-                    fontSize: fontSizes.input,
-                    boxSizing: 'border-box'
-                  }}
-                  required
-                />
-              </div>
-
-              <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
-                  入社日 *
-                </label>
-                <input
-                  type="date"
-                  value={formData.joinDate}
-                  onChange={(e) => setFormData({ ...formData, joinDate: e.target.value })}
-                  style={{
-                    width: '100%',
-                    padding: '0.75rem',
-                    border: '1px solid #d1d5db',
-                    borderRadius: '4px',
-                    fontSize: fontSizes.input,
-                    boxSizing: 'border-box'
-                  }}
-                  required
-                />
-              </div>
-
-              <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
-                  退社日
-                </label>
-                <input
-                  type="date"
-                  value={formData.leaveDate || ''}
-                  onChange={(e) => setFormData({ ...formData, leaveDate: e.target.value || null })}
-                  min={formData.joinDate}
-                  style={{
-                    width: '100%',
-                    padding: '0.75rem',
-                    border: '1px solid #d1d5db',
-                    borderRadius: '4px',
-                    fontSize: fontSizes.input,
-                    boxSizing: 'border-box'
-                  }}
-                />
-              </div>
-
-              <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
-                  手当（複数選択可能）
-                </label>
-                <div style={{
-                  display: 'flex',
-                  flexWrap: 'wrap',
-                  gap: '0.75rem',
-                  padding: '1rem',
-                  backgroundColor: 'white',
-                  borderRadius: '4px',
-                  border: '1px solid #d1d5db',
-                  minHeight: '80px'
-                }}>
-                  {allowances.length === 0 ? (
-                    <p style={{ color: '#6b7280', fontSize: fontSizes.medium }}>
-                      手当マスタで手当を登録してください
-                    </p>
-                  ) : (
-                    allowances.map((allowance) => {
-                      const isSelected = formData.allowances.includes(allowance.id);
-                      return (
-                        <button
-                          key={allowance.id}
-                          type="button"
-                          onClick={() => handleAllowanceToggle(allowance.id)}
-                          style={{
-                            padding: '0.25rem 0.75rem',
-                            borderRadius: '16px',
-                            background: isSelected ? allowance.color + '20' : 'white',
-                            backgroundColor: isSelected ? allowance.color + '20' : 'white',
-                            color: isSelected ? allowance.color : '#6b7280',
-                            border: isSelected ? `1px solid ${allowance.color}40` : '1px solid #d1d5db',
-                            fontSize: fontSizes.input,
-                            fontWeight: isSelected ? 'bold' : 'normal',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '0.5rem',
-                            boxShadow: 'none',
-                            minHeight: 'auto',
-                            minWidth: 'auto'
-                          }}
-                        >
-                          <div style={{
-                            width: '12px',
-                            height: '12px',
-                            borderRadius: '50%',
-                            backgroundColor: allowance.color
-                          }} />
-                          {allowance.name}
-                        </button>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', gap: '1rem', flexDirection: isMobile ? 'column-reverse' : 'row', justifyContent: 'flex-end' }}>
-                <CancelButton
-                  fullWidth
-                  type="button"
-                  onClick={handleCancel}
-                />
-                {editingEmployee ? (
-                  <UpdateButton
-                    fullWidth
-                    type="submit"
-                  />
                 ) : (
-                  <RegisterButton
-                    fullWidth
-                    type="submit"
-                  />
+                  <div style={{
+                    padding: '0.75rem',
+                    backgroundColor: '#f9fafb',
+                    borderRadius: '4px',
+                    border: '1px solid #e5e7eb',
+                    minHeight: '60px',
+                    marginTop: '0.5rem'
+                  }}>
+                    {formData.allowances.length > 0 ? (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                        {formData.allowances.map((allowanceId) => {
+                          const allowance = getAllowanceById(allowanceId);
+                          if (!allowance) return null;
+                          return (
+                            <span
+                              key={allowanceId}
+                              style={{
+                                padding: '0.25rem 0.75rem',
+                                borderRadius: '16px',
+                                backgroundColor: allowance.color + '20',
+                                color: allowance.color,
+                                fontSize: fontSizes.input,
+                                fontWeight: 'bold',
+                                border: `1px solid ${allowance.color}40`
+                              }}
+                            >
+                              {allowance.name}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <span style={{ color: '#9ca3af', fontSize: fontSizes.medium }}>-</span>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', gap: '1rem', flexDirection: isMobile ? 'column-reverse' : 'row', justifyContent: isMobile ? 'stretch' : 'flex-end', flexWrap: 'wrap' }}>
+                {isMobile ? (
+                  <>
+                    {editingEmployee && !isEditingMode && (
+                      <EditButton
+                        onClick={handleStartEdit}
+                        fullWidth
+                      />
+                    )}
+                    {isEditingMode && editingEmployee ? (
+                      <UpdateButton
+                        fullWidth
+                        type="submit"
+                      />
+                    ) : !editingEmployee ? (
+                      <RegisterButton
+                        fullWidth
+                        type="submit"
+                      />
+                    ) : null}
+                    <CancelButton
+                      fullWidth
+                      type="button"
+                      onClick={handleCancel}
+                    />
+                  </>
+                ) : (
+                  <>
+                    <CancelButton
+                      fullWidth={false}
+                      type="button"
+                      onClick={handleCancel}
+                    />
+                    {editingEmployee && !isEditingMode && (
+                      <EditButton
+                        onClick={handleStartEdit}
+                        fullWidth={false}
+                      />
+                    )}
+                    {isEditingMode && editingEmployee ? (
+                      <UpdateButton
+                        fullWidth={false}
+                        type="submit"
+                      />
+                    ) : !editingEmployee ? (
+                      <RegisterButton
+                        fullWidth={false}
+                        type="submit"
+                      />
+                    ) : null}
+                  </>
                 )}
               </div>
             </form>

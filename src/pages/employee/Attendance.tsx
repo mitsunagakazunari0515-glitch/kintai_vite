@@ -11,6 +11,7 @@
  */
 
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { Button, CancelButton, RegisterButton, DeleteButton, EditButton } from '../../components/Button';
 import { Snackbar } from '../../components/Snackbar';
@@ -215,8 +216,15 @@ type ViewMode = 'stamp' | 'edit' | 'list';
  */
 export const Attendance: React.FC = () => {
   const { userId } = useAuth();
+  const [searchParams] = useSearchParams();
+  const employeeIdParam = searchParams.get('employeeId');
+  
   // 認可APIから取得したemployeeIdを使用（userIdはCognitoのユーザーIDで、APIが期待するemployeeIdとは異なる）
+  // URLパラメータにemployeeIdが指定されている場合はそれを使用（管理者側から閲覧する場合）
   const getEmployeeId = (): string | null => {
+    if (employeeIdParam) {
+      return employeeIdParam;
+    }
     const userInfo = getUserInfo();
     return userInfo.employeeId;
   };
@@ -1817,7 +1825,7 @@ export const Attendance: React.FC = () => {
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ fontSize: fontSizes.medium, color: '#6b7280' }}>欠勤日数:</span>
-                  <span style={{ fontSize: fontSizes.medium, fontWeight: 'bold' }}>{summary?.absenceDays ?? statistics.absenceDays}</span>
+                  <span style={{ fontSize: fontSizes.medium, fontWeight: 'bold' }}>{summary?.absenceDays ?? '-'}</span>
                 </div>
               </div>
             </div>

@@ -16,7 +16,7 @@ import html2canvas from 'html2canvas';
 import { Snackbar } from '../../components/Snackbar';
 import { ProgressBar } from '../../components/ProgressBar';
 import { PdfExportButton } from '../../components/Button';
-import { formatDate, formatJSTDateTime, parseJSTDateTime, extractTimeFromJST } from '../../utils/formatters';
+import { formatDate, parseJSTDateTime, extractTimeFromJST } from '../../utils/formatters';
 import { fontSizes } from '../../config/fontSizes';
 import { 
   getAttendanceMyRecords,
@@ -208,13 +208,6 @@ export const EmployeeAttendance: React.FC = () => {
         const year = String(selectedYear);
         const month = String(selectedMonth).padStart(2, '0');
         const response = await getAttendanceMyRecords(year, month, employeeId);
-        
-        // APIレスポンスをコンソールに出力（欠勤日数確認用）
-        console.log('📊 [EmployeeAttendance] API Response:', {
-          summary: response.summary,
-          absenceDays: response.summary?.absenceDays,
-          fullResponse: response
-        });
         
         setSummary(response.summary);
         const convertedLogs = response.logs.map(apiLog => convertApiLogToUiLog(apiLog));

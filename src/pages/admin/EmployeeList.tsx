@@ -24,7 +24,6 @@ import { useSort } from '../../hooks/useSort';
 import { ChevronDownIcon, ChevronUpIcon } from '../../components/Icons';
 import { createEmployee, updateEmployee, getEmployees, CreateEmployeeRequest } from '../../utils/employeeApi';
 import { getAllowances } from '../../utils/allowanceApi';
-import { getAttendanceList } from '../../utils/attendanceApi';
 import { error as logError } from '../../utils/logger';
 import { translateApiError } from '../../utils/apiErrorTranslator';
 

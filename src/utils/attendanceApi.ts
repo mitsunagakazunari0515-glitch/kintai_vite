@@ -224,16 +224,38 @@ export const getAttendanceDetail = async (attendanceId: string): Promise<Attenda
 };
 
 /**
+ * 打刻時・休憩時の位置情報（オプション）
+ */
+export interface StampLocation {
+  /** 緯度 */
+  latitude: number;
+  /** 経度 */
+  longitude: number;
+  /** 精度（メートル） */
+  accuracy: number;
+}
+
+/**
  * 出勤打刻
  * 注意: リクエストボディは不要です（日付と時刻はサーバー側で自動的に取得されます）
  * 出勤日はサーバー側（API）で現在の日付を自動的に使用します
  * 出勤時刻はサーバー側（API）で現在時刻を自動的に使用します
+ * @param location 位置情報（オプション）。取得した座標と精度を送信
  * @returns 勤怠記録
  */
-export const clockIn = async (): Promise<AttendanceLog> => {
+export const clockIn = async (location?: StampLocation): Promise<AttendanceLog> => {
   try {
+    const body = location
+      ? JSON.stringify({
+          latitude: location.latitude,
+          longitude: location.longitude,
+          accuracy: location.accuracy
+        })
+      : undefined;
+
     const response = await apiRequest('/api/v1/attendance/clock-in', {
       method: 'POST',
+      body,
     });
 
     if (!response.ok) {
@@ -258,12 +280,22 @@ export const clockIn = async (): Promise<AttendanceLog> => {
  * 注意: リクエストボディは不要です（日付と時刻はサーバー側で自動的に取得されます）
  * 退勤日はサーバー側（API）で現在の日付を自動的に使用します
  * 退勤時刻はサーバー側（API）で現在時刻を自動的に使用します
+ * @param location 位置情報（オプション）。取得した座標と精度を送信
  * @returns 勤怠記録
  */
-export const clockOut = async (): Promise<AttendanceLog> => {
+export const clockOut = async (location?: StampLocation): Promise<AttendanceLog> => {
   try {
+    const body = location
+      ? JSON.stringify({
+          latitude: location.latitude,
+          longitude: location.longitude,
+          accuracy: location.accuracy
+        })
+      : undefined;
+
     const response = await apiRequest('/api/v1/attendance/clock-out', {
       method: 'POST',
+      body,
     });
 
     if (!response.ok) {

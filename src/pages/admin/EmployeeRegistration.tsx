@@ -20,6 +20,7 @@ import { getEmploymentTypes } from '../../config/masterData';
 import { formatCurrency } from '../../utils/formatters';
 import { createEmployee, updateEmployee, getEmployee, CreateEmployeeRequest } from '../../utils/employeeApi';
 import { getAllowances } from '../../utils/allowanceApi';
+import { getWorkLocations } from '../../utils/workLocationApi';
 import { error as logError } from '../../utils/logger';
 import { translateApiError } from '../../utils/apiErrorTranslator';
 
@@ -63,6 +64,8 @@ interface Employee {
   defaultBreakTime: number;
   /** 管理者フラグ。 */
   isAdmin: boolean;
+  /** 勤務拠点ID。nullの場合は未設定。 */
+  workLocationId: string | null;
   /** 有給情報の配列。 */
   paidLeaves: Array<{
     grantDate: string;  // 有給付与日（YYYY-MM-DD）
@@ -86,6 +89,7 @@ export const EmployeeRegistration: React.FC = () => {
   // 手当マスタ（localStorageから読み込む、なければAPIから取得）
   const [allowances, setAllowances] = useState<Allowance[]>([]);
   const [isLoadingAllowances, setIsLoadingAllowances] = useState<boolean>(true);
+  const [workLocations, setWorkLocations] = useState<Array<{ id: string; name: string }>>([]);
 
   const [formData, setFormData] = useState<Employee>({
     id: '',
@@ -99,6 +103,7 @@ export const EmployeeRegistration: React.FC = () => {
     baseSalary: 0,
     defaultBreakTime: 60,
     isAdmin: false,
+    workLocationId: null,
     paidLeaves: []
   });
   const [snackbar, setSnackbar] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -148,6 +153,7 @@ export const EmployeeRegistration: React.FC = () => {
             isAdmin: employee.isAdmin,
             baseSalary: employee.baseSalary,
             defaultBreakTime: employee.defaultBreakTime,
+            workLocationId: employee.workLocationId ?? null,
             paidLeaves: employee.paidLeaves
           });
         } catch (error) {
@@ -212,6 +218,19 @@ export const EmployeeRegistration: React.FC = () => {
     loadAllowances();
   }, []);
 
+  // 勤務拠点一覧を取得
+  useEffect(() => {
+    const loadWorkLocations = async () => {
+      try {
+        const response = await getWorkLocations();
+        setWorkLocations(response.workLocations.map(w => ({ id: w.id, name: w.name })));
+      } catch (error) {
+        logError('Failed to load work locations:', error);
+      }
+    };
+    loadWorkLocations();
+  }, []);
+
   // 給与計算（正社員の場合）
   const calculateDailySalary = (baseSalary: number): number => {
     return Math.round(baseSalary / 20.5);
@@ -248,6 +267,7 @@ export const EmployeeRegistration: React.FC = () => {
         isAdmin: formData.isAdmin,
         baseSalary: formData.baseSalary,
         defaultBreakTime: formData.defaultBreakTime,
+        workLocationId: formData.workLocationId || null,
         paidLeaves: formData.paidLeaves
       };
 
@@ -565,6 +585,35 @@ export const EmployeeRegistration: React.FC = () => {
                 boxSizing: 'border-box'
               }}
             />
+          </div>
+
+          <div style={{ marginBottom: '1rem' }}>
+            <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
+              勤務拠点
+            </label>
+            <select
+              value={formData.workLocationId || ''}
+              onChange={(e) => setFormData({ ...formData, workLocationId: e.target.value || null })}
+              style={{
+                width: '100%',
+                padding: '0.75rem',
+                border: '1px solid #d1d5db',
+                borderRadius: '4px',
+                fontSize: fontSizes.input,
+                boxSizing: 'border-box',
+                backgroundColor: 'white'
+              }}
+            >
+              <option value="">未設定</option>
+              {workLocations.map((wl) => (
+                <option key={wl.id} value={wl.id}>
+                  {wl.name}
+                </option>
+              ))}
+            </select>
+            <div style={{ fontSize: fontSizes.small, color: '#6b7280', marginTop: '0.25rem' }}>
+              空の場合は打刻時の位置チェックなし
+            </div>
           </div>
 
           <div style={{ marginBottom: '1.5rem' }}>

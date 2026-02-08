@@ -186,6 +186,22 @@ export const translateApiError = (error: unknown): string => {
       // 勤怠API固有
       case 'CANNOT_START_BREAK_ALREADY_CLOCKED_OUT':
         return '退勤済みのため休憩を開始できません';
+      case 'ATTENDANCE_LOCATION_REQUIRED':
+        return '打刻には位置情報が必要です。位置情報を有効にしてください';
+      case 'ATTENDANCE_LOCATION_OUT_OF_RANGE':
+        return '勤務拠点の範囲外から打刻されています。オフィス周辺で再度お試しください';
+
+      // 勤務拠点API固有
+      case 'WORK_LOCATION_NAME_EXISTS':
+        return '同じ名前の勤務拠点が既に登録されています';
+      case 'WORK_LOCATION_IN_USE':
+        return 'この勤務拠点を割り当てている従業員がいるため削除できません';
+      case 'INVALID_LATITUDE':
+        return '緯度は -90〜90 の範囲で入力してください';
+      case 'INVALID_LONGITUDE':
+        return '経度は -180〜180 の範囲で入力してください';
+      case 'INVALID_ALLOWED_RADIUS':
+        return '許容半径は 0 以上の値を入力してください';
 
       // 休暇申請API固有
       case 'MISSING_REASON':

@@ -82,6 +82,10 @@ VITE_API_ENDPOINT=https://tv731cev0j.execute-api.ap-northeast-1.amazonaws.com/de
 # 本番環境
 VITE_AMPLIFY_ENV=production
 VITE_API_ENDPOINT_PRODUCTION=https://your-production-api-endpoint.execute-api.ap-northeast-1.amazonaws.com/prod
+
+# 勤務拠点マスタの住所検索（Google Maps Places API）
+# Google Cloud Console で Maps JavaScript API と Places API を有効にし、APIキーを取得してください
+VITE_GOOGLE_MAPS_API_KEY=your_google_maps_api_key
 ```
 
 **注意**: `.env`ファイルは`.gitignore`に含まれているため、手動で作成する必要があります。

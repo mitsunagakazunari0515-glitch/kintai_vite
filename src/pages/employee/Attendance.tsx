@@ -13,6 +13,7 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { useGeolocation } from '../../hooks/useGeolocation';
 import { Button, CancelButton, RegisterButton, DeleteButton, EditButton } from '../../components/Button';
 import { Snackbar } from '../../components/Snackbar';
 import { ProgressBar } from '../../components/ProgressBar';
@@ -35,6 +36,7 @@ import {
 import { error as logError } from '../../utils/logger';
 import { translateApiError } from '../../utils/apiErrorTranslator';
 import { getUserInfo } from '../../config/apiConfig';
+import { getEmployee } from '../../utils/employeeApi';
 
 /**
  * 休憩時間を表すインターフェース。
@@ -247,6 +249,24 @@ export const Attendance: React.FC = () => {
   const [showSummary, setShowSummary] = useState<boolean>(false);
   const [missingClockOutError, setMissingClockOutError] = useState<{ date: string; clockIn: string } | null>(null);
   const [snackbar, setSnackbar] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [workLocationId, setWorkLocationId] = useState<string | null | undefined>(undefined);
+
+  const { getLocation, isLoading: isGeolocationLoading } = useGeolocation();
+
+  // 従業員の勤務拠点を取得（workLocationIdが設定されている場合は位置情報必須）
+  useEffect(() => {
+    const employeeId = getEmployeeId();
+    if (!employeeId) return;
+    const fetchEmployee = async () => {
+      try {
+        const employee = await getEmployee(employeeId);
+        setWorkLocationId(employee.workLocationId ?? null);
+      } catch {
+        setWorkLocationId(null);
+      }
+    };
+    fetchEmployee();
+  }, []);
 
   // 有給残日数の設定（実際の実装ではバックエンドから取得）
   const totalPaidLeaveDays = 20; // 年間有給日数
@@ -602,8 +622,34 @@ export const Attendance: React.FC = () => {
         return;
       }
 
-      // API仕様書に基づき、リクエストボディは不要です（日付と時刻はサーバー側で自動的に取得されます）
-      await clockIn();
+      // 勤務拠点が設定されている従業員は位置情報必須
+      const locationRequired = !!workLocationId;
+      let stampLocation: { latitude: number; longitude: number; accuracy: number } | undefined;
+
+      if (locationRequired) {
+        const locationResult = await getLocation();
+        if (!locationResult.success) {
+          setSnackbar({ message: locationResult.error.message, type: 'error' });
+          setTimeout(() => setSnackbar(null), 5000);
+          return;
+        }
+        stampLocation = {
+          latitude: locationResult.position.latitude,
+          longitude: locationResult.position.longitude,
+          accuracy: locationResult.position.accuracy
+        };
+      } else {
+        const locationResult = await getLocation();
+        if (locationResult.success) {
+          stampLocation = {
+            latitude: locationResult.position.latitude,
+            longitude: locationResult.position.longitude,
+            accuracy: locationResult.position.accuracy
+          };
+        }
+      }
+
+      await clockIn(stampLocation);
 
       // 最新の勤怠データを取得して反映
       await refreshAttendanceData();
@@ -633,8 +679,34 @@ export const Attendance: React.FC = () => {
         return;
       }
 
-      // API仕様書に基づき、リクエストボディは不要です（日付と時刻はサーバー側で自動的に取得されます）
-      await clockOut();
+      // 勤務拠点が設定されている従業員は位置情報必須
+      const locationRequired = !!workLocationId;
+      let stampLocation: { latitude: number; longitude: number; accuracy: number } | undefined;
+
+      if (locationRequired) {
+        const locationResult = await getLocation();
+        if (!locationResult.success) {
+          setSnackbar({ message: locationResult.error.message, type: 'error' });
+          setTimeout(() => setSnackbar(null), 5000);
+          return;
+        }
+        stampLocation = {
+          latitude: locationResult.position.latitude,
+          longitude: locationResult.position.longitude,
+          accuracy: locationResult.position.accuracy
+        };
+      } else {
+        const locationResult = await getLocation();
+        if (locationResult.success) {
+          stampLocation = {
+            latitude: locationResult.position.latitude,
+            longitude: locationResult.position.longitude,
+            accuracy: locationResult.position.accuracy
+          };
+        }
+      }
+
+      await clockOut(stampLocation);
 
       // 最新の勤怠データを取得して反映
       await refreshAttendanceData();
@@ -1095,7 +1167,7 @@ export const Attendance: React.FC = () => {
           }}>
             <button
               onClick={handleClockIn}
-              disabled={currentStatus !== '未出勤'}
+              disabled={currentStatus !== '未出勤' || isGeolocationLoading}
               onMouseEnter={(e) => {
                 if (currentStatus === '未出勤') {
                   e.currentTarget.style.backgroundColor = '#059669';
@@ -1124,11 +1196,11 @@ export const Attendance: React.FC = () => {
                 transition: 'background-color 0.2s, transform 0.2s'
               }}
             >
-              出勤
+              {isGeolocationLoading && currentStatus === '未出勤' ? '位置取得中...' : '出勤'}
             </button>
             <button
               onClick={handleClockOut}
-              disabled={currentStatus !== '出勤中'}
+              disabled={currentStatus !== '出勤中' || isGeolocationLoading}
               onMouseEnter={(e) => {
                 if (currentStatus === '出勤中') {
                   e.currentTarget.style.backgroundColor = '#dc2626';
@@ -1157,7 +1229,7 @@ export const Attendance: React.FC = () => {
                 transition: 'background-color 0.2s, transform 0.2s'
               }}
             >
-              退勤
+              {isGeolocationLoading && currentStatus === '出勤中' ? '位置取得中...' : '退勤'}
             </button>
             <button
               onClick={async () => {

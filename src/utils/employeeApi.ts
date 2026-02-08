@@ -25,6 +25,7 @@ export interface EmployeeResponse {
   baseSalary: number;
   defaultBreakTime: number;
   prescribedWorkHours?: number;
+  workLocationId?: string | null;
   paidLeaves: Array<{
     grantDate: string;
     days: number;
@@ -49,6 +50,7 @@ export interface CreateEmployeeRequest {
   baseSalary: number;
   defaultBreakTime: number;
   prescribedWorkHours?: number;
+  workLocationId?: string | null;
   paidLeaves?: Array<{
     grantDate: string;
     days: number;

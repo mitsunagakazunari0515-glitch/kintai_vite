@@ -299,10 +299,12 @@ export const apiRequest = async (
     log('ℹ️ Auth endpoint detected, skipping X-User-Role header');
   }
 
-  return fetch(url, {
+  const fetchResult = await fetch(url, {
     ...restOptions,
     headers: requestHeaders,
   });
+
+  return fetchResult;
 };
 
 /**

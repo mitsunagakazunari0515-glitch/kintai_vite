@@ -139,20 +139,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   // 認証状態をチェックする関数（useCallbackでメモ化）
   const checkAuthStatus = useCallback(async (forceCheck: boolean = false) => {
-    console.log('🔍 [checkAuthStatus] START', { forceCheck, pathname: window.location.pathname });
-    
     // ログイン画面の場合は、API通信をスキップ（ログインボタン押下時のみAPI通信）
     // ただし、forceCheckがtrueの場合や、loginUserType/googleLoginInProgressが設定されている場合は実行
     const currentPath = window.location.pathname;
     const isLoginPage = currentPath === '/login' || currentPath === '/';
     
-    console.log('🔍 [checkAuthStatus] isLoginPage check', { isLoginPage, currentPath, forceCheck });
-    
     // URLパラメータまたはCookieからloginUserTypeを取得（リダイレクト後のコールバック時に使用）
     const urlParams = new URLSearchParams(window.location.search);
     let loginUserTypeFromUrl = urlParams.get('loginUserType');
-    
-    console.log('🔍 [checkAuthStatus] URL params check', { loginUserTypeFromUrl });
     
     // URLパラメータにない場合は、Cookieから取得を試みる
     if (!loginUserTypeFromUrl || (loginUserTypeFromUrl !== 'admin' && loginUserTypeFromUrl !== 'employee')) {
@@ -161,7 +155,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         const [name, value] = cookie.trim().split('=');
         if (name === 'loginUserType') {
           loginUserTypeFromUrl = decodeURIComponent(value);
-          console.log('🔍 [checkAuthStatus] Found loginUserType in cookie', { loginUserTypeFromUrl });
           break;
         }
       }
@@ -190,12 +183,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       googleLoginInProgress = localStorage.getItem('googleLoginInProgress');
     }
     
-    console.log('🔍 [checkAuthStatus] Storage check', { loginUserType, googleLoginInProgress });
-    
     // Googleログイン後のコールバックの可能性がある場合、フラグを設定
     // AmplifyのコールバックURLには通常、codeパラメータが含まれる
     if (!googleLoginInProgress && urlParams.get('code')) {
-      console.log('🔍 [checkAuthStatus] OAuth callback detected, setting googleLoginInProgress');
       log('🔍 checkAuthStatus - Detected OAuth callback (code parameter found), setting googleLoginInProgress flag');
       googleLoginInProgress = 'true';
       
@@ -237,28 +227,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
     }
     
-    console.log('🔍 [checkAuthStatus] Before login page check', { 
-      isLoginPage, 
-      forceCheck, 
-      isAuthenticated, 
-      userRole,
-      loginUserType,
-      googleLoginInProgress 
-    });
-    
     // ログイン画面で既に認証済みの場合、認証状態をリセットしてから早期リターン（ブラウザの戻るボタンなどで戻った場合）
     // ただし、forceCheckがtrueの場合（ログイン試行時）は、APIを呼び出す必要がある
     // ブラウザの戻るボタンで戻った場合、ストレージに認証情報が残っている可能性があるが、
     // ログイン画面では認証状態をリセットし、常に未認証状態として扱う
     if (isLoginPage && !forceCheck) {
-      console.log('🔍 [checkAuthStatus] Login page detected, checking auth state', { 
-        isAuthenticated, 
-        userRole 
-      });
-      
       // 既に認証済みの状態が設定されている場合は、認証状態をリセットしてから早期リターン
       if (isAuthenticated && userRole) {
-        console.log('🔍 [checkAuthStatus] Resetting auth state (browser back detected)');
         log('ℹ️ Login page detected - resetting auth state (browser back detected)');
         // ログイン画面では認証状態をリセットして、常に未認証状態として扱う
         setIsAuthenticated(false);
@@ -266,42 +241,27 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setUserId(null);
         setUserName(null);
         setIsLoading(false);
-        console.log('🔍 [checkAuthStatus] Auth state reset, returning early');
         return;
       }
       
       // ログイン画面では、ストレージから状態を復元しない
       // ブラウザの戻るボタンで戻った場合でも、認証状態を復元せず、常に未認証状態として扱う
       // これにより、ユーザーが明示的にログイン操作を行うまで、認証状態が復元されない
-      console.log('🔍 [checkAuthStatus] Skipping auth check (no auth state set)');
       log('ℹ️ Login page detected - skipping auth check (user may want to switch role, not restoring from storage)');
       setIsLoading(false);
-      console.log('🔍 [checkAuthStatus] Returning early (login page, no forceCheck)');
       return;
     }
     
-    console.log('🔍 [checkAuthStatus] After login page check', { 
-      isLoginPage, 
-      forceCheck, 
-      loginUserType, 
-      googleLoginInProgress 
-    });
-    
     if (isLoginPage && !forceCheck && !loginUserType && !googleLoginInProgress) {
-      console.log('🔍 [checkAuthStatus] Skipping auth check (no login attempt)');
       log('ℹ️ Login page detected - skipping auth check (no login attempt detected)');
       setIsLoading(false);
-      console.log('🔍 [checkAuthStatus] Returning early (no login attempt)');
       return;
     }
     
     // ログイン試行が検出された場合は、ログイン画面でもAPI通信を実行
     if (isLoginPage && (forceCheck || loginUserType || googleLoginInProgress)) {
-      console.log('🔍 [checkAuthStatus] Login attempt found, proceeding with auth check');
       log('ℹ️ Login page detected but login attempt found - proceeding with auth check');
     }
-    
-    console.log('🔍 [checkAuthStatus] Starting API call');
     
     try {
       // ユーザーが認証されているかチェック

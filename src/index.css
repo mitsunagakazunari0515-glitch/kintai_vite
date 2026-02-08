@@ -143,3 +143,18 @@ a {
     transform: translateX(0);
   }
 }
+
+/* Places API (New) 住所検索 input の背景を白に（ダークモード時も強制） */
+gmp-place-autocomplete {
+  background-color: #ffffff !important;
+  color-scheme: light !important;
+  border: 1px solid #d1d5db !important;
+  border-radius: 4px !important;
+  --gmp-mat-color-surface: #ffffff !important;
+  --gmp-mat-color-on-surface: #374151 !important;
+}
+/* input パートを直接指定（公式で公開） */
+gmp-place-autocomplete::part(input) {
+  background-color: #ffffff !important;
+  color: #374151 !important;
+}

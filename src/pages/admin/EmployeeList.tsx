@@ -24,6 +24,7 @@ import { useSort } from '../../hooks/useSort';
 import { ChevronDownIcon, ChevronUpIcon } from '../../components/Icons';
 import { createEmployee, updateEmployee, getEmployees, CreateEmployeeRequest } from '../../utils/employeeApi';
 import { getAllowances } from '../../utils/allowanceApi';
+import { getWorkLocations } from '../../utils/workLocationApi';
 import { error as logError } from '../../utils/logger';
 import { translateApiError } from '../../utils/apiErrorTranslator';
 
@@ -67,6 +68,8 @@ interface Employee {
   baseSalary: number;
   /** 基本休憩時間（分）。 */
   defaultBreakTime: number;
+  /** 勤務拠点ID。nullの場合は未設定。 */
+  workLocationId?: string | null;
   /** 有給情報の配列。 */
   paidLeaves: Array<{
     grantDate: string;  // 有給付与日（YYYY-MM-DD）
@@ -92,6 +95,7 @@ export const EmployeeList: React.FC = () => {
   const [isLoadingEmployees, setIsLoadingEmployees] = useState<boolean>(false);
   const [snackbar, setSnackbar] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [allowances, setAllowances] = useState<Allowance[]>(dummyAllowances);
+  const [workLocations, setWorkLocations] = useState<Array<{ id: string; name: string }>>([]);
   const [filterEmploymentTypes, setFilterEmploymentTypes] = useState<string[]>(employmentTypes.map(t => t.code));
   const [showActiveOnly, setShowActiveOnly] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -162,6 +166,16 @@ export const EmployeeList: React.FC = () => {
           // 手当マスタ取得エラーは警告として記録するが、従業員一覧の表示は続行する
           logError('Failed to fetch allowances:', allowanceError);
           // エラー時はダミーデータを使用する（既に初期値として設定済み）
+        }
+
+        // 勤務拠点一覧を取得
+        try {
+          const workLocationResponse = await getWorkLocations();
+          if (isMountedRef.current) {
+            setWorkLocations(workLocationResponse.workLocations.map(w => ({ id: w.id, name: w.name })));
+          }
+        } catch (workLocationError: any) {
+          logError('Failed to fetch work locations:', workLocationError);
         }
       } catch (error: any) {
         logError('Failed to fetch employees:', error);
@@ -235,6 +249,7 @@ export const EmployeeList: React.FC = () => {
     isAdmin: false,
     baseSalary: 0,
     defaultBreakTime: 60,
+    workLocationId: null,
     paidLeaves: [],
     updatedAt: new Date().toISOString()
   });
@@ -277,6 +292,7 @@ export const EmployeeList: React.FC = () => {
       isAdmin: false,
       baseSalary: 0,
       defaultBreakTime: 60,
+      workLocationId: null,
       paidLeaves: []
     });
     setEditingEmployee(null);
@@ -312,6 +328,7 @@ export const EmployeeList: React.FC = () => {
         isAdmin: formData.isAdmin,
         baseSalary: formData.baseSalary,
         defaultBreakTime: formData.defaultBreakTime,
+        workLocationId: formData.workLocationId ?? null,
         paidLeaves: formData.paidLeaves
       };
 
@@ -795,7 +812,7 @@ export const EmployeeList: React.FC = () => {
                     {getSortIcon('updatedAt')} 更新日時
                   </th>
                   <th style={{ padding: '0.75rem', textAlign: 'center' }}>給与明細</th>
-                  <th style={{ padding: '0.75rem', textAlign: 'center' }}>勤怠情報</th>
+                  <th style={{ padding: '0.75rem', textAlign: 'center' }}>従業員情報</th>
                 </tr>
               </thead>
               <tbody>
@@ -928,7 +945,7 @@ export const EmployeeList: React.FC = () => {
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.05rem' }}>
               <h3 style={{ margin: 0, fontSize: isMobile ? '1.125rem' : '0.875rem' }}>
-                勤怠情報詳細
+                従業員情報詳細
               </h3>
               {editingEmployee && (
                 <Button
@@ -1477,6 +1494,48 @@ export const EmployeeList: React.FC = () => {
                     marginTop: '0.5rem'
                   }}>
                     {formData.leaveDate ? formatDate(formData.leaveDate) : '-'}
+                  </div>
+                )}
+              </div>
+
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ fontWeight: 'bold' }}>
+                  勤務拠点
+                </label>
+                {isEditingMode || !editingEmployee ? (
+                  <select
+                    value={formData.workLocationId || ''}
+                    onChange={(e) => setFormData({ ...formData, workLocationId: e.target.value || null })}
+                    style={{
+                      width: '100%',
+                      padding: '0.75rem',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '4px',
+                      fontSize: fontSizes.input,
+                      boxSizing: 'border-box',
+                      marginTop: '0.5rem',
+                      backgroundColor: 'white'
+                    }}
+                  >
+                    <option value="">未設定</option>
+                    {workLocations.map((wl) => (
+                      <option key={wl.id} value={wl.id}>
+                        {wl.name}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <div style={{
+                    padding: '0.75rem',
+                    backgroundColor: '#f9fafb',
+                    borderRadius: '4px',
+                    border: '1px solid #e5e7eb',
+                    fontSize: fontSizes.input,
+                    marginTop: '0.5rem'
+                  }}>
+                    {formData.workLocationId
+                      ? workLocations.find(w => w.id === formData.workLocationId)?.name ?? formData.workLocationId
+                      : '未設定'}
                   </div>
                 )}
               </div>

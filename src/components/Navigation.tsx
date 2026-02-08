@@ -161,7 +161,8 @@ const AdminNavigation: React.FC<{ isMobile: boolean; location: ReturnType<typeof
               fontSize: isMobile ? fontSizes.navLink.mobile : fontSizes.navLink.desktop,
               color:
                 location.pathname.startsWith('/admin/allowances') ||
-                location.pathname.startsWith('/admin/deductions')
+                location.pathname.startsWith('/admin/deductions') ||
+                location.pathname.startsWith('/admin/work-locations')
                   ? '#4b3b2b'
                   : '#6b5b4b',
               cursor: 'pointer',
@@ -169,18 +170,21 @@ const AdminNavigation: React.FC<{ isMobile: boolean; location: ReturnType<typeof
               display: 'inline-block',
               fontWeight:
                 location.pathname.startsWith('/admin/allowances') ||
-                location.pathname.startsWith('/admin/deductions')
+                location.pathname.startsWith('/admin/deductions') ||
+                location.pathname.startsWith('/admin/work-locations')
                   ? 'bold'
                   : 'normal',
               textDecoration: 'none',
               borderBottom:
                 location.pathname.startsWith('/admin/allowances') ||
-                location.pathname.startsWith('/admin/deductions')
+                location.pathname.startsWith('/admin/deductions') ||
+                location.pathname.startsWith('/admin/work-locations')
                   ? '2px solid #8b5a2b'
                   : '2px solid transparent',
               opacity:
                 location.pathname.startsWith('/admin/allowances') ||
-                location.pathname.startsWith('/admin/deductions')
+                location.pathname.startsWith('/admin/deductions') ||
+                location.pathname.startsWith('/admin/work-locations')
                   ? 1
                   : 0.85
             }}
@@ -243,7 +247,8 @@ const AdminNavigation: React.FC<{ isMobile: boolean; location: ReturnType<typeof
                 color: '#8b5a2b',
                 padding: '0.75rem 1rem',
                 fontSize: isMobile ? fontSizes.navLink.mobile : fontSizes.navLink.desktop,
-                display: 'block'
+                display: 'block',
+                borderBottom: '1px solid #e5e7eb'
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.backgroundColor = '#f9fafb';
@@ -253,6 +258,24 @@ const AdminNavigation: React.FC<{ isMobile: boolean; location: ReturnType<typeof
               }}
             >
               控除マスタ
+            </Link>
+            <Link
+              to="/admin/work-locations"
+              style={{
+                textDecoration: 'none',
+                color: '#8b5a2b',
+                padding: '0.75rem 1rem',
+                fontSize: isMobile ? fontSizes.navLink.mobile : fontSizes.navLink.desktop,
+                display: 'block'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = '#f9fafb';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'transparent';
+              }}
+            >
+              勤務拠点マスタ
             </Link>
           </div>,
           document.body

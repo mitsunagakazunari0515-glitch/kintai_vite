@@ -27,7 +27,12 @@ export interface PayrollDetailResponse {
   paidLeaveRemainingDate: string;
   normalOvertime: number;
   lateNightOvertime: number;
+  /** 総稼働。従来は分、timeRecordWorkHours 等と併せて返る場合は時間（小数）のことがある */
   totalWorkHours: number;
+  /** 打刻のみの稼働（時間・小数可）— 任意 */
+  timeRecordWorkHours?: number;
+  /** 有給換算の稼働（時間・小数可）— 任意 */
+  paidLeaveWorkHours?: number;
   baseSalary: number;
   overtimeAllowance: number;
   lateNightAllowance: number;
@@ -57,6 +62,22 @@ export interface PayrollListResponse {
   memo?: string | null;
   updatedBy?: string | null;
   updatedAt?: string;
+}
+
+/**
+ * GET /api/v1/payroll/detail のレスポンス（data 本体）
+ * - snapshot: DB登録済み
+ * - computed: 未登録時の勤怠集計プレビュー（payrollId は null）
+ */
+export interface PayrollDetailByPeriodResponse {
+  source: 'snapshot' | 'computed';
+  payrollId: string | null;
+  year: number;
+  month: number;
+  statementType: 'salary' | 'bonus';
+  detail: PayrollDetailResponse;
+  updatedBy?: string | null;
+  updatedAt?: string | null;
 }
 
 /**
@@ -98,13 +119,22 @@ export const getPayrollList = async (
 };
 
 /**
- * 給与明細詳細取得
- * @param payrollId 給与明細ID
- * @returns 給与明細詳細
+ * 給与明細詳細取得（標準）
+ * `employeeId` + `year` + `month` で取得。新規実装はこちらを使用する。
+ * @see docs/FE_PAYROLL_DETAIL_INSTRUCTIONS.md（バックエンドリポジトリ）
  */
-export const getPayrollDetail = async (payrollId: string): Promise<PayrollApiResponse> => {
+export const getPayrollDetailByPeriod = async (
+  employeeId: string,
+  year: number,
+  month: number
+): Promise<PayrollDetailByPeriodResponse> => {
   try {
-    const response = await apiRequest(`/api/v1/payroll/${payrollId}`, {
+    const params = new URLSearchParams();
+    params.append('employeeId', employeeId);
+    params.append('year', String(year));
+    params.append('month', String(month));
+
+    const response = await apiRequest(`/api/v1/payroll/detail?${params.toString()}`, {
       method: 'GET',
     });
 
@@ -120,7 +150,7 @@ export const getPayrollDetail = async (payrollId: string): Promise<PayrollApiRes
     const data = await response.json();
     return data.data;
   } catch (error) {
-    logError('Failed to fetch payroll detail:', error);
+    logError('Failed to fetch payroll detail by period:', error);
     throw error;
   }
 };
@@ -278,6 +308,7 @@ export const convertPayrollApiResponseToRecord = (
   detail: PayrollDetailResponse;
   updatedAt?: string;
   updatedBy?: string | null;
+  payrollSource?: 'snapshot' | 'computed';
 } => {
   return {
     id: response.payrollId,
@@ -291,7 +322,48 @@ export const convertPayrollApiResponseToRecord = (
     memo: undefined, // 詳細レスポンスには含まれない場合がある
     detail: response.detail,
     updatedAt: response.updatedAt,
-    updatedBy: response.updatedBy
+    updatedBy: response.updatedBy,
+    payrollSource: 'snapshot' as const
+  };
+};
+
+/**
+ * GET /api/v1/payroll/detail のレスポンスをPayrollRecord用に変換（UI用）
+ */
+export const convertPayrollDetailByPeriodToRecord = (
+  response: PayrollDetailByPeriodResponse,
+  employeeId: string,
+  employeeName: string,
+  companyName: string = '株式会社A・1インテリア'
+): {
+  id: string;
+  year: number;
+  month: number;
+  type: 'payroll' | 'bonus';
+  employeeId: string;
+  employeeName: string;
+  companyName: string;
+  period: string;
+  memo?: string | null;
+  detail: PayrollDetailResponse;
+  updatedAt?: string;
+  updatedBy?: string | null;
+  payrollSource: 'snapshot' | 'computed';
+} => {
+  return {
+    id: response.payrollId ?? '',
+    year: response.year,
+    month: response.month,
+    type: response.statementType === 'salary' ? 'payroll' : response.statementType,
+    employeeId,
+    employeeName,
+    companyName,
+    period: formatPeriod(response.year, response.month),
+    memo: undefined,
+    detail: response.detail,
+    updatedAt: response.updatedAt ?? undefined,
+    updatedBy: response.updatedBy ?? undefined,
+    payrollSource: response.source
   };
 };
 

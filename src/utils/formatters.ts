@@ -97,6 +97,14 @@ export const formatMinutesToTime = (minutes: number | null | undefined): string 
 };
 
 /**
+ * 給与明細APIの「時間」小数（打刻のみ／有給のみなど）を表示用に整形します。
+ */
+export const formatDecimalWorkHours = (hours: number | null | undefined): string => {
+  if (hours === null || hours === undefined || Number.isNaN(hours)) return '-';
+  return `${Number(hours).toLocaleString('ja-JP', { maximumFractionDigits: 2, minimumFractionDigits: 0 })}時間`;
+};
+
+/**
  * 日付と時刻をYYYY-MM-DD HH:MM:SS形式（JST）にフォーマットします。
  * タイムゾーン管理ガイドに基づき、すべての時刻はJSTで統一
  *

@@ -13,7 +13,7 @@
 import { useState, useEffect } from 'react';
 import { formatTime, formatDate, formatJSTDateTime, parseJSTDateTime, extractTimeFromJST } from '../../utils/formatters';
 import { fontSizes } from '../../config/fontSizes';
-import { Button, RegisterButton, CancelButton, EditButton, SearchButton, ClearButton } from '../../components/Button';
+import { Button, CancelButton, EditButton, SearchButton, ClearButton, SaveButton } from '../../components/Button';
 import { Snackbar } from '../../components/Snackbar';
 import { useSort } from '../../hooks/useSort';
 import { ChevronDownIcon, ChevronUpIcon } from '../../components/Icons';
@@ -73,6 +73,33 @@ interface AttendanceLog {
   /** 更新日時。 */
   updatedAt?: string;
 }
+
+/** 勤務情報編集モーダル内のデータ形状。 */
+type AttendanceEditData = {
+  clockIn: string | null;
+  clockOut: string | null;
+  breaks: Break[];
+};
+
+const cloneAttendanceEditData = (d: AttendanceEditData): AttendanceEditData => ({
+  clockIn: d.clockIn,
+  clockOut: d.clockOut,
+  breaks: d.breaks.map(b => ({ start: b.start, end: b.end }))
+});
+
+const formatClockCompare = (v: string | null): string =>
+  v && String(v).trim() !== '' ? formatTime(v) : '—';
+
+const formatBreaksCompareBlock = (breaks: Break[]): string => {
+  const rows = breaks.filter(b => (b.start && b.start.trim() !== '') || (b.end != null && b.end.trim() !== ''));
+  if (rows.length === 0) return '（なし）';
+  return rows
+    .map((b, i) => {
+      const endPart = b.end != null && b.end.trim() !== '' ? formatClockCompare(b.end) : '—';
+      return `${i + 1}. ${formatClockCompare(b.start)} 〜 ${endPart}`;
+    })
+    .join('\n');
+};
 
 /**
  * 勤怠情報一覧画面コンポーネント。
@@ -148,11 +175,11 @@ export const AttendanceList: React.FC = () => {
   const [editingMemoLogId, setEditingMemoLogId] = useState<string | null>(null); // メモ編集中のログID
   const [editingMemo, setEditingMemo] = useState<string>(''); // 編集中のメモ
   const [editingAttendanceLogId, setEditingAttendanceLogId] = useState<string | null>(null); // 勤務情報編集中のログID
-  const [editingAttendanceData, setEditingAttendanceData] = useState<{
-    clockIn: string | null;
-    clockOut: string | null;
-    breaks: Break[];
-  } | null>(null); // 編集中の勤務情報
+  const [editingAttendanceData, setEditingAttendanceData] = useState<AttendanceEditData | null>(null); // 編集中の勤務情報
+  /** 編集開始時点の勤務情報（変更前）。 */
+  const [attendanceBeforeEdit, setAttendanceBeforeEdit] = useState<AttendanceEditData | null>(null);
+  /** 編集フォームと保存確認の切り替え。 */
+  const [editAttendanceStep, setEditAttendanceStep] = useState<'form' | 'confirm'>('form');
 
   useEffect(() => {
     const handleResize = () => {
@@ -372,6 +399,25 @@ export const AttendanceList: React.FC = () => {
     setShowModal(false);
     setEditingAttendanceLogId(null);
     setEditingAttendanceData(null);
+    setAttendanceBeforeEdit(null);
+    setEditAttendanceStep('form');
+  };
+
+  const handleBackToAttendanceForm = () => {
+    setEditAttendanceStep('form');
+  };
+
+  const openAttendanceEdit = (log: AttendanceLog) => {
+    const data: AttendanceEditData = {
+      clockIn: log.clockIn,
+      clockOut: log.clockOut,
+      breaks: log.breaks || []
+    };
+    setEditingAttendanceLogId(log.id);
+    setEditingAttendanceData(cloneAttendanceEditData(data));
+    setAttendanceBeforeEdit(cloneAttendanceEditData(data));
+    setEditAttendanceStep('form');
+    setShowModal(true);
   };
 
   // 時刻文字列をYYYY-MM-DD HH:MM:SS形式（JST）に変換（date文字列と時刻文字列から）
@@ -431,6 +477,8 @@ export const AttendanceList: React.FC = () => {
       setShowModal(false);
       setEditingAttendanceLogId(null);
       setEditingAttendanceData(null);
+      setAttendanceBeforeEdit(null);
+      setEditAttendanceStep('form');
       setSnackbar({ message: '勤務情報を更新しました', type: 'success' });
       setTimeout(() => setSnackbar(null), 3000);
     } catch (error) {
@@ -791,15 +839,7 @@ export const AttendanceList: React.FC = () => {
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
                   <EditButton
-                    onClick={() => {
-                      setEditingAttendanceLogId(log.id);
-                      setEditingAttendanceData({
-                        clockIn: log.clockIn,
-                        clockOut: log.clockOut,
-                        breaks: log.breaks || []
-                      });
-                      setShowModal(true);
-                    }}
+                    onClick={() => openAttendanceEdit(log)}
                     size="small"
                   />
                 </div>
@@ -968,29 +1008,13 @@ export const AttendanceList: React.FC = () => {
                       <td style={{ padding: '0.75rem', textAlign: 'center' }}>
                         {isMobile ? (
                           <EditButton
-                            onClick={() => {
-                              setEditingAttendanceLogId(log.id);
-                              setEditingAttendanceData({
-                                clockIn: log.clockIn,
-                                clockOut: log.clockOut,
-                                breaks: log.breaks || []
-                              });
-                              setShowModal(true);
-                            }}
+                            onClick={() => openAttendanceEdit(log)}
                             size="small"
                           />
                         ) : (
                           <Button
                             variant="icon-edit"
-                            onClick={() => {
-                              setEditingAttendanceLogId(log.id);
-                              setEditingAttendanceData({
-                                clockIn: log.clockIn,
-                                clockOut: log.clockOut,
-                                breaks: log.breaks || []
-                              });
-                              setShowModal(true);
-                            }}
+                            onClick={() => openAttendanceEdit(log)}
                             title="編集"
                           />
                         )}
@@ -1005,7 +1029,7 @@ export const AttendanceList: React.FC = () => {
       </div>
 
       {/* 勤務情報編集モーダル */}
-      {showModal && editingAttendanceLogId && editingAttendanceData && (
+      {showModal && editingAttendanceLogId && editingAttendanceData && attendanceBeforeEdit && (
         <div style={{
           position: 'fixed',
           top: 0,
@@ -1035,12 +1059,122 @@ export const AttendanceList: React.FC = () => {
             onClick={(e) => e.stopPropagation()}
           >
             <h3 style={{ marginBottom: '1.05rem', fontSize: isMobile ? fontSizes.h3.mobile : fontSizes.h3.desktop }}>
-              勤務情報編集
+              {editAttendanceStep === 'confirm' ? '保存内容の確認' : '勤務情報編集'}
             </h3>
             {(() => {
               const log = attendanceLogs.find(l => l.id === editingAttendanceLogId);
               if (!log) return null;
-              
+              const before = attendanceBeforeEdit;
+              const after = editingAttendanceData;
+
+              if (editAttendanceStep === 'confirm') {
+                return (
+                  <>
+                    <div style={{ marginBottom: '1rem' }}>
+                      <div style={{ marginBottom: '0.5rem', fontSize: fontSizes.medium, color: '#6b7280' }}>
+                        <strong>従業員:</strong> {log.employeeName} ({log.employeeId})
+                      </div>
+                      <div style={{ marginBottom: '0.5rem', fontSize: fontSizes.medium, color: '#6b7280' }}>
+                        <strong>日付:</strong> {formatDate(log.date)}
+                      </div>
+                    </div>
+                    <p style={{ fontSize: fontSizes.medium, color: '#374151', marginBottom: '1rem', lineHeight: 1.6 }}>
+                      以下の内容で保存します。<strong>変更前</strong>と<strong>変更後</strong>をご確認ください。
+                    </p>
+                    <div
+                      style={{
+                        border: '1px solid #e5e7eb',
+                        borderRadius: '8px',
+                        overflow: 'hidden',
+                        marginBottom: '1rem'
+                      }}
+                    >
+                      {[
+                        { label: '出勤時刻', b: formatClockCompare(before.clockIn), a: formatClockCompare(after.clockIn) },
+                        { label: '退勤時刻', b: formatClockCompare(before.clockOut), a: formatClockCompare(after.clockOut) }
+                      ].map((row) => (
+                        <div
+                          key={row.label}
+                          style={{
+                            display: 'grid',
+                            gridTemplateColumns: isMobile ? '1fr' : '88px 1fr auto 1fr',
+                            gap: isMobile ? '0.35rem' : '0.5rem',
+                            alignItems: 'center',
+                            padding: '0.75rem 1rem',
+                            borderBottom: '1px solid #e5e7eb',
+                            backgroundColor: '#fafafa',
+                            fontSize: fontSizes.medium
+                          }}
+                        >
+                          <div style={{ fontWeight: 'bold', color: '#374151' }}>{row.label}</div>
+                          {isMobile ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                              <span style={{ color: '#6b7280', fontSize: fontSizes.small }}>変更前</span>
+                              <span style={{ fontWeight: 600, color: '#111827' }}>{row.b}</span>
+                              <span style={{ color: '#2563eb', marginTop: '0.25rem' }}>→ 変更後</span>
+                              <span style={{ fontWeight: 600, color: '#059669' }}>{row.a}</span>
+                            </div>
+                          ) : (
+                            <>
+                              <div style={{ color: '#6b7280' }}>
+                                <span style={{ fontSize: fontSizes.small, display: 'block', marginBottom: '0.15rem' }}>変更前</span>
+                                <span style={{ fontWeight: 600, color: '#111827' }}>{row.b}</span>
+                              </div>
+                              <div style={{ textAlign: 'center', color: '#2563eb', fontWeight: 'bold', padding: '0 0.25rem' }}>→</div>
+                              <div style={{ color: '#6b7280' }}>
+                                <span style={{ fontSize: fontSizes.small, display: 'block', marginBottom: '0.15rem' }}>変更後</span>
+                                <span style={{ fontWeight: 600, color: '#059669' }}>{row.a}</span>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      ))}
+                      <div
+                        style={{
+                          padding: '0.75rem 1rem',
+                          backgroundColor: '#fafafa',
+                          fontSize: fontSizes.medium
+                        }}
+                      >
+                        <div style={{ fontWeight: 'bold', color: '#374151', marginBottom: '0.5rem' }}>休憩時間</div>
+                        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr auto 1fr', gap: '0.75rem', alignItems: 'start' }}>
+                          <div>
+                            <div style={{ fontSize: fontSizes.small, color: '#6b7280', marginBottom: '0.25rem' }}>変更前</div>
+                            <div style={{ whiteSpace: 'pre-wrap', fontWeight: 600, color: '#111827', lineHeight: 1.5 }}>
+                              {formatBreaksCompareBlock(before.breaks)}
+                            </div>
+                          </div>
+                          {!isMobile && (
+                            <div style={{ textAlign: 'center', color: '#2563eb', fontWeight: 'bold', paddingTop: '1.25rem' }}>→</div>
+                          )}
+                          <div>
+                            <div style={{ fontSize: fontSizes.small, color: '#6b7280', marginBottom: '0.25rem' }}>変更後</div>
+                            <div style={{ whiteSpace: 'pre-wrap', fontWeight: 600, color: '#059669', lineHeight: 1.5 }}>
+                              {formatBreaksCompareBlock(after.breaks)}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '1rem', flexDirection: isMobile ? 'column-reverse' : 'row', justifyContent: 'flex-end' }}>
+                      <Button
+                        fullWidth
+                        type="button"
+                        variant="secondary"
+                        onClick={handleBackToAttendanceForm}
+                      >
+                        戻る
+                      </Button>
+                      <SaveButton
+                        fullWidth
+                        type="button"
+                        onClick={handleSaveAttendance}
+                      />
+                    </div>
+                  </>
+                );
+              }
+
               return (
                 <>
             <div style={{ marginBottom: '1rem' }}>
@@ -1058,9 +1192,9 @@ export const AttendanceList: React.FC = () => {
                     </label>
                     <input
                       type="time"
-                      value={editingAttendanceData.clockIn || ''}
+                      value={after.clockIn || ''}
                       onChange={(e) => setEditingAttendanceData({
-                        ...editingAttendanceData,
+                        ...after,
                         clockIn: e.target.value || null
                       })}
                       style={{
@@ -1080,9 +1214,9 @@ export const AttendanceList: React.FC = () => {
               </label>
                     <input
                       type="time"
-                      value={editingAttendanceData.clockOut || ''}
+                      value={after.clockOut || ''}
                       onChange={(e) => setEditingAttendanceData({
-                        ...editingAttendanceData,
+                        ...after,
                         clockOut: e.target.value || null
                       })}
                 style={{
@@ -1100,15 +1234,15 @@ export const AttendanceList: React.FC = () => {
                     <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold', fontSize: fontSizes.label }}>
                       休憩時間
                     </label>
-                    {editingAttendanceData.breaks.map((breakItem, index) => (
+                    {after.breaks.map((breakItem, index) => (
                       <div key={index} style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', alignItems: 'center' }}>
                         <input
                           type="time"
                           value={breakItem.start || ''}
                           onChange={(e) => {
-                            const newBreaks = [...editingAttendanceData.breaks];
+                            const newBreaks = [...after.breaks];
                             newBreaks[index] = { ...newBreaks[index], start: e.target.value };
-                            setEditingAttendanceData({ ...editingAttendanceData, breaks: newBreaks });
+                            setEditingAttendanceData({ ...after, breaks: newBreaks });
                           }}
                           style={{
                             flex: 1,
@@ -1125,9 +1259,9 @@ export const AttendanceList: React.FC = () => {
                           type="time"
                           value={breakItem.end || ''}
                           onChange={(e) => {
-                            const newBreaks = [...editingAttendanceData.breaks];
+                            const newBreaks = [...after.breaks];
                             newBreaks[index] = { ...newBreaks[index], end: e.target.value || null };
-                            setEditingAttendanceData({ ...editingAttendanceData, breaks: newBreaks });
+                            setEditingAttendanceData({ ...after, breaks: newBreaks });
                           }}
                           style={{
                             flex: 1,
@@ -1142,8 +1276,8 @@ export const AttendanceList: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => {
-                            const newBreaks = editingAttendanceData.breaks.filter((_, i) => i !== index);
-                            setEditingAttendanceData({ ...editingAttendanceData, breaks: newBreaks });
+                            const newBreaks = after.breaks.filter((_, i) => i !== index);
+                            setEditingAttendanceData({ ...after, breaks: newBreaks });
                           }}
                           style={{
                             padding: '0.5rem 1rem',
@@ -1163,8 +1297,8 @@ export const AttendanceList: React.FC = () => {
                       type="button"
                       onClick={() => {
                         setEditingAttendanceData({
-                          ...editingAttendanceData,
-                          breaks: [...editingAttendanceData.breaks, { start: '', end: null }]
+                          ...after,
+                          breaks: [...after.breaks, { start: '', end: null }]
                         });
                       }}
                       style={{
@@ -1188,11 +1322,21 @@ export const AttendanceList: React.FC = () => {
                 type="button"
                 onClick={handleCancel}
               />
-              <RegisterButton
+              <Button
                 fullWidth
                 type="button"
-                      onClick={handleSaveAttendance}
-              />
+                variant="primary"
+                onClick={() => setEditAttendanceStep('confirm')}
+                style={{
+                  minWidth: '100px',
+                  fontSize: fontSizes.button,
+                  backgroundColor: '#16a34a',
+                  border: '1px solid #16a34a',
+                  color: 'white'
+                }}
+              >
+                確認
+              </Button>
             </div>
                 </>
               );

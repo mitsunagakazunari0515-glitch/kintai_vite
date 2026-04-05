@@ -206,10 +206,9 @@ export const EmployeeList: React.FC = () => {
           }, 5000); // 5秒間表示
         }
       } finally {
-        // コンポーネントがマウントされている場合のみ状態を更新
-        if (isMountedRef.current) {
-          setIsLoadingEmployees(false);
-        }
+        // ローディングは常に解除する（React Strict Mode で cleanup が先に走ると isMountedRef が false になり、
+        // 同じコンポーネントインスタンスでローディングが残り続ける問題を防ぐ）
+        setIsLoadingEmployees(false);
       }
     };
 

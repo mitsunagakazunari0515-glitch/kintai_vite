@@ -25,11 +25,12 @@ import { fontSizes } from '../../config/fontSizes';
 import { getCurrentFiscalYear } from '../../utils/fiscalYear';
 import { dummyEmployees } from '../../data/dummyData';
 import { apiRequest } from '../../config/apiConfig';
-import { getPayrollList, getPayrollDetail, createPayroll, updatePayroll, PayrollDetailResponse, convertPayrollListResponseToRecord, convertPayrollApiResponseToRecord } from '../../utils/payrollApi';
+import { getPayrollList, getPayrollDetailByPeriod, createPayroll, updatePayroll, PayrollDetailResponse, convertPayrollListResponseToRecord, convertPayrollDetailByPeriodToRecord } from '../../utils/payrollApi';
 import { getStatementTypeLabel } from '../../utils/codeTranslator';
 import { getAllowances } from '../../utils/allowanceApi';
 import { getDeductions } from '../../utils/deductionApi';
-import { getAttendanceMyRecords } from '../../utils/attendanceApi';
+import { getAttendanceMyRecords, type AttendanceLog } from '../../utils/attendanceApi';
+import { getPayrollPeriodBounds, mergePayrollPeriodSummary } from '../../utils/payrollPeriod';
 import { getEmployee, EmployeeResponse } from '../../utils/employeeApi';
 
 /**
@@ -76,6 +77,10 @@ interface PayrollDetail {
   lateNightOvertime: number;
   /** 月の総稼働時間（分）。 */
   totalWorkHours: number;
+  /** 打刻のみの稼働（分）— プレビュー・内訳用。 */
+  timeRecordWorkMinutes?: number;
+  /** 有給換算の稼働（分）— プレビュー・内訳用。 */
+  paidLeaveWorkMinutes?: number;
   /** 基本給。 */
   baseSalary: number;
   /** 時間外手当。 */
@@ -165,6 +170,8 @@ interface PayrollRecord {
   updatedBy?: string | null;
   /** 作成日時。 */
   createdAt?: string;
+  /** 給与詳細APIの source（未登録プレビュー時は computed で payrollId が空のことがある）。 */
+  payrollSource?: 'snapshot' | 'computed';
 }
 
 /**
@@ -601,97 +608,121 @@ export const EmployeePayroll: React.FC = () => {
       }
 
       try {
-        // 勤務情報を取得
-        const year = String(newPeriod.year);
-        const month = String(newPeriod.month).padStart(2, '0');
-        
-        // 従業員情報と勤怠情報を並行取得
-        const [employeeResponse, attendanceResponse] = await Promise.all([
+        // 給与計算期間: 前月26日〜当月25日 → 2ヶ月分の勤怠を取得して集計
+        const { startDate, endDate } = getPayrollPeriodBounds(newPeriod.year, newPeriod.month);
+        const prevMonth = newPeriod.month === 1 ? 12 : newPeriod.month - 1;
+        const prevYear = newPeriod.month === 1 ? newPeriod.year - 1 : newPeriod.year;
+        const yearStr = String(newPeriod.year);
+        const monthStr = String(newPeriod.month).padStart(2, '0');
+        const prevYearStr = String(prevYear);
+        const prevMonthStr = String(prevMonth).padStart(2, '0');
+
+        // 従業員情報と前月・当月の勤怠を並行取得
+        const [employeeResponse, prevAttendanceResponse, currentAttendanceResponse] = await Promise.all([
           getEmployee(employeeId),
-          getAttendanceMyRecords(year, month, employeeId)
+          getAttendanceMyRecords(prevYearStr, prevMonthStr, employeeId),
+          getAttendanceMyRecords(yearStr, monthStr, employeeId)
         ]);
-        
+
         // 従業員情報を状態に保存（ツールチップ表示用）
         setEmployeeInfo(employeeResponse);
-        // 従業員名を状態に保存
         if (employeeResponse.firstName && employeeResponse.lastName) {
           setEmployeeName(`${employeeResponse.firstName} ${employeeResponse.lastName}`);
         }
+
+        // 前月26日〜当月25日の期間でログをフィルタして結合（workDate は YYYY-MM-DD 想定）
+        const filterByPeriod = (log: AttendanceLog) => {
+          const d = log.workDate;
+          return d >= startDate && d <= endDate;
+        };
+        const prevLogsInPeriod = (prevAttendanceResponse.logs || []).filter(filterByPeriod);
+        const currentLogsInPeriod = (currentAttendanceResponse.logs || []).filter(filterByPeriod);
+        const combinedLogs = [...prevLogsInPeriod, ...currentLogsInPeriod];
+
+        const combinedDaily = [
+          ...(prevAttendanceResponse.dailyLabor ?? []),
+          ...(currentAttendanceResponse.dailyLabor ?? [])
+        ];
+        const mergedSummary = mergePayrollPeriodSummary(
+          currentAttendanceResponse.summary,
+          combinedLogs,
+          startDate,
+          endDate,
+          combinedDaily
+        );
+
+        // 期間内の勤務情報をログから集計
+        const actualWorkDays = combinedLogs.filter(log => log.clockIn && log.clockOut).length;
+        const actualWorkHoursMinutes = mergedSummary.actualWorkHours;
+        const actualOvertimeHours = combinedLogs.reduce((sum, log) => sum + (log.overtimeMinutes ?? 0), 0);
+        const lateNightOvertime = combinedLogs.reduce((sum, log) => sum + (log.lateNightMinutes ?? 0), 0);
+        const holidayWorkDays = combinedLogs.filter(log => {
+          if (!log.clockIn || !log.clockOut) return false;
+          const day = new Date(log.workDate).getDay();
+          return day === 0 || day === 6; // 日曜=0, 土曜=6
+        }).length;
+
+        // 有給・有給残はAPIの当月サマリーを参照（期間別集計はバックエンド対応が望ましい）
+        const summary = currentAttendanceResponse.summary;
         
-        // 出勤簿データから勤務情報を取得
-        const summary = attendanceResponse.summary;
-        
-        // 深夜残業時間をlogsから集計（lateNightMinutesを合計）
-        const lateNightOvertime = attendanceResponse.logs.reduce((total, log) => {
-          return total + (log.lateNightMinutes || 0);
-        }, 0);
-        
-        // 既存の給与明細を検索
+        // 既存の給与明細（GET /api/v1/payroll/detail … source===snapshot のときのみ上書き用）
         let existingPayrollDetail: PayrollDetail | null = null;
         try {
-          const payrollList = await getPayrollList(employeeId, newPeriod.year);
-          const existingRecord = payrollList.find(
-            record => record.year === newPeriod.year && record.month === newPeriod.month && record.statementType === 'salary'
-          );
-          
-          if (existingRecord) {
-            const detailResponse = await getPayrollDetail(existingRecord.payrollId);
-            if (detailResponse.detail) {
-              existingPayrollDetail = {
-                workingDays: detailResponse.detail.workingDays ?? 0,
-                holidayWork: detailResponse.detail.holidayWork ?? 0,
-                paidLeave: detailResponse.detail.paidLeave ?? 0,
-                paidLeaveRemaining: detailResponse.detail.paidLeaveRemaining ?? 0,
-                paidLeaveRemainingDate: detailResponse.detail.paidLeaveRemainingDate ?? '',
-                normalOvertime: detailResponse.detail.normalOvertime ?? 0,
-                lateNightOvertime: detailResponse.detail.lateNightOvertime ?? 0,
-                totalWorkHours: detailResponse.detail.totalWorkHours ?? 0,
-                baseSalary: detailResponse.detail.baseSalary ?? 0,
-                overtimeAllowance: detailResponse.detail.overtimeAllowance ?? 0,
-                lateNightAllowance: detailResponse.detail.lateNightAllowance ?? 0,
-                mealAllowance: detailResponse.detail.mealAllowance ?? 0,
-                commutingAllowance: detailResponse.detail.commutingAllowance ?? 0,
-                housingAllowance: detailResponse.detail.housingAllowance ?? 0,
-                allowances: (() => {
-                  // APIレスポンスの配列形式をオブジェクト形式に変換
-                  const allowancesObj: { [key: string]: number } = {};
-                  if (Array.isArray(detailResponse.detail.allowances)) {
-                    detailResponse.detail.allowances.forEach(item => {
-                      const allowance = allowances.find(a => a.name === item.name);
-                      if (allowance) {
-                        allowancesObj[allowance.id] = item.amount;
-                      }
-                    });
-                  }
-                  return allowancesObj;
-                })(),
-                totalEarnings: detailResponse.detail.totalEarnings ?? 0,
-                socialInsurance: detailResponse.detail.socialInsurance ?? 0,
-                employeePension: detailResponse.detail.employeePension ?? 0,
-                employmentInsurance: detailResponse.detail.employmentInsurance ?? 0,
-                municipalTax: detailResponse.detail.municipalTax ?? 0,
-                incomeTax: detailResponse.detail.incomeTax ?? 0,
-                deductions: (() => {
-                  // APIレスポンスの配列形式をオブジェクト形式に変換
-                  const deductionsObj: { [key: string]: number } = {};
-                  if (Array.isArray(detailResponse.detail.deductions)) {
-                    detailResponse.detail.deductions.forEach(item => {
-                      const deduction = deductions.find(d => d.name === item.name);
-                      if (deduction) {
-                        deductionsObj[deduction.id] = item.amount;
-                      }
-                    });
-                  }
-                  return deductionsObj;
-                })(),
-                totalDeductions: detailResponse.detail.totalDeductions ?? 0,
-                netPay: detailResponse.detail.netPay ?? 0
-              };
-            }
+          const detailByPeriod = await getPayrollDetailByPeriod(employeeId, newPeriod.year, newPeriod.month);
+          if (detailByPeriod.source === 'snapshot' && detailByPeriod.detail) {
+            const d = detailByPeriod.detail;
+            const timeFields = payrollDetailTimeFieldsFromApi(d);
+            existingPayrollDetail = {
+              workingDays: d.workingDays ?? 0,
+              holidayWork: d.holidayWork ?? 0,
+              paidLeave: d.paidLeave ?? 0,
+              paidLeaveRemaining: d.paidLeaveRemaining ?? 0,
+              paidLeaveRemainingDate: d.paidLeaveRemainingDate ?? '',
+              normalOvertime: d.normalOvertime ?? 0,
+              lateNightOvertime: d.lateNightOvertime ?? 0,
+              ...timeFields,
+              baseSalary: d.baseSalary ?? 0,
+              overtimeAllowance: d.overtimeAllowance ?? 0,
+              lateNightAllowance: d.lateNightAllowance ?? 0,
+              mealAllowance: d.mealAllowance ?? 0,
+              commutingAllowance: d.commutingAllowance ?? 0,
+              housingAllowance: d.housingAllowance ?? 0,
+              allowances: (() => {
+                const allowancesObj: { [key: string]: number } = {};
+                if (Array.isArray(d.allowances)) {
+                  d.allowances.forEach(item => {
+                    const allowance = allowances.find(a => a.name === item.name);
+                    if (allowance) {
+                      allowancesObj[allowance.id] = item.amount;
+                    }
+                  });
+                }
+                return allowancesObj;
+              })(),
+              totalEarnings: d.totalEarnings ?? 0,
+              socialInsurance: d.socialInsurance ?? 0,
+              employeePension: d.employeePension ?? 0,
+              employmentInsurance: d.employmentInsurance ?? 0,
+              municipalTax: d.municipalTax ?? 0,
+              incomeTax: d.incomeTax ?? 0,
+              deductions: (() => {
+                const deductionsObj: { [key: string]: number } = {};
+                if (Array.isArray(d.deductions)) {
+                  d.deductions.forEach(item => {
+                    const deduction = deductions.find(ded => ded.name === item.name);
+                    if (deduction) {
+                      deductionsObj[deduction.id] = item.amount;
+                    }
+                  });
+                }
+                return deductionsObj;
+              })(),
+              totalDeductions: d.totalDeductions ?? 0,
+              netPay: d.netPay ?? 0
+            };
           }
         } catch (error) {
           logError('Failed to fetch existing payroll detail:', error);
-          // 既存の給与明細が取得できなくても、勤務情報は更新する
         }
         
         // 手当マスタから動的に生成される項目に0を自動セット（既存の給与明細がある場合は既存の値を優先）
@@ -708,8 +739,7 @@ export const EmployeePayroll: React.FC = () => {
         
         // 給与計算（基本給、時間外手当、深夜手当）
         // 既存の給与明細がある場合はAPIの金額を使用、ない場合は計算した値を使用
-        const normalOvertimeMinutes = summary.actualOvertimeHours || 0; // 分単位
-        const actualWorkHoursMinutes = summary.actualWorkHours || 0; // 分単位（パートタイム従業員の基本給計算用）
+        const normalOvertimeMinutes = actualOvertimeHours; // 分単位（前月26日〜当月25日で集計済み）
         const payrollCalculation = existingPayrollDetail ? {
           baseSalary: existingPayrollDetail.baseSalary,
           overtimeAllowance: existingPayrollDetail.overtimeAllowance,
@@ -723,18 +753,18 @@ export const EmployeePayroll: React.FC = () => {
           actualWorkHoursMinutes
         );
         
-        // フォームデータを更新
-        // APIからのデフォルトバリューあり → APIの金額、データを使用
-        // APIからのデフォルトバリューなし → 計算した値をセット
+        // フォームデータを更新（勤務情報は前月26日〜当月25日で集計した値を使用）
         setFormData({
-          workingDays: summary.actualWorkDays || 0,
-          holidayWork: summary.holidayWorkDays || 0,
+          workingDays: actualWorkDays,
+          holidayWork: holidayWorkDays,
           paidLeave: summary.usedPaidLeaveDays || 0,
           paidLeaveRemaining: summary.remainingPaidLeaveDays || 0,
           paidLeaveRemainingDate: summary.paidLeaveExpirationDate || '',
           normalOvertime: normalOvertimeMinutes, // 分単位
-          lateNightOvertime: lateNightOvertime, // 分単位
-          totalWorkHours: actualWorkHoursMinutes, // 分単位
+          lateNightOvertime, // 分単位
+          totalWorkHours: actualWorkHoursMinutes, // 分単位（打刻＋有給換算を含む）
+          timeRecordWorkMinutes: mergedSummary.timeRecordOnlyMinutes,
+          paidLeaveWorkMinutes: mergedSummary.paidLeaveConvertedMinutes,
           baseSalary: payrollCalculation.baseSalary,
           overtimeAllowance: payrollCalculation.overtimeAllowance,
           lateNightAllowance: payrollCalculation.lateNightAllowance,
@@ -981,8 +1011,30 @@ export const EmployeePayroll: React.FC = () => {
     saveFiscalYearSearchCondition(searchFiscalYear);
   }, [searchFiscalYear]);
 
+  /** GET /payroll/detail の detail について、totalWorkHours の単位（分／時間）を内訳フィールドで判定し分に正規化する。 */
+  const payrollDetailTimeFieldsFromApi = (
+    d: PayrollDetailResponse
+  ): { totalWorkHours: number; timeRecordWorkMinutes?: number; paidLeaveWorkMinutes?: number } => {
+    const usesHourUnit =
+      d.timeRecordWorkHours !== undefined || d.paidLeaveWorkHours !== undefined;
+    return {
+      totalWorkHours: usesHourUnit
+        ? Math.round((d.totalWorkHours ?? 0) * 60)
+        : (d.totalWorkHours ?? 0),
+      timeRecordWorkMinutes:
+        d.timeRecordWorkHours !== undefined
+          ? Math.round(d.timeRecordWorkHours * 60)
+          : undefined,
+      paidLeaveWorkMinutes:
+        d.paidLeaveWorkHours !== undefined
+          ? Math.round(d.paidLeaveWorkHours * 60)
+          : undefined
+    };
+  };
+
   // APIレスポンスの配列形式をUI用のオブジェクト形式に変換
   const convertApiDetailToUiDetail = (apiDetail: PayrollDetailResponse): PayrollDetail => {
+    const timeFields = payrollDetailTimeFieldsFromApi(apiDetail);
     // allowancesを配列形式からオブジェクト形式に変換（IDをキーとして使用）
     const allowancesObj: { [key: string]: number } = {};
     if (Array.isArray(apiDetail.allowances)) {
@@ -1009,6 +1061,7 @@ export const EmployeePayroll: React.FC = () => {
     
     return {
       ...apiDetail,
+      ...timeFields,
       allowances: allowancesObj,
       deductions: deductionsObj
     };
@@ -1050,8 +1103,8 @@ export const EmployeePayroll: React.FC = () => {
       
       // 詳細情報が無い場合はAPIから取得
       setIsLoadingPayroll(true);
-      const detailResponse = await getPayrollDetail(record.id);
-      const convertedRecord = convertPayrollApiResponseToRecord(
+      const detailResponse = await getPayrollDetailByPeriod(employeeId || '', record.year, record.month);
+      const convertedRecord = convertPayrollDetailByPeriodToRecord(
         detailResponse,
         employeeId || '',
         employeeName,
@@ -1067,7 +1120,8 @@ export const EmployeePayroll: React.FC = () => {
         employeeName: convertedRecord.employeeName || employeeName, // employeeNameを明示的に設定
         detail: uiDetail,
         memo: record.memo ?? undefined,
-        updatedBy: record.updatedBy ?? undefined
+        updatedBy: record.updatedBy ?? undefined,
+        payrollSource: convertedRecord.payrollSource
       };
       
       setSelectedRecord(fullRecord);
@@ -1125,8 +1179,8 @@ export const EmployeePayroll: React.FC = () => {
     try {
       // 編集ボタン押下時に必ずAPIから最新データを取得
       setIsLoadingPayroll(true);
-      const detailResponse = await getPayrollDetail(record.id);
-      const convertedRecord = convertPayrollApiResponseToRecord(
+      const detailResponse = await getPayrollDetailByPeriod(employeeId || '', record.year, record.month);
+      const convertedRecord = convertPayrollDetailByPeriodToRecord(
         detailResponse,
         employeeId || '',
         employeeName,
@@ -1142,7 +1196,8 @@ export const EmployeePayroll: React.FC = () => {
         employeeName: convertedRecord.employeeName || employeeName, // employeeNameを明示的に設定
         detail: uiDetail,
         memo: record.memo ?? undefined,
-        updatedBy: record.updatedBy ?? undefined
+        updatedBy: record.updatedBy ?? undefined,
+        payrollSource: convertedRecord.payrollSource
       };
       
       setSelectedRecord(fullRecord);
@@ -1463,8 +1518,13 @@ export const EmployeePayroll: React.FC = () => {
             }
           });
           
+          const {
+            timeRecordWorkMinutes: _omitTimeRecordUi,
+            paidLeaveWorkMinutes: _omitPaidLeaveUi,
+            ...formDataForApi
+          } = formData;
           detailPayload = {
-            ...formData,
+            ...formDataForApi,
             allowances: allowancesArray,
             deductions: deductionsArray
           };
@@ -1596,8 +1656,13 @@ export const EmployeePayroll: React.FC = () => {
             }
           });
           
+          const {
+            timeRecordWorkMinutes: _omitTimeRecordUi2,
+            paidLeaveWorkMinutes: _omitPaidLeaveUi2,
+            ...formDataForApiUpdate
+          } = formData;
           detailPayload = {
-            ...formData,
+            ...formDataForApiUpdate,
             allowances: allowancesArray,
             deductions: deductionsArray
           };
@@ -1615,13 +1680,26 @@ export const EmployeePayroll: React.FC = () => {
           });
         }
         
-        await updatePayroll(selectedRecord.id, {
-          employeeId,
-          year: selectedRecord.year,
-          month: selectedRecord.month,
-          statementType,
-          detail: detailPayload
-        });
+        const shouldCreateFromEdit =
+          !selectedRecord.id || selectedRecord.payrollSource === 'computed';
+
+        if (shouldCreateFromEdit) {
+          await createPayroll({
+            employeeId,
+            year: selectedRecord.year,
+            month: selectedRecord.month,
+            statementType,
+            detail: detailPayload
+          });
+        } else {
+          await updatePayroll(selectedRecord.id, {
+            employeeId,
+            year: selectedRecord.year,
+            month: selectedRecord.month,
+            statementType,
+            detail: detailPayload
+          });
+        }
         
         // 一覧を再取得
         const records = await getPayrollList(employeeId, searchFiscalYear);
@@ -1643,27 +1721,30 @@ export const EmployeePayroll: React.FC = () => {
         });
         setPayrollRecords(mappedRecords);
         
-        // 更新されたレコードを選択状態に設定
-        const updatedRecord = mappedRecords.find(r => r.id === selectedRecord.id);
+        const updatedRecord = mappedRecords.find(
+          r =>
+            r.year === selectedRecord.year &&
+            r.month === selectedRecord.month &&
+            r.type === selectedRecord.type
+        );
         if (updatedRecord) {
-          // 詳細情報を取得して設定
-          const detailResponse = await getPayrollDetail(updatedRecord.id);
-          const convertedRecord = convertPayrollApiResponseToRecord(
+          const detailResponse = await getPayrollDetailByPeriod(employeeId, updatedRecord.year, updatedRecord.month);
+          const convertedRecord = convertPayrollDetailByPeriodToRecord(
             detailResponse,
             employeeId,
             employeeName,
             companyName
           );
-          // APIレスポンスの配列形式をUI用のオブジェクト形式に変換
           const uiDetail = convertApiDetailToUiDetail(convertedRecord.detail);
           
           const fullRecord: PayrollRecord = {
             ...updatedRecord,
             ...convertedRecord,
-            employeeName: convertedRecord.employeeName || employeeName, // employeeNameを明示的に設定
+            employeeName: convertedRecord.employeeName || employeeName,
             detail: uiDetail,
             memo: updatedRecord.memo ?? undefined,
-            updatedBy: updatedRecord.updatedBy ?? undefined
+            updatedBy: updatedRecord.updatedBy ?? undefined,
+            payrollSource: convertedRecord.payrollSource
           };
           setSelectedRecord(fullRecord);
         }
@@ -1681,7 +1762,8 @@ export const EmployeePayroll: React.FC = () => {
         }
         
         const typeLabel = getStatementTypeLabel((selectedRecord.type === 'payroll' ? 'salary' : selectedRecord.type) || 'salary');
-        setSnackbar({ message: `${typeLabel}を更新しました`, type: 'success' });
+        const doneLabel = shouldCreateFromEdit ? '登録' : '更新';
+        setSnackbar({ message: `${typeLabel}を${doneLabel}しました`, type: 'success' });
         setTimeout(() => setSnackbar(null), 3000);
       }
     } catch (error) {
@@ -1898,6 +1980,16 @@ export const EmployeePayroll: React.FC = () => {
       year: parseInt(yearMatch[1], 10),
       month: parseInt(monthMatch[1], 10)
     };
+  };
+
+  /** 給与計算期間を「前月26日 〜 当月25日」形式で返す（例: 2025年 10月 → 2025年9月26日 〜 2025年10月25日） */
+  const getPayrollPeriodDateRange = (period: string): string => {
+    const ym = extractYearMonthFromPeriod(period);
+    if (!ym) return '';
+    const { year, month } = ym;
+    const prevMonth = month === 1 ? 12 : month - 1;
+    const prevYear = month === 1 ? year - 1 : year;
+    return `${prevYear}年${prevMonth}月26日 〜 ${year}年${month}月25日`;
   };
 
   // プレビュー画面で選択中の年月
@@ -2829,8 +2921,15 @@ export const EmployeePayroll: React.FC = () => {
                     氏名 {((currentRecord.employeeName && currentRecord.employeeName !== '従業員') ? currentRecord.employeeName : employeeName)}様
                   </div>
                 </div>
-                <div style={{ fontSize: '1.125rem', fontWeight: 'bold' }}>
-                  {currentRecord.period}
+                <div style={{ textAlign: isMobile ? 'left' : 'right' }}>
+                  <div style={{ fontSize: '1.125rem', fontWeight: 'bold' }}>
+                    {currentRecord.period}
+                  </div>
+                  {currentRecord.type !== 'bonus' && (
+                    <div style={{ fontSize: fontSizes.small, color: '#6b7280', marginTop: '0.25rem' }}>
+                      給与計算期間: {getPayrollPeriodDateRange(currentRecord.period)}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -2966,22 +3065,50 @@ export const EmployeePayroll: React.FC = () => {
                     </div>
                   </div>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem', padding: '0 1rem 1rem 1rem' }}>
+                {(() => {
+                  const d = currentRecord.detail;
+                  const hasLaborBreakdown =
+                    d.timeRecordWorkMinutes !== undefined || d.paidLeaveWorkMinutes !== undefined;
+                  return (
+                    <>
+                      {hasLaborBreakdown && (
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem', padding: '0 1rem 0 1rem' }}>
+                          <div>
+                            <div style={{ fontSize: fontSizes.medium, color: '#6b7280', marginBottom: '0.25rem' }}>打刻労働</div>
+                            <div style={{ fontSize: '1.125rem', fontWeight: 'bold' }}>
+                              {formatMinutesToTime(d.timeRecordWorkMinutes ?? 0)}
+                            </div>
+                          </div>
+                          <div>
+                            <div style={{ fontSize: fontSizes.medium, color: '#6b7280', marginBottom: '0.25rem' }}>有給時間</div>
+                            <div style={{ fontSize: '1.125rem', fontWeight: 'bold' }}>
+                              {formatMinutesToTime(d.paidLeaveWorkMinutes ?? 0)}
+                            </div>
+                          </div>
+                          <div />
+                        </div>
+                      )}
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem', padding: '0 1rem 1rem 1rem', marginTop: hasLaborBreakdown ? '1rem' : 0 }}>
                   <div>
-                    <div style={{ fontSize: fontSizes.medium, color: '#6b7280', marginBottom: '0.25rem' }}>稼働時間</div>
+                    <div style={{ fontSize: fontSizes.medium, color: '#6b7280', marginBottom: '0.25rem' }}>
+                      {hasLaborBreakdown ? '稼働時間（合計）' : '稼働時間'}
+                    </div>
                     <div style={{ fontSize: '1.125rem', fontWeight: 'bold' }}>
-                      {formatMinutesToTime(currentRecord.detail.totalWorkHours)}
+                      {formatMinutesToTime(d.totalWorkHours)}
                     </div>
                   </div>
                   <div>
                     <div style={{ fontSize: fontSizes.medium, color: '#6b7280', marginBottom: '0.25rem' }}>普通残業時間</div>
-                    <div style={{ fontSize: '1.125rem', fontWeight: 'bold' }}>{formatMinutesToTime(currentRecord.detail.normalOvertime)}</div>
+                    <div style={{ fontSize: '1.125rem', fontWeight: 'bold' }}>{formatMinutesToTime(d.normalOvertime)}</div>
                   </div>
                   <div>
                     <div style={{ fontSize: fontSizes.medium, color: '#6b7280', marginBottom: '0.25rem' }}>深夜残業時間</div>
-                    <div style={{ fontSize: '1.125rem', fontWeight: 'bold' }}>{formatMinutesToTime(currentRecord.detail.lateNightOvertime)}</div>
+                    <div style={{ fontSize: '1.125rem', fontWeight: 'bold' }}>{formatMinutesToTime(d.lateNightOvertime)}</div>
                   </div>
-                </div>
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
 
               {/* 支給・控除セクション（横並び） */}

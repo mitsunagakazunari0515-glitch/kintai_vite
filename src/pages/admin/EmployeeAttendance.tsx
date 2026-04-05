@@ -9,7 +9,7 @@
  *   - PDF出力機能
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
@@ -22,11 +22,22 @@ import {
   getAttendanceMyRecords,
   AttendanceLog as ApiAttendanceLog,
   Break as ApiBreak,
-  AttendanceSummary
+  AttendanceSummary,
+  type DailyLaborRow
 } from '../../utils/attendanceApi';
 import { getEmployees } from '../../utils/employeeApi';
 import { error as logError } from '../../utils/logger';
 import { translateApiError } from '../../utils/apiErrorTranslator';
+import {
+  getPayrollClosingYearMonthFromDate,
+  enumeratePayrollPeriodDates,
+  mergePayrollPeriodSummary,
+  formatPayrollPeriodRangeJapanese,
+  getPayrollPeriodBounds,
+  computePayrollPeriodDayStats,
+  prescribedWorkingMinutesFromScheduledWeekdays
+} from '../../utils/payrollPeriod';
+import { sumAttendanceTableColumnTotals } from '../../utils/attendanceTableTotals';
 
 /**
  * 休憩時間を表すインターフェース。
@@ -68,6 +79,8 @@ interface AttendanceLog {
   overtimeMinutes?: number;
   /** 深夜時間（分、APIから取得）。 */
   lateNightMinutes?: number;
+  /** 勤怠メモ（管理者向け出勤簿のみ表示。APIの memo）。 */
+  memo?: string | null;
 }
 
 /**
@@ -109,7 +122,8 @@ const convertApiLogToUiLog = (apiLog: ApiAttendanceLog): AttendanceLog => {
     status: convertStatus(apiLog.status),
     totalWorkMinutes: apiLog.totalWorkMinutes,
     overtimeMinutes: apiLog.overtimeMinutes,
-    lateNightMinutes: apiLog.lateNightMinutes
+    lateNightMinutes: apiLog.lateNightMinutes,
+    memo: apiLog.memo ?? null
   };
 };
 
@@ -147,6 +161,11 @@ const formatMinutesToTime = (minutes: number): string => {
   return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
 };
 
+const formatMinutesCell = (minutes: number | null | undefined): string => {
+  if (minutes === null || minutes === undefined) return '-';
+  return formatMinutesToTime(minutes);
+};
+
 /**
  * 管理者用出勤簿画面コンポーネント。
  */
@@ -157,13 +176,15 @@ export const EmployeeAttendance: React.FC = () => {
   const [logs, setLogs] = useState<AttendanceLog[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
-  const currentDate = new Date();
-  const [selectedYear, setSelectedYear] = useState<number>(currentDate.getFullYear());
-  const [selectedMonth, setSelectedMonth] = useState<number>(currentDate.getMonth() + 1);
+  const initialClosingYm = getPayrollClosingYearMonthFromDate(new Date());
+  const [selectedYear, setSelectedYear] = useState<number>(initialClosingYm.year);
+  const [selectedMonth, setSelectedMonth] = useState<number>(initialClosingYm.month);
   const [summary, setSummary] = useState<AttendanceSummary | null>(null);
   const [showSummary, setShowSummary] = useState<boolean>(false);
   const [snackbar, setSnackbar] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [employeeName, setEmployeeName] = useState<string>('');
+  /** 対象期間の日別労働内訳（API dailyLabor） */
+  const [dailyLaborByDate, setDailyLaborByDate] = useState<Record<string, DailyLaborRow>>({});
   const pdfContentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -193,7 +214,7 @@ export const EmployeeAttendance: React.FC = () => {
     fetchEmployeeName();
   }, [employeeId]);
 
-  // 出勤簿データを取得
+  // 出勤簿データを取得（前月26日〜当月25日＝給与期間。2ヶ月分APIを結合）
   useEffect(() => {
     const fetchMonthAttendance = async () => {
       if (!employeeId) {
@@ -205,12 +226,38 @@ export const EmployeeAttendance: React.FC = () => {
       try {
         setIsLoading(true);
 
-        const year = String(selectedYear);
-        const month = String(selectedMonth).padStart(2, '0');
-        const response = await getAttendanceMyRecords(year, month, employeeId);
-        
-        setSummary(response.summary);
-        const convertedLogs = response.logs.map(apiLog => convertApiLogToUiLog(apiLog));
+        const { startDate, endDate } = getPayrollPeriodBounds(selectedYear, selectedMonth);
+        const prevMonth = selectedMonth === 1 ? 12 : selectedMonth - 1;
+        const prevYear = selectedMonth === 1 ? selectedYear - 1 : selectedYear;
+        const yearStr = String(selectedYear);
+        const monthStr = String(selectedMonth).padStart(2, '0');
+        const prevYearStr = String(prevYear);
+        const prevMonthStr = String(prevMonth).padStart(2, '0');
+
+        const [prevRes, currentRes] = await Promise.all([
+          getAttendanceMyRecords(prevYearStr, prevMonthStr, employeeId),
+          getAttendanceMyRecords(yearStr, monthStr, employeeId)
+        ]);
+
+        const filterPeriod = (log: ApiAttendanceLog) => {
+          const d = log.workDate;
+          return d >= startDate && d <= endDate;
+        };
+        const periodLogs = [...(prevRes.logs || []), ...(currentRes.logs || [])].filter(filterPeriod);
+
+        const combinedDaily = [...(prevRes.dailyLabor ?? []), ...(currentRes.dailyLabor ?? [])];
+        const laborMap: Record<string, DailyLaborRow> = {};
+        combinedDaily
+          .filter(d => d.workDate >= startDate && d.workDate <= endDate)
+          .forEach(d => {
+            laborMap[d.workDate] = d;
+          });
+        setDailyLaborByDate(laborMap);
+
+        setSummary(
+          mergePayrollPeriodSummary(currentRes.summary, periodLogs, startDate, endDate, combinedDaily)
+        );
+        const convertedLogs = periodLogs.map(apiLog => convertApiLogToUiLog(apiLog));
         setLogs(convertedLogs);
       } catch (error) {
         logError('Failed to fetch attendance list:', error);
@@ -225,57 +272,28 @@ export const EmployeeAttendance: React.FC = () => {
     fetchMonthAttendance();
   }, [employeeId, selectedYear, selectedMonth]);
 
-  // カレンダーの日付を生成
-  const getCalendarDays = () => {
-    const year = selectedYear;
-    const month = selectedMonth;
-    const firstDay = new Date(year, month - 1, 1);
-    const lastDay = new Date(year, month, 0);
-    const daysInMonth = lastDay.getDate();
-    const startDayOfWeek = firstDay.getDay();
-
-    const days: Array<{ date: string; isCurrentMonth: boolean }> = [];
-
-    // 前月の日付
-    const prevMonth = month === 1 ? 12 : month - 1;
-    const prevYear = month === 1 ? year - 1 : year;
-    const prevMonthLastDay = new Date(prevYear, prevMonth, 0).getDate();
-    
-    for (let i = startDayOfWeek - 1; i >= 0; i--) {
-      const date = prevMonthLastDay - i;
-      days.push({
-        date: `${prevYear}-${String(prevMonth).padStart(2, '0')}-${String(date).padStart(2, '0')}`,
-        isCurrentMonth: false
-      });
-    }
-
-    // 今月の日付
-    for (let i = 1; i <= daysInMonth; i++) {
-      days.push({
-        date: `${year}-${String(month).padStart(2, '0')}-${String(i).padStart(2, '0')}`,
-        isCurrentMonth: true
-      });
-    }
-
-    // 次月の日付（6週分のカレンダーを埋める）
-    const remainingDays = 42 - days.length;
-    for (let i = 1; i <= remainingDays; i++) {
-      const nextMonth = month === 12 ? 1 : month + 1;
-      const nextYear = month === 12 ? year + 1 : year;
-      days.push({
-        date: `${nextYear}-${String(nextMonth).padStart(2, '0')}-${String(i).padStart(2, '0')}`,
-        isCurrentMonth: false
-      });
-    }
-
-    return days;
-  };
+  /** 給与期間（前月26〜当月25）の全日を表形式用に列挙 */
+  const getCalendarDays = () =>
+    enumeratePayrollPeriodDates(selectedYear, selectedMonth).map(date => ({
+      date,
+      isCurrentMonth: true
+    }));
 
   const calendarDays = getCalendarDays();
 
   const getLogByDate = (date: string): AttendanceLog | undefined => {
     return logs.find(log => log.date === date);
   };
+
+  const tableTotals = useMemo(() => {
+    const dates = enumeratePayrollPeriodDates(selectedYear, selectedMonth);
+    return sumAttendanceTableColumnTotals(dates, dailyLaborByDate, d => logs.find(l => l.date === d));
+  }, [selectedYear, selectedMonth, dailyLaborByDate, logs]);
+
+  const periodDayStats = useMemo(() => {
+    const { startDate, endDate } = getPayrollPeriodBounds(selectedYear, selectedMonth);
+    return computePayrollPeriodDayStats(logs, startDate, endDate);
+  }, [logs, selectedYear, selectedMonth]);
 
   // PDF出力処理
   const handleExportPDF = async () => {
@@ -365,9 +383,16 @@ export const EmployeeAttendance: React.FC = () => {
       )}
 
       <div style={{ marginBottom: '1.5rem' }}>
-        <h2 style={{ margin: 0, fontSize: isMobile ? '1.25rem' : '1.05rem', marginBottom: '1rem' }}>
+        <h2 style={{ margin: 0, fontSize: isMobile ? '1.25rem' : '1.05rem', marginBottom: '0.5rem' }}>
           出勤簿
         </h2>
+        <p style={{
+          margin: '0 0 1rem 0',
+          fontSize: fontSizes.medium,
+          color: '#4b5563'
+        }}>
+          対象期間（前月26日〜当月25日）: {formatPayrollPeriodRangeJapanese(selectedYear, selectedMonth)}
+        </p>
         
         {/* 年月選択とPDF出力ボタン */}
         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
@@ -545,7 +570,7 @@ export const EmployeeAttendance: React.FC = () => {
               </h4>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: fontSizes.medium, color: '#6b7280' }}>年月:</span>
+                  <span style={{ fontSize: fontSizes.medium, color: '#6b7280' }}>締め月:</span>
                   <span style={{ fontSize: fontSizes.medium, fontWeight: 'bold' }}>{selectedYear}年{selectedMonth}月</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -554,7 +579,7 @@ export const EmployeeAttendance: React.FC = () => {
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ fontSize: fontSizes.medium, color: '#6b7280' }}>所定労働日数:</span>
-                  <span style={{ fontSize: fontSizes.medium, fontWeight: 'bold' }}>{summary?.scheduledWorkDays ?? '-'}日</span>
+                  <span style={{ fontSize: fontSizes.medium, fontWeight: 'bold' }}>{periodDayStats.prescribedWorkingDays}日</span>
                 </div>
               </div>
             </div>
@@ -577,15 +602,15 @@ export const EmployeeAttendance: React.FC = () => {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ fontSize: fontSizes.medium, color: '#6b7280' }}>実働日数:</span>
-                  <span style={{ fontSize: fontSizes.medium, fontWeight: 'bold' }}>{summary?.actualWorkDays ?? '-'}</span>
+                  <span style={{ fontSize: fontSizes.medium, fontWeight: 'bold' }}>{periodDayStats.workingDays}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ fontSize: fontSizes.medium, color: '#6b7280' }}>平日出勤日数:</span>
-                  <span style={{ fontSize: fontSizes.medium, fontWeight: 'bold' }}>{summary?.weekdayWorkDays ?? '-'}</span>
+                  <span style={{ fontSize: fontSizes.medium, fontWeight: 'bold' }}>{periodDayStats.weekdayWorkDays}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ fontSize: fontSizes.medium, color: '#6b7280' }}>休日出勤日数:</span>
-                  <span style={{ fontSize: fontSizes.medium, fontWeight: 'bold' }}>{summary?.holidayWorkDays ?? '-'}</span>
+                  <span style={{ fontSize: fontSizes.medium, fontWeight: 'bold' }}>{periodDayStats.holidayWorkingDays}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ fontSize: fontSizes.medium, color: '#6b7280' }}>欠勤日数:</span>
@@ -611,12 +636,36 @@ export const EmployeeAttendance: React.FC = () => {
               </h4>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: fontSizes.medium, color: '#6b7280' }}>実労働時間:</span>
-                  <span style={{ fontSize: fontSizes.medium, fontWeight: 'bold' }}>{summary ? formatMinutesToTime(summary.actualWorkHours) : '-'}</span>
+                  <span style={{ fontSize: fontSizes.medium, color: '#6b7280' }}>規定稼働時間（所定労働日数×7:30）:</span>
+                  <span style={{ fontSize: fontSizes.medium, fontWeight: 'bold' }}>
+                    {formatMinutesToTime(
+                      prescribedWorkingMinutesFromScheduledWeekdays(periodDayStats.prescribedWorkingDays)
+                    )}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: fontSizes.medium, color: '#6b7280' }}>稼働時間:</span>
+                  <span style={{ fontSize: fontSizes.medium, fontWeight: 'bold' }}>
+                    {formatMinutesToTime(tableTotals.laborMinutes)}
+                  </span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ fontSize: fontSizes.medium, color: '#6b7280' }}>実残業時間:</span>
-                  <span style={{ fontSize: fontSizes.medium, fontWeight: 'bold' }}>{summary ? formatMinutesToTime(summary.actualOvertimeHours) : '-'}</span>
+                  <span style={{ fontSize: fontSizes.medium, fontWeight: 'bold' }}>
+                    {formatMinutesToTime(tableTotals.overtimeMinutes)}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: fontSizes.medium, color: '#6b7280' }}>深夜残業時間:</span>
+                  <span style={{ fontSize: fontSizes.medium, fontWeight: 'bold' }}>
+                    {formatMinutesToTime(tableTotals.lateNightMinutes)}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: fontSizes.medium, color: '#6b7280' }}>休憩時間:</span>
+                  <span style={{ fontSize: fontSizes.medium, fontWeight: 'bold' }}>
+                    {formatMinutesToTime(tableTotals.breakMinutes)}
+                  </span>
                 </div>
               </div>
             </div>
@@ -697,7 +746,7 @@ export const EmployeeAttendance: React.FC = () => {
               </h4>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: fontSizes.medium, color: '#6b7280' }}>年月:</span>
+                  <span style={{ fontSize: fontSizes.medium, color: '#6b7280' }}>締め月:</span>
                   <span style={{ fontSize: fontSizes.medium, fontWeight: 'bold' }}>{selectedYear}年{selectedMonth}月</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -706,7 +755,7 @@ export const EmployeeAttendance: React.FC = () => {
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ fontSize: fontSizes.medium, color: '#6b7280' }}>所定労働日数:</span>
-                  <span style={{ fontSize: fontSizes.medium, fontWeight: 'bold' }}>{summary?.scheduledWorkDays ?? '-'}日</span>
+                  <span style={{ fontSize: fontSizes.medium, fontWeight: 'bold' }}>{periodDayStats.prescribedWorkingDays}日</span>
                 </div>
               </div>
             </div>
@@ -729,15 +778,15 @@ export const EmployeeAttendance: React.FC = () => {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ fontSize: fontSizes.medium, color: '#6b7280' }}>実働日数:</span>
-                  <span style={{ fontSize: fontSizes.medium, fontWeight: 'bold' }}>{summary?.actualWorkDays ?? '-'}</span>
+                  <span style={{ fontSize: fontSizes.medium, fontWeight: 'bold' }}>{periodDayStats.workingDays}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ fontSize: fontSizes.medium, color: '#6b7280' }}>平日出勤日数:</span>
-                  <span style={{ fontSize: fontSizes.medium, fontWeight: 'bold' }}>{summary?.weekdayWorkDays ?? '-'}</span>
+                  <span style={{ fontSize: fontSizes.medium, fontWeight: 'bold' }}>{periodDayStats.weekdayWorkDays}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ fontSize: fontSizes.medium, color: '#6b7280' }}>休日出勤日数:</span>
-                  <span style={{ fontSize: fontSizes.medium, fontWeight: 'bold' }}>{summary?.holidayWorkDays ?? '-'}</span>
+                  <span style={{ fontSize: fontSizes.medium, fontWeight: 'bold' }}>{periodDayStats.holidayWorkingDays}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ fontSize: fontSizes.medium, color: '#6b7280' }}>欠勤日数:</span>
@@ -763,12 +812,48 @@ export const EmployeeAttendance: React.FC = () => {
               </h4>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: fontSizes.medium, color: '#6b7280' }}>実労働時間:</span>
-                  <span style={{ fontSize: fontSizes.medium, fontWeight: 'bold' }}>{summary ? formatMinutesToTime(summary.actualWorkHours) : '-'}</span>
+                  <span style={{ fontSize: fontSizes.medium, color: '#6b7280' }}>規定稼働時間（所定労働日数×7:30）:</span>
+                  <span style={{ fontSize: fontSizes.medium, fontWeight: 'bold' }}>
+                    {formatMinutesToTime(
+                      prescribedWorkingMinutesFromScheduledWeekdays(periodDayStats.prescribedWorkingDays)
+                    )}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: fontSizes.medium, color: '#6b7280' }}>打刻労働（合計）:</span>
+                  <span style={{ fontSize: fontSizes.medium, fontWeight: 'bold' }}>
+                    {formatMinutesToTime(tableTotals.stampMinutes)}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: fontSizes.medium, color: '#6b7280' }}>有給時間（換算）:</span>
+                  <span style={{ fontSize: fontSizes.medium, fontWeight: 'bold' }}>
+                    {formatMinutesToTime(tableTotals.paidLeaveMinutes)}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: fontSizes.medium, color: '#6b7280' }}>稼働時間:</span>
+                  <span style={{ fontSize: fontSizes.medium, fontWeight: 'bold' }}>
+                    {formatMinutesToTime(tableTotals.laborMinutes)}
+                  </span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ fontSize: fontSizes.medium, color: '#6b7280' }}>実残業時間:</span>
-                  <span style={{ fontSize: fontSizes.medium, fontWeight: 'bold' }}>{summary ? formatMinutesToTime(summary.actualOvertimeHours) : '-'}</span>
+                  <span style={{ fontSize: fontSizes.medium, fontWeight: 'bold' }}>
+                    {formatMinutesToTime(tableTotals.overtimeMinutes)}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: fontSizes.medium, color: '#6b7280' }}>深夜残業時間:</span>
+                  <span style={{ fontSize: fontSizes.medium, fontWeight: 'bold' }}>
+                    {formatMinutesToTime(tableTotals.lateNightMinutes)}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: fontSizes.medium, color: '#6b7280' }}>休憩時間:</span>
+                  <span style={{ fontSize: fontSizes.medium, fontWeight: 'bold' }}>
+                    {formatMinutesToTime(tableTotals.breakMinutes)}
+                  </span>
                 </div>
               </div>
             </div>
@@ -824,11 +909,14 @@ export const EmployeeAttendance: React.FC = () => {
                     <th style={{ padding: '0.75rem', textAlign: 'center', fontWeight: 'bold', whiteSpace: 'nowrap' }}>日付</th>
                     <th style={{ padding: '0.75rem', textAlign: 'center', fontWeight: 'bold', whiteSpace: 'nowrap' }}>出勤時刻</th>
                     <th style={{ padding: '0.75rem', textAlign: 'center', fontWeight: 'bold', whiteSpace: 'nowrap' }}>退勤時刻</th>
-                    <th style={{ padding: '0.75rem', textAlign: 'center', fontWeight: 'bold', whiteSpace: 'nowrap' }}>労働時間</th>
+                    <th style={{ padding: '0.75rem', textAlign: 'center', fontWeight: 'bold', whiteSpace: 'nowrap' }}>打刻労働</th>
+                    <th style={{ padding: '0.75rem', textAlign: 'center', fontWeight: 'bold', whiteSpace: 'nowrap' }}>有給時間</th>
+                    <th style={{ padding: '0.75rem', textAlign: 'center', fontWeight: 'bold', whiteSpace: 'nowrap' }}>稼働時間</th>
                     <th style={{ padding: '0.75rem', textAlign: 'center', fontWeight: 'bold', whiteSpace: 'nowrap' }}>残業時間</th>
                     <th style={{ padding: '0.75rem', textAlign: 'center', fontWeight: 'bold', whiteSpace: 'nowrap' }}>深夜時間</th>
                     <th style={{ padding: '0.75rem', textAlign: 'center', fontWeight: 'bold', whiteSpace: 'nowrap' }}>休憩時間</th>
                     <th style={{ padding: '0.75rem', textAlign: 'center', fontWeight: 'bold', whiteSpace: 'nowrap' }}>勤務状況</th>
+                    <th style={{ padding: '0.75rem', textAlign: 'left', fontWeight: 'bold', minWidth: '120px' }}>メモ</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -836,21 +924,32 @@ export const EmployeeAttendance: React.FC = () => {
                     .filter(day => day.isCurrentMonth)
                     .map((calendarDay) => {
                       const log = getLogByDate(calendarDay.date);
+                      const dl = dailyLaborByDate[calendarDay.date];
                       const date = new Date(calendarDay.date);
                       const dayOfWeek = date.getDay();
                       const isSunday = dayOfWeek === 0;
                       const isSaturday = dayOfWeek === 6;
                       
-                      let workTime = '-';
+                      let stampWork = '-';
+                      let paidLeaveDisp = '-';
+                      let laborTotal = '-';
                       let overtime = '-';
                       let lateNight = '-';
                       let breakTime = '-';
                       
-                      if (log) {
-                        if (log.totalWorkMinutes !== undefined && log.totalWorkMinutes !== null) {
-                          workTime = formatMinutesToTime(log.totalWorkMinutes);
+                      if (dl) {
+                        stampWork = formatMinutesCell(dl.timeRecordMinutes);
+                        paidLeaveDisp = formatMinutesToTime(dl.paidLeaveMinutes);
+                        laborTotal = formatMinutesToTime(dl.laborMinutes);
+                      } else if (log) {
+                        const tw = log.totalWorkMinutes;
+                        if (tw !== undefined && tw !== null) {
+                          stampWork = formatMinutesToTime(tw);
+                          laborTotal = formatMinutesToTime(tw);
                         }
-                        
+                      }
+                      
+                      if (log) {
                         if (log.overtimeMinutes !== undefined && log.overtimeMinutes !== null) {
                           overtime = formatMinutesToTime(log.overtimeMinutes);
                         } else {
@@ -916,7 +1015,13 @@ export const EmployeeAttendance: React.FC = () => {
                             {log?.clockOutIso ? formatTimeWithNextDay(log.clockOutIso) : '-'}
                           </td>
                           <td style={{ padding: '0.75rem', textAlign: 'center', backgroundColor: 'transparent' }}>
-                            {workTime}
+                            {stampWork}
+                          </td>
+                          <td style={{ padding: '0.75rem', textAlign: 'center', backgroundColor: 'transparent' }}>
+                            {paidLeaveDisp}
+                          </td>
+                          <td style={{ padding: '0.75rem', textAlign: 'center', backgroundColor: 'transparent' }}>
+                            {laborTotal}
                           </td>
                           <td style={{ padding: '0.75rem', textAlign: 'center', backgroundColor: 'transparent' }}>
                             {overtime}
@@ -930,9 +1035,40 @@ export const EmployeeAttendance: React.FC = () => {
                           <td style={{ padding: '0.75rem', textAlign: 'center', backgroundColor: 'transparent' }}>
                             {log?.status || '-'}
                           </td>
+                          <td style={{
+                            padding: '0.75rem',
+                            textAlign: 'left',
+                            backgroundColor: 'transparent',
+                            maxWidth: '240px',
+                            wordBreak: 'break-word',
+                            whiteSpace: 'pre-wrap',
+                            color: '#374151',
+                            fontSize: fontSizes.small
+                          }}>
+                            {log?.memo && String(log.memo).trim() !== '' ? log.memo : '-'}
+                          </td>
                         </tr>
                       );
                     })}
+                    <tr
+                      style={{
+                        borderTop: '2px solid #d1d5db',
+                        backgroundColor: '#f3f4f6',
+                        fontWeight: 'bold'
+                      }}
+                    >
+                      <td style={{ padding: '0.75rem', borderRight: '1px solid #e5e7eb', color: '#111827' }}>小計</td>
+                      <td style={{ padding: '0.75rem', textAlign: 'center', color: '#9ca3af' }}>—</td>
+                      <td style={{ padding: '0.75rem', textAlign: 'center', color: '#9ca3af' }}>—</td>
+                      <td style={{ padding: '0.75rem', textAlign: 'center', color: '#111827' }}>{formatMinutesToTime(tableTotals.stampMinutes)}</td>
+                      <td style={{ padding: '0.75rem', textAlign: 'center', color: '#111827' }}>{formatMinutesToTime(tableTotals.paidLeaveMinutes)}</td>
+                      <td style={{ padding: '0.75rem', textAlign: 'center', color: '#111827' }}>{formatMinutesToTime(tableTotals.laborMinutes)}</td>
+                      <td style={{ padding: '0.75rem', textAlign: 'center', color: '#111827' }}>{formatMinutesToTime(tableTotals.overtimeMinutes)}</td>
+                      <td style={{ padding: '0.75rem', textAlign: 'center', color: '#111827' }}>{formatMinutesToTime(tableTotals.lateNightMinutes)}</td>
+                      <td style={{ padding: '0.75rem', textAlign: 'center', color: '#111827' }}>{formatMinutesToTime(tableTotals.breakMinutes)}</td>
+                      <td style={{ padding: '0.75rem', textAlign: 'center', color: '#9ca3af' }}>—</td>
+                      <td style={{ padding: '0.75rem', textAlign: 'left', color: '#9ca3af', fontSize: fontSizes.small }}>—</td>
+                    </tr>
                 </tbody>
               </table>
             </div>
@@ -948,11 +1084,14 @@ export const EmployeeAttendance: React.FC = () => {
                   <th style={{ padding: '0.75rem', textAlign: 'center', fontWeight: 'bold', whiteSpace: 'nowrap' }}>日付</th>
                   <th style={{ padding: '0.75rem', textAlign: 'center', fontWeight: 'bold', whiteSpace: 'nowrap' }}>出勤時刻</th>
                   <th style={{ padding: '0.75rem', textAlign: 'center', fontWeight: 'bold', whiteSpace: 'nowrap' }}>退勤時刻</th>
-                  <th style={{ padding: '0.75rem', textAlign: 'center', fontWeight: 'bold', whiteSpace: 'nowrap' }}>労働時間</th>
+                  <th style={{ padding: '0.75rem', textAlign: 'center', fontWeight: 'bold', whiteSpace: 'nowrap' }}>打刻労働</th>
+                  <th style={{ padding: '0.75rem', textAlign: 'center', fontWeight: 'bold', whiteSpace: 'nowrap' }}>有給時間</th>
+                  <th style={{ padding: '0.75rem', textAlign: 'center', fontWeight: 'bold', whiteSpace: 'nowrap' }}>稼働時間</th>
                   <th style={{ padding: '0.75rem', textAlign: 'center', fontWeight: 'bold', whiteSpace: 'nowrap' }}>残業時間</th>
                   <th style={{ padding: '0.75rem', textAlign: 'center', fontWeight: 'bold', whiteSpace: 'nowrap' }}>深夜時間</th>
                   <th style={{ padding: '0.75rem', textAlign: 'center', fontWeight: 'bold', whiteSpace: 'nowrap' }}>休憩時間</th>
                   <th style={{ padding: '0.75rem', textAlign: 'center', fontWeight: 'bold', whiteSpace: 'nowrap' }}>勤務状況</th>
+                  <th style={{ padding: '0.75rem', textAlign: 'left', fontWeight: 'bold', minWidth: '120px' }}>メモ</th>
                 </tr>
               </thead>
               <tbody>
@@ -960,21 +1099,32 @@ export const EmployeeAttendance: React.FC = () => {
                   .filter(day => day.isCurrentMonth)
                   .map((calendarDay) => {
                     const log = getLogByDate(calendarDay.date);
+                    const dl = dailyLaborByDate[calendarDay.date];
                     const date = new Date(calendarDay.date);
                     const dayOfWeek = date.getDay();
                     const isSunday = dayOfWeek === 0;
                     const isSaturday = dayOfWeek === 6;
                     
-                    let workTime = '-';
+                    let stampWork = '-';
+                    let paidLeaveDisp = '-';
+                    let laborTotal = '-';
                     let overtime = '-';
                     let lateNight = '-';
                     let breakTime = '-';
                     
-                    if (log) {
-                      if (log.totalWorkMinutes !== undefined && log.totalWorkMinutes !== null) {
-                        workTime = formatMinutesToTime(log.totalWorkMinutes);
+                    if (dl) {
+                      stampWork = formatMinutesCell(dl.timeRecordMinutes);
+                      paidLeaveDisp = formatMinutesToTime(dl.paidLeaveMinutes);
+                      laborTotal = formatMinutesToTime(dl.laborMinutes);
+                    } else if (log) {
+                      const tw = log.totalWorkMinutes;
+                      if (tw !== undefined && tw !== null) {
+                        stampWork = formatMinutesToTime(tw);
+                        laborTotal = formatMinutesToTime(tw);
                       }
-                      
+                    }
+                    
+                    if (log) {
                       if (log.overtimeMinutes !== undefined && log.overtimeMinutes !== null) {
                         overtime = formatMinutesToTime(log.overtimeMinutes);
                       } else {
@@ -1040,7 +1190,13 @@ export const EmployeeAttendance: React.FC = () => {
                           {log?.clockOutIso ? formatTimeWithNextDay(log.clockOutIso) : '-'}
                         </td>
                         <td style={{ padding: '0.75rem', textAlign: 'center', backgroundColor: 'transparent' }}>
-                          {workTime}
+                          {stampWork}
+                        </td>
+                        <td style={{ padding: '0.75rem', textAlign: 'center', backgroundColor: 'transparent' }}>
+                          {paidLeaveDisp}
+                        </td>
+                        <td style={{ padding: '0.75rem', textAlign: 'center', backgroundColor: 'transparent' }}>
+                          {laborTotal}
                         </td>
                         <td style={{ padding: '0.75rem', textAlign: 'center', backgroundColor: 'transparent' }}>
                           {overtime}
@@ -1054,9 +1210,40 @@ export const EmployeeAttendance: React.FC = () => {
                         <td style={{ padding: '0.75rem', textAlign: 'center', backgroundColor: 'transparent' }}>
                           {log?.status || '-'}
                         </td>
+                        <td style={{
+                          padding: '0.75rem',
+                          textAlign: 'left',
+                          backgroundColor: 'transparent',
+                          maxWidth: '280px',
+                          wordBreak: 'break-word',
+                          whiteSpace: 'pre-wrap',
+                          color: '#374151',
+                          fontSize: fontSizes.small
+                        }}>
+                          {log?.memo && String(log.memo).trim() !== '' ? log.memo : '-'}
+                        </td>
                       </tr>
                     );
                   })}
+                  <tr
+                    style={{
+                      borderTop: '2px solid #d1d5db',
+                      backgroundColor: '#f3f4f6',
+                      fontWeight: 'bold'
+                    }}
+                  >
+                    <td style={{ padding: '0.75rem', borderRight: '1px solid #e5e7eb', color: '#111827' }}>小計</td>
+                    <td style={{ padding: '0.75rem', textAlign: 'center', color: '#9ca3af' }}>—</td>
+                    <td style={{ padding: '0.75rem', textAlign: 'center', color: '#9ca3af' }}>—</td>
+                    <td style={{ padding: '0.75rem', textAlign: 'center', color: '#111827' }}>{formatMinutesToTime(tableTotals.stampMinutes)}</td>
+                    <td style={{ padding: '0.75rem', textAlign: 'center', color: '#111827' }}>{formatMinutesToTime(tableTotals.paidLeaveMinutes)}</td>
+                    <td style={{ padding: '0.75rem', textAlign: 'center', color: '#111827' }}>{formatMinutesToTime(tableTotals.laborMinutes)}</td>
+                    <td style={{ padding: '0.75rem', textAlign: 'center', color: '#111827' }}>{formatMinutesToTime(tableTotals.overtimeMinutes)}</td>
+                    <td style={{ padding: '0.75rem', textAlign: 'center', color: '#111827' }}>{formatMinutesToTime(tableTotals.lateNightMinutes)}</td>
+                    <td style={{ padding: '0.75rem', textAlign: 'center', color: '#111827' }}>{formatMinutesToTime(tableTotals.breakMinutes)}</td>
+                    <td style={{ padding: '0.75rem', textAlign: 'center', color: '#9ca3af' }}>—</td>
+                    <td style={{ padding: '0.75rem', textAlign: 'left', color: '#9ca3af', fontSize: fontSizes.small }}>—</td>
+                  </tr>
               </tbody>
             </table>
           </div>

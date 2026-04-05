@@ -60,8 +60,12 @@ export interface AttendanceSummary {
   yearMonth: string;
   employeeName: string;
   scheduledWorkDays: number;
-  actualWorkHours: number; // 分単位
-  actualOvertimeHours: number; // 分単位
+  /** 実労働時間（分）— 打刻＋有給所定換算（GET /api/v1/attendance/my-records の summary） */
+  actualWorkHours: number;
+  /** 実残業時間（分）— 通常残業帯のみ。深夜帯は含めない */
+  actualOvertimeHours: number;
+  /** 深夜残業時間（分）— 深夜帯の合計 */
+  lateNightOvertimeHours?: number;
   actualWorkDays: number;
   weekdayWorkDays: number;
   holidayWorkDays: number;
@@ -70,6 +74,28 @@ export interface AttendanceSummary {
   usedPaidLeaveDays: number;
   remainingPaidLeaveDays: number;
   paidLeaveExpirationDate: string;
+  /** 期間集計（前月26〜当月25 等）で dailyLabor から算出した有給換算の合計（分）— 表示用 */
+  paidLeaveConvertedMinutes?: number;
+  /** 打刻のみの合計（分）— 表示用 */
+  timeRecordOnlyMinutes?: number;
+}
+
+/**
+ * GET /api/v1/attendance/my-records の data.dailyLabor（日別労働内訳）
+ * @see docs/FE_PAID_LEAVE_LABOR_HOURS.md
+ */
+export type LaborDayKind =
+  | 'NONE'
+  | 'ATTENDANCE_ONLY'
+  | 'PAID_LEAVE_ONLY'
+  | 'ATTENDANCE_AND_PAID_LEAVE';
+
+export interface DailyLaborRow {
+  workDate: string;
+  timeRecordMinutes: number | null;
+  paidLeaveMinutes: number;
+  laborMinutes: number;
+  laborDayKind: LaborDayKind;
 }
 
 /**
@@ -79,6 +105,8 @@ export interface AttendanceMyRecordsResponse {
   summary: AttendanceSummary;
   logs: AttendanceLog[];
   total: number;
+  /** 日別の打刻／有給／合計（任意） */
+  dailyLabor?: DailyLaborRow[];
 }
 
 

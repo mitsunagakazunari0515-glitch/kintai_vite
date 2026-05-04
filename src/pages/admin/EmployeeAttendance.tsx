@@ -297,38 +297,41 @@ export const EmployeeAttendance: React.FC = () => {
 
   // PDF出力処理
   const handleExportPDF = async () => {
-    if (!pdfContentRef.current) {
+    const pdfEl = pdfContentRef.current;
+    if (!pdfEl) {
       setSnackbar({ message: 'PDF出力に失敗しました。', type: 'error' });
       setTimeout(() => setSnackbar(null), 5000);
       return;
     }
 
+    // 変更前のインラインスタイル（画面外配置用）。finally で必ず戻す（空文字にすると React が再適用せず二重表示になる）
+    const styleSnapshot = pdfEl.style.cssText;
+
     try {
       setIsLoading(true);
-      
+
       // PDF出力用の要素を一時的に表示
-      const originalStyle = pdfContentRef.current.style.cssText;
-      pdfContentRef.current.style.position = 'fixed';
-      pdfContentRef.current.style.left = '0';
-      pdfContentRef.current.style.top = '0';
-      pdfContentRef.current.style.visibility = 'visible';
-      pdfContentRef.current.style.zIndex = '9999';
-      pdfContentRef.current.style.backgroundColor = '#ffffff';
-      pdfContentRef.current.style.width = '100%';
-      pdfContentRef.current.style.padding = '2rem';
-      
+      pdfEl.style.position = 'fixed';
+      pdfEl.style.left = '0';
+      pdfEl.style.top = '0';
+      pdfEl.style.visibility = 'visible';
+      pdfEl.style.zIndex = '9999';
+      pdfEl.style.backgroundColor = '#ffffff';
+      pdfEl.style.width = '100%';
+      pdfEl.style.padding = '2rem';
+
       // 少し待ってからキャプチャ（レンダリングを待つ）
       await new Promise(resolve => setTimeout(resolve, 100));
-      
-      const canvas = await html2canvas(pdfContentRef.current, {
+
+      const canvas = await html2canvas(pdfEl, {
         scale: 2,
         useCORS: true,
         logging: false,
         backgroundColor: '#ffffff'
       });
 
-      // 元のスタイルに戻す
-      pdfContentRef.current.style.cssText = originalStyle;
+      // キャプチャ直後に画面外へ戻す（PDF生成失敗時は finally でも同様に復元）
+      pdfEl.style.cssText = styleSnapshot;
 
       const imgData = canvas.toDataURL('image/png');
       const pdf = new jsPDF('landscape', 'mm', 'a4');
@@ -356,9 +359,8 @@ export const EmployeeAttendance: React.FC = () => {
       setTimeout(() => setSnackbar(null), 5000);
     } finally {
       setIsLoading(false);
-      // エラー時も元のスタイルに戻す
       if (pdfContentRef.current) {
-        pdfContentRef.current.style.cssText = '';
+        pdfContentRef.current.style.cssText = styleSnapshot;
       }
     }
   };

@@ -1915,7 +1915,7 @@ export const Attendance: React.FC = () => {
                   </span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: fontSizes.medium, color: '#6b7280' }}>稼働時間（合計）:</span>
+                  <span style={{ fontSize: fontSizes.medium, color: '#6b7280' }}>稼働時間:</span>
                   <span style={{ fontSize: fontSizes.medium, fontWeight: 'bold' }}>
                     {formatMinutesToTime(tableTotals.laborMinutes)}
                   </span>

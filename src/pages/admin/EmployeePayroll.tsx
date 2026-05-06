@@ -25,7 +25,7 @@ import { fontSizes } from '../../config/fontSizes';
 import { getCurrentFiscalYear } from '../../utils/fiscalYear';
 import { dummyEmployees } from '../../data/dummyData';
 import { apiRequest } from '../../config/apiConfig';
-import { getPayrollList, getPayrollDetailByPeriod, createPayroll, updatePayroll, PayrollDetailResponse, convertPayrollListResponseToRecord, convertPayrollDetailByPeriodToRecord } from '../../utils/payrollApi';
+import { getPayrollList, getPayrollDetailByPeriod, getPayrollDetailById, createPayroll, updatePayroll, PayrollDetailResponse, convertPayrollListResponseToRecord, convertPayrollDetailByPeriodToRecord, convertPayrollApiResponseToRecord } from '../../utils/payrollApi';
 import { getStatementTypeLabel } from '../../utils/codeTranslator';
 import { getAllowances } from '../../utils/allowanceApi';
 import { getDeductions } from '../../utils/deductionApi';
@@ -491,18 +491,28 @@ export const EmployeePayroll: React.FC = () => {
     );
   };
 
+  // 全角数字や全角記号を半角へ正規化
+  const normalizeNumericInput = (value: string): string => {
+    return value
+      .replace(/[０-９]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0))
+      .replace(/：/g, ':')
+      .replace(/[．。]/g, '.')
+      .replace(/[－ー−]/g, '-');
+  };
+
   // 数値入力のバリデーション関数
   const handleNumberInput = (value: string, allowDecimal: boolean = false): number => {
+    const normalizedValue = normalizeNumericInput(value);
     // 空文字列の場合は0を返す
-    if (value === '' || value === '-') {
+    if (normalizedValue === '' || normalizedValue === '-') {
       return 0;
     }
     // 数値のみを許可（小数点も許可する場合はallowDecimalがtrueの場合のみ）
     const regex = allowDecimal ? /^-?\d*\.?\d*$/ : /^-?\d*$/;
-    if (!regex.test(value)) {
+    if (!regex.test(normalizedValue)) {
       return NaN;
     }
-    const num = parseFloat(value);
+    const num = parseFloat(normalizedValue);
     return isNaN(num) ? 0 : num;
   };
 
@@ -1063,6 +1073,15 @@ export const EmployeePayroll: React.FC = () => {
     };
   };
 
+  const isSamePayrollRecord = (a: PayrollRecord, b: PayrollRecord): boolean => {
+    if (a.id && b.id) return a.id === b.id;
+    return (
+      a.year === b.year &&
+      a.month === b.month &&
+      (a.type ?? 'payroll') === (b.type ?? 'payroll')
+    );
+  };
+
   const handleView = async (record: PayrollRecord) => {
     try {
       // 詳細情報が既にロードされている場合はそれを使用
@@ -1097,15 +1116,21 @@ export const EmployeePayroll: React.FC = () => {
         return;
       }
       
-      // 詳細情報が無い場合はAPIから取得
+      // 詳細情報が無い場合はAPIから取得（ID指定を優先し、未登録行のみ年月取得にフォールバック）
       setIsLoadingPayroll(true);
-      const detailResponse = await getPayrollDetailByPeriod(employeeId || '', record.year, record.month);
-      const convertedRecord = convertPayrollDetailByPeriodToRecord(
-        detailResponse,
-        employeeId || '',
-        employeeName,
-        companyName
-      );
+      const convertedRecord = record.id
+        ? convertPayrollApiResponseToRecord(
+            await getPayrollDetailById(record.id),
+            employeeId || '',
+            employeeName,
+            companyName
+          )
+        : convertPayrollDetailByPeriodToRecord(
+            await getPayrollDetailByPeriod(employeeId || '', record.year, record.month),
+            employeeId || '',
+            employeeName,
+            companyName
+          );
       
       // APIレスポンスの配列形式をUI用のオブジェクト形式に変換
       const uiDetail = convertApiDetailToUiDetail(convertedRecord.detail);
@@ -1113,6 +1138,8 @@ export const EmployeePayroll: React.FC = () => {
       const fullRecord: PayrollRecord = {
         ...record,
         ...convertedRecord,
+        // 一覧で確定している種類を優先（詳細APIの種別差異で表示が変わるのを防ぐ）
+        type: record.type ?? convertedRecord.type,
         employeeName: convertedRecord.employeeName || employeeName, // employeeNameを明示的に設定
         detail: uiDetail,
         memo: record.memo ?? undefined,
@@ -1155,7 +1182,7 @@ export const EmployeePayroll: React.FC = () => {
       
       // 一覧の該当レコードも更新（次回はAPI呼び出し不要にするため）
       setPayrollRecords(prev => prev.map(r => 
-        r.id === record.id ? fullRecord : r
+        isSamePayrollRecord(r, record) ? fullRecord : r
       ));
     } catch (error) {
       logError('Failed to fetch payroll detail:', error);
@@ -1173,15 +1200,21 @@ export const EmployeePayroll: React.FC = () => {
     setSelectedRecord(record);
     
     try {
-      // 編集ボタン押下時に必ずAPIから最新データを取得
+      // 編集ボタン押下時に必ずAPIから最新データを取得（ID指定優先）
       setIsLoadingPayroll(true);
-      const detailResponse = await getPayrollDetailByPeriod(employeeId || '', record.year, record.month);
-      const convertedRecord = convertPayrollDetailByPeriodToRecord(
-        detailResponse,
-        employeeId || '',
-        employeeName,
-        companyName
-      );
+      const convertedRecord = record.id
+        ? convertPayrollApiResponseToRecord(
+            await getPayrollDetailById(record.id),
+            employeeId || '',
+            employeeName,
+            companyName
+          )
+        : convertPayrollDetailByPeriodToRecord(
+            await getPayrollDetailByPeriod(employeeId || '', record.year, record.month),
+            employeeId || '',
+            employeeName,
+            companyName
+          );
       
       // APIレスポンスの配列形式をUI用のオブジェクト形式に変換
       const uiDetail = convertApiDetailToUiDetail(convertedRecord.detail);
@@ -1189,6 +1222,8 @@ export const EmployeePayroll: React.FC = () => {
       const fullRecord: PayrollRecord = {
         ...record,
         ...convertedRecord,
+        // 一覧で確定している種類を優先（詳細APIの種別差異で表示が変わるのを防ぐ）
+        type: record.type ?? convertedRecord.type,
         employeeName: convertedRecord.employeeName || employeeName, // employeeNameを明示的に設定
         detail: uiDetail,
         memo: record.memo ?? undefined,
@@ -1724,38 +1759,47 @@ export const EmployeePayroll: React.FC = () => {
             r.type === selectedRecord.type
         );
         if (updatedRecord) {
-          const detailResponse = await getPayrollDetailByPeriod(employeeId, updatedRecord.year, updatedRecord.month);
-          const convertedRecord = convertPayrollDetailByPeriodToRecord(
-            detailResponse,
-            employeeId,
-            employeeName,
-            companyName
-          );
-          const uiDetail = convertApiDetailToUiDetail(convertedRecord.detail);
+          let resolvedRecord: ReturnType<typeof convertPayrollApiResponseToRecord> | ReturnType<typeof convertPayrollDetailByPeriodToRecord>;
+          if (updatedRecord.id) {
+            const detailById = await getPayrollDetailById(updatedRecord.id);
+            resolvedRecord = convertPayrollApiResponseToRecord(
+              detailById,
+              employeeId,
+              employeeName,
+              companyName
+            );
+          } else {
+            const detailByPeriod = await getPayrollDetailByPeriod(employeeId, updatedRecord.year, updatedRecord.month);
+            resolvedRecord = convertPayrollDetailByPeriodToRecord(
+              detailByPeriod,
+              employeeId,
+              employeeName,
+              companyName
+            );
+          }
+          const uiDetail = convertApiDetailToUiDetail(resolvedRecord.detail);
           
           const fullRecord: PayrollRecord = {
             ...updatedRecord,
-            ...convertedRecord,
-            employeeName: convertedRecord.employeeName || employeeName,
+            ...resolvedRecord,
+            // 一覧再取得済みレコードの種類を優先
+            type: updatedRecord.type ?? resolvedRecord.type,
+            employeeName: resolvedRecord.employeeName || employeeName,
             detail: uiDetail,
             memo: updatedRecord.memo ?? undefined,
             updatedBy: updatedRecord.updatedBy ?? undefined,
-            payrollSource: convertedRecord.payrollSource
+            payrollSource: resolvedRecord.payrollSource
           };
           setSelectedRecord(fullRecord);
-        }
-        
-        // 編集画面に入る前のviewModeに戻る（一覧からなら一覧、プレビューからならプレビュー）
-        const returnViewMode = previousViewMode === 'list' ? 'list' : 'preview';
-        setViewMode(returnViewMode);
-        
-        // ブラウザの履歴に追加
-        if (returnViewMode === 'list') {
-          window.history.pushState({ viewMode: 'list' }, '', window.location.pathname);
         } else {
-          const recordToUse = updatedRecord || selectedRecord;
-          window.history.pushState({ viewMode: 'preview', recordId: recordToUse.id }, '', window.location.pathname);
+          // 再取得直後に一覧反映が遅れていても、編集対象は保持したまま詳細表示に戻す
+          setSelectedRecord(selectedRecord);
         }
+        
+        // 編集完了後は常に詳細（プレビュー）に戻す
+        setViewMode('preview');
+        const recordToUse = updatedRecord || selectedRecord;
+        window.history.pushState({ viewMode: 'preview', recordId: recordToUse.id }, '', window.location.pathname);
         
         const typeLabel = getStatementTypeLabel((selectedRecord.type === 'payroll' ? 'salary' : selectedRecord.type) || 'salary');
         const doneLabel = shouldCreateFromEdit ? '登録' : '更新';
@@ -2356,7 +2400,7 @@ export const EmployeePayroll: React.FC = () => {
                   const netPay = record.netPay || 0;
                   return (
                   <div
-                    key={record.id}
+                    key={record.id || `${record.year}-${record.month}-${record.type ?? 'payroll'}`}
                     style={{
                       backgroundColor: 'white',
                       padding: '1rem',
@@ -2420,7 +2464,7 @@ export const EmployeePayroll: React.FC = () => {
                                       body: JSON.stringify({ memo: editingMemo })
                                     });
                                     setPayrollRecords(payrollRecords.map(r => 
-                                      r.id === record.id ? { ...r, memo: editingMemo } : r
+                                      isSamePayrollRecord(r, record) ? { ...r, memo: editingMemo } : r
                                     ));
                                     setEditingMemoRecordId(null);
                                     setEditingMemo('');
@@ -2599,7 +2643,7 @@ export const EmployeePayroll: React.FC = () => {
                       const totalDeductions = record.totalDeductions || 0;
                       const netPay = record.netPay || 0;
                       return (
-                      <tr key={record.id} style={{ borderBottom: '1px solid #e5e7eb' }}>
+                      <tr key={record.id || `${record.year}-${record.month}-${record.type ?? 'payroll'}`} style={{ borderBottom: '1px solid #e5e7eb' }}>
                           <td style={{ padding: '0.75rem', fontWeight: 'bold', width: '120px', minWidth: '120px', maxWidth: '120px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{record.period}</td>
                           <td style={{ padding: '0.75rem', textAlign: 'center', width: '100px', minWidth: '100px', maxWidth: '100px' }}>
                             <span style={{
@@ -2637,8 +2681,8 @@ export const EmployeePayroll: React.FC = () => {
                                   });
                                   
                                   // ローカル状態を更新
-                                  setPayrollRecords(payrollRecords.map(r => 
-                                    r.id === record.id ? { ...r, memo: editingMemo } : r
+                                  setPayrollRecords(payrollRecords.map(r =>
+                                    isSamePayrollRecord(r, record) ? { ...r, memo: editingMemo } : r
                                   ));
                                   setEditingMemoRecordId(null);
                                   setEditingMemo('');
@@ -3061,50 +3105,24 @@ export const EmployeePayroll: React.FC = () => {
                     </div>
                   </div>
                 </div>
-                {(() => {
-                  const d = currentRecord.detail;
-                  const hasLaborBreakdown =
-                    d.timeRecordWorkMinutes !== undefined || d.paidLeaveWorkMinutes !== undefined;
-                  return (
-                    <>
-                      {hasLaborBreakdown && (
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem', padding: '0 1rem 0 1rem' }}>
-                          <div>
-                            <div style={{ fontSize: fontSizes.medium, color: '#6b7280', marginBottom: '0.25rem' }}>打刻労働</div>
-                            <div style={{ fontSize: '1.125rem', fontWeight: 'bold' }}>
-                              {formatMinutesToHHHMM(d.timeRecordWorkMinutes ?? 0)}
-                            </div>
-                          </div>
-                          <div>
-                            <div style={{ fontSize: fontSizes.medium, color: '#6b7280', marginBottom: '0.25rem' }}>有給時間</div>
-                            <div style={{ fontSize: '1.125rem', fontWeight: 'bold' }}>
-                              {formatMinutesToHHHMM(d.paidLeaveWorkMinutes ?? 0)}
-                            </div>
-                          </div>
-                          <div />
-                        </div>
-                      )}
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem', padding: '0 1rem 1rem 1rem', marginTop: hasLaborBreakdown ? '1rem' : 0 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem', padding: '0 1rem 1rem 1rem' }}>
                   <div>
                     <div style={{ fontSize: fontSizes.medium, color: '#6b7280', marginBottom: '0.25rem' }}>
-                      {hasLaborBreakdown ? '稼働時間（合計）' : '稼働時間'}
+                      稼働時間
                     </div>
                     <div style={{ fontSize: '1.125rem', fontWeight: 'bold' }}>
-                      {formatMinutesToHHHMM(d.totalWorkMinutes)}
+                      {formatMinutesToHHHMM(currentRecord.detail.totalWorkMinutes)}
                     </div>
                   </div>
                   <div>
                     <div style={{ fontSize: fontSizes.medium, color: '#6b7280', marginBottom: '0.25rem' }}>普通残業時間</div>
-                    <div style={{ fontSize: '1.125rem', fontWeight: 'bold' }}>{formatMinutesToHHHMM(d.normalOvertime)}</div>
+                    <div style={{ fontSize: '1.125rem', fontWeight: 'bold' }}>{formatMinutesToHHHMM(currentRecord.detail.normalOvertime)}</div>
                   </div>
                   <div>
                     <div style={{ fontSize: fontSizes.medium, color: '#6b7280', marginBottom: '0.25rem' }}>深夜残業時間</div>
-                    <div style={{ fontSize: '1.125rem', fontWeight: 'bold' }}>{formatMinutesToHHHMM(d.lateNightOvertime)}</div>
+                    <div style={{ fontSize: '1.125rem', fontWeight: 'bold' }}>{formatMinutesToHHHMM(currentRecord.detail.lateNightOvertime)}</div>
                   </div>
-                      </div>
-                    </>
-                  );
-                })()}
+                </div>
               </div>
 
               {/* 支給・控除セクション（横並び） */}
@@ -3384,7 +3402,7 @@ export const EmployeePayroll: React.FC = () => {
                       placeholder="hh:mm"
                       value={totalWorkMinutesInputValue !== '' ? totalWorkMinutesInputValue : formatMinutesToHHHMM(formData.totalWorkMinutes)}
                       onChange={(e) => {
-                        const value = e.target.value;
+                        const value = normalizeNumericInput(e.target.value);
                         setTotalWorkMinutesInputValue(value);
                         // hh:mm形式の入力を処理
                         const match = value.match(/^(\d{1,3}):?(\d{0,2})$/);
@@ -3447,7 +3465,7 @@ export const EmployeePayroll: React.FC = () => {
                       placeholder="hh:mm"
                       value={normalOvertimeInputValue !== '' ? normalOvertimeInputValue : formatMinutesToHHHMM(formData.normalOvertime)}
                       onChange={(e) => {
-                        const value = e.target.value;
+                        const value = normalizeNumericInput(e.target.value);
                         setNormalOvertimeInputValue(value);
                         // hh:mm形式の入力を処理
                         const match = value.match(/^(\d{1,3}):?(\d{0,2})$/);
@@ -3498,7 +3516,7 @@ export const EmployeePayroll: React.FC = () => {
                       placeholder="hh:mm"
                       value={lateNightOvertimeInputValue !== '' ? lateNightOvertimeInputValue : formatMinutesToHHHMM(formData.lateNightOvertime)}
                       onChange={(e) => {
-                        const value = e.target.value;
+                        const value = normalizeNumericInput(e.target.value);
                         setLateNightOvertimeInputValue(value);
                         // hh:mm形式の入力を処理
                         const match = value.match(/^(\d{1,3}):?(\d{0,2})$/);

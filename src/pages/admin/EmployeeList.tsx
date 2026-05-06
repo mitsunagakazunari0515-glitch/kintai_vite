@@ -1274,7 +1274,7 @@ export const EmployeeList: React.FC = () => {
                             </div>
                             <div>
                               <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: fontSizes.medium, color: '#6b7280' }}>
-                                日数
+                                有給数
                               </label>
                               <input
                                 type="number"
@@ -1362,7 +1362,39 @@ export const EmployeeList: React.FC = () => {
                     fontWeight: 'bold',
                     marginTop: '0.5rem'
                   }}>
-                    {formData.paidLeaves.reduce((sum, pl) => sum + pl.days, 0)}日
+                    {formData.paidLeaves.length === 0 ? (
+                      <span style={{ color: '#6b7280', fontWeight: 'normal', fontSize: fontSizes.medium }}>
+                        有給情報が登録されていません
+                      </span>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                        {formData.paidLeaves.map((pl, idx) => (
+                          <div
+                            key={`${pl.grantDate}-${idx}`}
+                            style={{
+                              fontWeight: 'bold',
+                              color: '#111827',
+                              lineHeight: 1.5
+                            }}
+                          >
+                            {formatDate(pl.grantDate)}{'　'}
+                            {pl.days}日
+                          </div>
+                        ))}
+                        <div
+                          style={{
+                            marginTop: '0.25rem',
+                            paddingTop: '0.5rem',
+                            borderTop: '1px solid #e5e7eb',
+                            fontSize: fontSizes.medium,
+                            color: '#6b7280',
+                            fontWeight: 'normal'
+                          }}
+                        >
+                          合計: {formData.paidLeaves.reduce((sum, pl) => sum + pl.days, 0)}日
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

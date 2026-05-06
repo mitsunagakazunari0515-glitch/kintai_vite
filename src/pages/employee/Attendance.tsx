@@ -1958,12 +1958,6 @@ export const Attendance: React.FC = () => {
               </h4>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: fontSizes.medium, color: '#6b7280' }}>年間有給日数:</span>
-                  <span style={{ fontSize: fontSizes.medium, fontWeight: 'bold', color: '#000000' }}>
-                    {summary?.annualPaidLeaveDays ?? totalPaidLeaveDays}日
-                  </span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: fontSizes.medium, color: '#6b7280' }}>使用日数:</span>
                   <span style={{ fontSize: fontSizes.medium, fontWeight: 'bold', color: '#000000' }}>
                     {summary?.usedPaidLeaveDays ?? usedPaidLeaveDays}日

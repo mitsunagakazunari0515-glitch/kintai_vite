@@ -156,6 +156,35 @@ export const getPayrollDetailByPeriod = async (
 };
 
 /**
+ * 給与明細詳細取得（ID指定）
+ * `payrollId` で一意に取得する。
+ */
+export const getPayrollDetailById = async (
+  payrollId: string
+): Promise<PayrollApiResponse> => {
+  try {
+    const response = await apiRequest(`/api/v1/payroll/${payrollId}`, {
+      method: 'GET',
+    });
+
+    if (!response.ok) {
+      const apiError = await extractApiError(response);
+      const errorMessage = translateApiError(apiError);
+      const error = new Error(errorMessage);
+      (error as any).status = apiError.statusCode;
+      (error as any).apiError = apiError;
+      throw error;
+    }
+
+    const data = await response.json();
+    return data.data;
+  } catch (error) {
+    logError('Failed to fetch payroll detail by id:', error);
+    throw error;
+  }
+};
+
+/**
  * 給与明細作成
  * @param payload 給与明細作成データ
  */

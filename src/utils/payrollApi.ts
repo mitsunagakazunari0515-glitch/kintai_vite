@@ -27,12 +27,12 @@ export interface PayrollDetailResponse {
   paidLeaveRemainingDate: string;
   normalOvertime: number;
   lateNightOvertime: number;
-  /** 総稼働。従来は分、timeRecordWorkHours 等と併せて返る場合は時間（小数）のことがある */
-  totalWorkHours: number;
-  /** 打刻のみの稼働（時間・小数可）— 任意 */
-  timeRecordWorkHours?: number;
-  /** 有給換算の稼働（時間・小数可）— 任意 */
-  paidLeaveWorkHours?: number;
+  /** 総稼働（分） */
+  totalWorkMinutes: number;
+  /** 打刻のみの稼働（分・小数可）— 任意 */
+  timeRecordWorkMinutes?: number;
+  /** 有給換算の稼働（分・小数可）— 任意 */
+  paidLeaveWorkMinutes?: number;
   baseSalary: number;
   overtimeAllowance: number;
   lateNightAllowance: number;

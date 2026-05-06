@@ -87,13 +87,24 @@ export const formatTime = (timeString: string | null | undefined): string => {
  */
 export const formatMinutesToTime = (minutes: number | null | undefined): string => {
   if (minutes === null || minutes === undefined || isNaN(minutes)) return '-';
-  
-  const totalMinutes = Math.floor(minutes);
+
+  const totalMinutes = Math.round(Number(minutes));
   const hours = Math.floor(totalMinutes / 60);
-  const mins = totalMinutes % 60;
-  
-  // 24時間を超える場合は3桁以上の時間を表示
+  const mins = totalMinutes - hours * 60;
+
+  // 24時間超は時間を3桁以上（例: 185:48）。未満は2桁ゼロ埋め
   return `${String(hours).padStart(hours >= 100 ? 3 : 2, '0')}:${String(mins).padStart(2, '0')}`;
+};
+
+/**
+ * 分を hhh:mm 形式（最小 0:00）で表示します。
+ * 給与明細の表示用途向け。
+ */
+export const formatMinutesToHHHMM = (minutes?: number | null): string => {
+  const safe = Math.max(0, Math.floor(Number(minutes || 0)));
+  const h = Math.floor(safe / 60);
+  const m = safe % 60;
+  return `${h}:${String(m).padStart(2, '0')}`;
 };
 
 /**

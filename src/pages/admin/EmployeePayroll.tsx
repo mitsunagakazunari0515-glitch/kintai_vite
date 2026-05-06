@@ -20,7 +20,7 @@ import { EditIcon, ViewIcon, InfoIcon } from '../../components/Icons';
 import { error as logError, log } from '../../utils/logger';
 import { PdfExportButton, RegisterButton, UpdateButton, Button, EditButton, BackButton } from '../../components/Button';
 import { ProgressBar } from '../../components/ProgressBar';
-import { formatCurrency, formatMinutesToTime } from '../../utils/formatters';
+import { formatCurrency, formatMinutesToHHHMM } from '../../utils/formatters';
 import { fontSizes } from '../../config/fontSizes';
 import { getCurrentFiscalYear } from '../../utils/fiscalYear';
 import { dummyEmployees } from '../../data/dummyData';
@@ -76,7 +76,7 @@ interface PayrollDetail {
   /** 深夜残業時間（分）。 */
   lateNightOvertime: number;
   /** 月の総稼働時間（分）。 */
-  totalWorkHours: number;
+  totalWorkMinutes: number;
   /** 打刻のみの稼働（分）— プレビュー・内訳用。 */
   timeRecordWorkMinutes?: number;
   /** 有給換算の稼働（分）— プレビュー・内訳用。 */
@@ -234,7 +234,7 @@ export const EmployeePayroll: React.FC = () => {
   // 残業時間入力中の一時的な値（hh:mm形式）
   const [normalOvertimeInputValue, setNormalOvertimeInputValue] = useState<string>('');
   const [lateNightOvertimeInputValue, setLateNightOvertimeInputValue] = useState<string>('');
-  const [totalWorkHoursInputValue, setTotalWorkHoursInputValue] = useState<string>('');
+  const [totalWorkMinutesInputValue, setTotalWorkMinutesInputValue] = useState<string>('');
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [recordType, setRecordType] = useState<'payroll' | 'bonus'>('payroll'); // 新規登録時の種類
@@ -514,7 +514,7 @@ export const EmployeePayroll: React.FC = () => {
     paidLeaveRemainingDate: '',
     normalOvertime: 0,
     lateNightOvertime: 0,
-    totalWorkHours: 0,
+    totalWorkMinutes: 0,
     baseSalary: 0,
     overtimeAllowance: 0,
     lateNightAllowance: 0,
@@ -762,7 +762,7 @@ export const EmployeePayroll: React.FC = () => {
           paidLeaveRemainingDate: summary.paidLeaveExpirationDate || '',
           normalOvertime: normalOvertimeMinutes, // 分単位
           lateNightOvertime, // 分単位
-          totalWorkHours: actualWorkHoursMinutes, // 分単位（打刻＋有給換算を含む）
+          totalWorkMinutes: actualWorkHoursMinutes, // 分単位（打刻＋有給換算を含む）
           timeRecordWorkMinutes: mergedSummary.timeRecordOnlyMinutes,
           paidLeaveWorkMinutes: mergedSummary.paidLeaveConvertedMinutes,
           baseSalary: payrollCalculation.baseSalary,
@@ -809,7 +809,7 @@ export const EmployeePayroll: React.FC = () => {
         employeeInfo,
         formData.allowances || {},
         allowances,
-        formData.totalWorkHours || 0,
+        formData.totalWorkMinutes || 0,
         formData.baseSalary
       );
       setOvertimeRate(calculatedRate);
@@ -822,7 +822,7 @@ export const EmployeePayroll: React.FC = () => {
     selectedRecord?.type,
     employeeInfo,
     formData.allowances,
-    formData.totalWorkHours,
+    formData.totalWorkMinutes,
     formData.baseSalary,
     allowances
   ]);
@@ -1011,30 +1011,26 @@ export const EmployeePayroll: React.FC = () => {
     saveFiscalYearSearchCondition(searchFiscalYear);
   }, [searchFiscalYear]);
 
-  /** GET /payroll/detail の detail について、totalWorkHours の単位（分／時間）を内訳フィールドで判定し分に正規化する。 */
+  /**
+   * GET /api/v1/payroll/detail の detail について、稼働系を UI 用（分）に正規化する。
+   * totalWorkMinutes / timeRecordWorkMinutes / paidLeaveWorkMinutes は API では分で返るため、そのまま分として扱う。
+   */
   const payrollDetailTimeFieldsFromApi = (
     d: PayrollDetailResponse
-  ): { totalWorkHours: number; timeRecordWorkMinutes?: number; paidLeaveWorkMinutes?: number } => {
-    const usesHourUnit =
-      d.timeRecordWorkHours !== undefined || d.paidLeaveWorkHours !== undefined;
+  ): { totalWorkMinutes: number; timeRecordWorkMinutes?: number; paidLeaveWorkMinutes?: number } => {
     return {
-      totalWorkHours: usesHourUnit
-        ? Math.round((d.totalWorkHours ?? 0) * 60)
-        : (d.totalWorkHours ?? 0),
+      totalWorkMinutes: Math.round(d.totalWorkMinutes ?? 0),
       timeRecordWorkMinutes:
-        d.timeRecordWorkHours !== undefined
-          ? Math.round(d.timeRecordWorkHours * 60)
-          : undefined,
+        d.timeRecordWorkMinutes !== undefined ? Math.round(d.timeRecordWorkMinutes) : undefined,
       paidLeaveWorkMinutes:
-        d.paidLeaveWorkHours !== undefined
-          ? Math.round(d.paidLeaveWorkHours * 60)
-          : undefined
+        d.paidLeaveWorkMinutes !== undefined ? Math.round(d.paidLeaveWorkMinutes) : undefined
     };
   };
 
   // APIレスポンスの配列形式をUI用のオブジェクト形式に変換
   const convertApiDetailToUiDetail = (apiDetail: PayrollDetailResponse): PayrollDetail => {
     const timeFields = payrollDetailTimeFieldsFromApi(apiDetail);
+    const { timeRecordWorkMinutes: _omitTr, paidLeaveWorkMinutes: _omitPl, ...apiDetailRest } = apiDetail;
     // allowancesを配列形式からオブジェクト形式に変換（IDをキーとして使用）
     const allowancesObj: { [key: string]: number } = {};
     if (Array.isArray(apiDetail.allowances)) {
@@ -1060,7 +1056,7 @@ export const EmployeePayroll: React.FC = () => {
     }
     
     return {
-      ...apiDetail,
+      ...apiDetailRest,
       ...timeFields,
       allowances: allowancesObj,
       deductions: deductionsObj
@@ -1327,7 +1323,7 @@ export const EmployeePayroll: React.FC = () => {
             paidLeaveRemainingDate: summary.paidLeaveExpirationDate || '',
             normalOvertime: normalOvertimeMinutes, // 分単位
             lateNightOvertime: lateNightOvertime, // 分単位
-            totalWorkHours: actualWorkHoursMinutes, // 分単位
+            totalWorkMinutes: actualWorkHoursMinutes, // 分単位
             baseSalary: payrollCalculation.baseSalary,
             overtimeAllowance: payrollCalculation.overtimeAllowance,
             lateNightAllowance: payrollCalculation.lateNightAllowance,
@@ -1366,7 +1362,7 @@ export const EmployeePayroll: React.FC = () => {
             paidLeaveRemainingDate: '',
             normalOvertime: 0,
             lateNightOvertime: 0,
-            totalWorkHours: 0,
+            totalWorkMinutes: 0,
             baseSalary: 0,
             overtimeAllowance: 0,
             lateNightAllowance: 0,
@@ -1405,7 +1401,7 @@ export const EmployeePayroll: React.FC = () => {
           paidLeaveRemainingDate: '',
           normalOvertime: 0,
           lateNightOvertime: 0,
-          totalWorkHours: 0,
+          totalWorkMinutes: 0,
           baseSalary: 0,
           overtimeAllowance: 0,
           lateNightAllowance: 0,
@@ -1475,7 +1471,7 @@ export const EmployeePayroll: React.FC = () => {
             paidLeaveRemainingDate: '',
             normalOvertime: 0,
             lateNightOvertime: 0,
-            totalWorkHours: 0,
+            totalWorkMinutes: 0,
             baseSalary: 0,
             overtimeAllowance: 0,
             lateNightAllowance: 0,
@@ -1538,7 +1534,7 @@ export const EmployeePayroll: React.FC = () => {
             paidLeaveRemainingDate: detailPayload.paidLeaveRemainingDate,
             normalOvertime: detailPayload.normalOvertime,
             lateNightOvertime: detailPayload.lateNightOvertime,
-            totalWorkHours: detailPayload.totalWorkHours
+            totalWorkMinutes: detailPayload.totalWorkMinutes
           });
         }
         
@@ -1613,7 +1609,7 @@ export const EmployeePayroll: React.FC = () => {
             paidLeaveRemainingDate: '',
             normalOvertime: 0,
             lateNightOvertime: 0,
-            totalWorkHours: 0,
+            totalWorkMinutes: 0,
             baseSalary: 0,
             overtimeAllowance: 0,
             lateNightAllowance: 0,
@@ -1676,7 +1672,7 @@ export const EmployeePayroll: React.FC = () => {
             paidLeaveRemainingDate: detailPayload.paidLeaveRemainingDate,
             normalOvertime: detailPayload.normalOvertime,
             lateNightOvertime: detailPayload.lateNightOvertime,
-            totalWorkHours: detailPayload.totalWorkHours
+            totalWorkMinutes: detailPayload.totalWorkMinutes
           });
         }
         
@@ -3076,13 +3072,13 @@ export const EmployeePayroll: React.FC = () => {
                           <div>
                             <div style={{ fontSize: fontSizes.medium, color: '#6b7280', marginBottom: '0.25rem' }}>打刻労働</div>
                             <div style={{ fontSize: '1.125rem', fontWeight: 'bold' }}>
-                              {formatMinutesToTime(d.timeRecordWorkMinutes ?? 0)}
+                              {formatMinutesToHHHMM(d.timeRecordWorkMinutes ?? 0)}
                             </div>
                           </div>
                           <div>
                             <div style={{ fontSize: fontSizes.medium, color: '#6b7280', marginBottom: '0.25rem' }}>有給時間</div>
                             <div style={{ fontSize: '1.125rem', fontWeight: 'bold' }}>
-                              {formatMinutesToTime(d.paidLeaveWorkMinutes ?? 0)}
+                              {formatMinutesToHHHMM(d.paidLeaveWorkMinutes ?? 0)}
                             </div>
                           </div>
                           <div />
@@ -3094,16 +3090,16 @@ export const EmployeePayroll: React.FC = () => {
                       {hasLaborBreakdown ? '稼働時間（合計）' : '稼働時間'}
                     </div>
                     <div style={{ fontSize: '1.125rem', fontWeight: 'bold' }}>
-                      {formatMinutesToTime(d.totalWorkHours)}
+                      {formatMinutesToHHHMM(d.totalWorkMinutes)}
                     </div>
                   </div>
                   <div>
                     <div style={{ fontSize: fontSizes.medium, color: '#6b7280', marginBottom: '0.25rem' }}>普通残業時間</div>
-                    <div style={{ fontSize: '1.125rem', fontWeight: 'bold' }}>{formatMinutesToTime(d.normalOvertime)}</div>
+                    <div style={{ fontSize: '1.125rem', fontWeight: 'bold' }}>{formatMinutesToHHHMM(d.normalOvertime)}</div>
                   </div>
                   <div>
                     <div style={{ fontSize: fontSizes.medium, color: '#6b7280', marginBottom: '0.25rem' }}>深夜残業時間</div>
-                    <div style={{ fontSize: '1.125rem', fontWeight: 'bold' }}>{formatMinutesToTime(d.lateNightOvertime)}</div>
+                    <div style={{ fontSize: '1.125rem', fontWeight: 'bold' }}>{formatMinutesToHHHMM(d.lateNightOvertime)}</div>
                   </div>
                       </div>
                     </>
@@ -3386,10 +3382,10 @@ export const EmployeePayroll: React.FC = () => {
                       type="text"
                       inputMode="text"
                       placeholder="hh:mm"
-                      value={totalWorkHoursInputValue !== '' ? totalWorkHoursInputValue : formatMinutesToTime(formData.totalWorkHours)}
+                      value={totalWorkMinutesInputValue !== '' ? totalWorkMinutesInputValue : formatMinutesToHHHMM(formData.totalWorkMinutes)}
                       onChange={(e) => {
                         const value = e.target.value;
-                        setTotalWorkHoursInputValue(value);
+                        setTotalWorkMinutesInputValue(value);
                         // hh:mm形式の入力を処理
                         const match = value.match(/^(\d{1,3}):?(\d{0,2})$/);
                         if (match) {
@@ -3397,32 +3393,32 @@ export const EmployeePayroll: React.FC = () => {
                           const minutes = parseInt(match[2] || '0', 10);
                           if (minutes < 60) {
                             const totalMinutes = hours * 60 + minutes;
-                            setFormData({ ...formData, totalWorkHours: totalMinutes });
+                            setFormData({ ...formData, totalWorkMinutes: totalMinutes });
                           }
                         } else if (value === '' || value === '0' || value === '0:') {
-                          setFormData({ ...formData, totalWorkHours: 0 });
+                          setFormData({ ...formData, totalWorkMinutes: 0 });
                         }
                       }}
                       onFocus={(e) => {
-                        if (totalWorkHoursInputValue === '') {
-                          setTotalWorkHoursInputValue(formatMinutesToTime(formData.totalWorkHours));
+                        if (totalWorkMinutesInputValue === '') {
+                          setTotalWorkMinutesInputValue(formatMinutesToHHHMM(formData.totalWorkMinutes));
                           e.target.select();
                         }
                       }}
                       onBlur={() => {
                         // フォーカスが外れたときに、正しい形式に整形
-                        const value = totalWorkHoursInputValue;
+                        const value = totalWorkMinutesInputValue;
                         const match = value.match(/^(\d{1,3}):?(\d{0,2})$/);
                         if (match) {
                           const hours = parseInt(match[1] || '0', 10);
                           const minutes = parseInt(match[2] || '0', 10);
                           const totalMinutes = hours * 60 + Math.min(minutes, 59);
-                          setFormData({ ...formData, totalWorkHours: totalMinutes });
+                          setFormData({ ...formData, totalWorkMinutes: totalMinutes });
                         }
-                        setTotalWorkHoursInputValue('');
+                        setTotalWorkMinutesInputValue('');
                         // 稼働時間を変更後、残業単価を再計算（パートタイムの場合）
                         if (employeeInfo?.employmentType === 'PART_TIME') {
-                          const finalMinutes = match ? (parseInt(match[1] || '0', 10) * 60 + Math.min(parseInt(match[2] || '0', 10), 59)) : formData.totalWorkHours;
+                          const finalMinutes = match ? (parseInt(match[1] || '0', 10) * 60 + Math.min(parseInt(match[2] || '0', 10), 59)) : formData.totalWorkMinutes;
                           const calculatedRate = calculateOvertimeRate(
                             employeeInfo,
                             formData.allowances || {},
@@ -3449,7 +3445,7 @@ export const EmployeePayroll: React.FC = () => {
                       type="text"
                       inputMode="text"
                       placeholder="hh:mm"
-                      value={normalOvertimeInputValue !== '' ? normalOvertimeInputValue : formatMinutesToTime(formData.normalOvertime)}
+                      value={normalOvertimeInputValue !== '' ? normalOvertimeInputValue : formatMinutesToHHHMM(formData.normalOvertime)}
                       onChange={(e) => {
                         const value = e.target.value;
                         setNormalOvertimeInputValue(value);
@@ -3468,7 +3464,7 @@ export const EmployeePayroll: React.FC = () => {
                       }}
                       onFocus={(e) => {
                         if (normalOvertimeInputValue === '') {
-                          setNormalOvertimeInputValue(formatMinutesToTime(formData.normalOvertime));
+                          setNormalOvertimeInputValue(formatMinutesToHHHMM(formData.normalOvertime));
                           e.target.select();
                         }
                       }}
@@ -3500,7 +3496,7 @@ export const EmployeePayroll: React.FC = () => {
                       type="text"
                       inputMode="text"
                       placeholder="hh:mm"
-                      value={lateNightOvertimeInputValue !== '' ? lateNightOvertimeInputValue : formatMinutesToTime(formData.lateNightOvertime)}
+                      value={lateNightOvertimeInputValue !== '' ? lateNightOvertimeInputValue : formatMinutesToHHHMM(formData.lateNightOvertime)}
                       onChange={(e) => {
                         const value = e.target.value;
                         setLateNightOvertimeInputValue(value);
@@ -3519,7 +3515,7 @@ export const EmployeePayroll: React.FC = () => {
                       }}
                       onFocus={(e) => {
                         if (lateNightOvertimeInputValue === '') {
-                          setLateNightOvertimeInputValue(formatMinutesToTime(formData.lateNightOvertime));
+                          setLateNightOvertimeInputValue(formatMinutesToHHHMM(formData.lateNightOvertime));
                           e.target.select();
                         }
                       }}
@@ -3602,7 +3598,7 @@ export const EmployeePayroll: React.FC = () => {
                             employeeInfo,
                             formData.allowances || {},
                             allowances,
-                            formData.totalWorkHours || 0,
+                            formData.totalWorkMinutes || 0,
                             formData.baseSalary
                           );
                           setOvertimeRate(calculatedRate);
@@ -3699,7 +3695,7 @@ export const EmployeePayroll: React.FC = () => {
                               employeeInfo,
                               formData.allowances,
                               allowances,
-                              formData.totalWorkHours || 0,
+                              formData.totalWorkMinutes || 0,
                               formData.baseSalary
                             );
                             setOvertimeRate(calculatedRate);

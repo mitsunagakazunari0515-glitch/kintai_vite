@@ -4,7 +4,7 @@
 
 import { apiRequest } from '../config/apiConfig';
 import { error as logError } from './logger';
-import { extractApiError, translateApiError } from './apiErrorTranslator';
+import { extractApiError, translateApiError, ApiRequestError } from './apiErrorTranslator';
 
 /**
  * 給与明細APIレスポンスの型定義
@@ -104,10 +104,7 @@ export const getPayrollList = async (
     if (!response.ok) {
       const apiError = await extractApiError(response);
       const errorMessage = translateApiError(apiError);
-      const error = new Error(errorMessage);
-      (error as any).status = apiError.statusCode;
-      (error as any).apiError = apiError;
-      throw error;
+      throw new ApiRequestError(errorMessage, { status: apiError.statusCode, apiError });
     }
 
     const data = await response.json();
@@ -141,10 +138,7 @@ export const getPayrollDetailByPeriod = async (
     if (!response.ok) {
       const apiError = await extractApiError(response);
       const errorMessage = translateApiError(apiError);
-      const error = new Error(errorMessage);
-      (error as any).status = apiError.statusCode;
-      (error as any).apiError = apiError;
-      throw error;
+      throw new ApiRequestError(errorMessage, { status: apiError.statusCode, apiError });
     }
 
     const data = await response.json();
@@ -170,10 +164,7 @@ export const getPayrollDetailById = async (
     if (!response.ok) {
       const apiError = await extractApiError(response);
       const errorMessage = translateApiError(apiError);
-      const error = new Error(errorMessage);
-      (error as any).status = apiError.statusCode;
-      (error as any).apiError = apiError;
-      throw error;
+      throw new ApiRequestError(errorMessage, { status: apiError.statusCode, apiError });
     }
 
     const data = await response.json();
@@ -204,10 +195,7 @@ export const createPayroll = async (payload: {
     if (!response.ok) {
       const apiError = await extractApiError(response);
       const errorMessage = translateApiError(apiError);
-      const error = new Error(errorMessage);
-      (error as any).status = apiError.statusCode;
-      (error as any).apiError = apiError;
-      throw error;
+      throw new ApiRequestError(errorMessage, { status: apiError.statusCode, apiError });
     }
   } catch (error) {
     logError('Failed to create payroll:', error);
@@ -239,10 +227,7 @@ export const updatePayroll = async (
     if (!response.ok) {
       const apiError = await extractApiError(response);
       const errorMessage = translateApiError(apiError);
-      const error = new Error(errorMessage);
-      (error as any).status = apiError.statusCode;
-      (error as any).apiError = apiError;
-      throw error;
+      throw new ApiRequestError(errorMessage, { status: apiError.statusCode, apiError });
     }
   } catch (error) {
     logError('Failed to update payroll:', error);

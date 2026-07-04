@@ -289,7 +289,7 @@ export const RequestApproval: React.FC = () => {
       isInitialMount.current = false;
     fetchApplications();
     }
-  }, []); // 初期表示時のみ実行
+  }, [fetchApplications]); // 初期表示時のみ実行（isInitialMountガードにより2回目以降は何もしない）
 
   // 検索ボタン押下時の処理
   const handleSearch = () => {

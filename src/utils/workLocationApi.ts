@@ -4,7 +4,7 @@
 
 import { apiRequest } from '../config/apiConfig';
 import { error as logError } from './logger';
-import { extractApiError, translateApiError } from './apiErrorTranslator';
+import { extractApiError, translateApiError, ApiRequestError } from './apiErrorTranslator';
 
 /**
  * 勤務拠点を表すインターフェース
@@ -72,10 +72,7 @@ export const getWorkLocations = async (
     if (!response.ok) {
       const apiError = await extractApiError(response);
       const errorMessage = translateApiError(apiError);
-      const error = new Error(errorMessage);
-      (error as any).status = apiError.statusCode;
-      (error as any).apiError = apiError;
-      throw error;
+      throw new ApiRequestError(errorMessage, { status: apiError.statusCode, apiError });
     }
 
     const data = await response.json();
@@ -98,10 +95,7 @@ export const getWorkLocation = async (workLocationId: string): Promise<WorkLocat
     if (!response.ok) {
       const apiError = await extractApiError(response);
       const errorMessage = translateApiError(apiError);
-      const error = new Error(errorMessage);
-      (error as any).status = apiError.statusCode;
-      (error as any).apiError = apiError;
-      throw error;
+      throw new ApiRequestError(errorMessage, { status: apiError.statusCode, apiError });
     }
 
     const data = await response.json();
@@ -132,10 +126,7 @@ export const createWorkLocation = async (
     if (!response.ok) {
       const apiError = await extractApiError(response);
       const errorMessage = translateApiError(apiError);
-      const error = new Error(errorMessage);
-      (error as any).status = apiError.statusCode;
-      (error as any).apiError = apiError;
-      throw error;
+      throw new ApiRequestError(errorMessage, { status: apiError.statusCode, apiError });
     }
 
     const data = await response.json();
@@ -162,10 +153,7 @@ export const updateWorkLocation = async (
     if (!response.ok) {
       const apiError = await extractApiError(response);
       const errorMessage = translateApiError(apiError);
-      const error = new Error(errorMessage);
-      (error as any).status = apiError.statusCode;
-      (error as any).apiError = apiError;
-      throw error;
+      throw new ApiRequestError(errorMessage, { status: apiError.statusCode, apiError });
     }
 
     const data = await response.json();
@@ -188,10 +176,7 @@ export const deleteWorkLocation = async (workLocationId: string): Promise<void> 
     if (!response.ok) {
       const apiError = await extractApiError(response);
       const errorMessage = translateApiError(apiError);
-      const error = new Error(errorMessage);
-      (error as any).status = apiError.statusCode;
-      (error as any).apiError = apiError;
-      throw error;
+      throw new ApiRequestError(errorMessage, { status: apiError.statusCode, apiError });
     }
   } catch (error) {
     logError('Failed to delete work location:', error);

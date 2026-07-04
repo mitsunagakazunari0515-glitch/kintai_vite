@@ -5,7 +5,7 @@
 
 import { apiRequest } from '../config/apiConfig';
 import { error as logError, warn } from './logger';
-import { extractApiError, translateApiError } from './apiErrorTranslator';
+import { extractApiError, translateApiError, ApiRequestError } from './apiErrorTranslator';
 
 /**
  * 従業員データのレスポンス型
@@ -76,10 +76,7 @@ export const createEmployee = async (payload: CreateEmployeeRequest): Promise<vo
     if (!response.ok) {
       const apiError = await extractApiError(response);
       const errorMessage = translateApiError(apiError);
-      const error = new Error(errorMessage);
-      (error as any).status = apiError.statusCode;
-      (error as any).apiError = apiError;
-      throw error;
+      throw new ApiRequestError(errorMessage, { status: apiError.statusCode, apiError });
     }
 
     // 登録APIはdataフィールドを含まない（statusCodeとmessageのみ）
@@ -108,10 +105,7 @@ export const updateEmployee = async (
     if (!response.ok) {
       const apiError = await extractApiError(response);
       const errorMessage = translateApiError(apiError);
-      const error = new Error(errorMessage);
-      (error as any).status = apiError.statusCode;
-      (error as any).apiError = apiError;
-      throw error;
+      throw new ApiRequestError(errorMessage, { status: apiError.statusCode, apiError });
     }
 
     // 更新APIはdataフィールドを含まない（statusCodeとmessageのみ）
@@ -135,10 +129,7 @@ export const getEmployees = async (): Promise<EmployeeResponse[]> => {
     if (!response.ok) {
       const apiError = await extractApiError(response);
       const errorMessage = translateApiError(apiError);
-      const error = new Error(errorMessage);
-      (error as any).status = apiError.statusCode;
-      (error as any).apiError = apiError;
-      throw error;
+      throw new ApiRequestError(errorMessage, { status: apiError.statusCode, apiError });
     }
 
     const data = await response.json();
@@ -187,10 +178,7 @@ export const getEmployee = async (employeeId: string): Promise<EmployeeResponse>
     if (!response.ok) {
       const apiError = await extractApiError(response);
       const errorMessage = translateApiError(apiError);
-      const error = new Error(errorMessage);
-      (error as any).status = apiError.statusCode;
-      (error as any).apiError = apiError;
-      throw error;
+      throw new ApiRequestError(errorMessage, { status: apiError.statusCode, apiError });
     }
 
     const data = await response.json();

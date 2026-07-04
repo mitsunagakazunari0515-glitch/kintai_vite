@@ -7,7 +7,7 @@
  *   - 拠点名、緯度、経度、許容半径、表示順の設定
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Snackbar } from '../../components/Snackbar';
 import { ConfirmModal } from '../../components/ConfirmModal';
 import { RegisterButton, UpdateButton, CancelButton, EditButton, DeleteButton } from '../../components/Button';
@@ -68,7 +68,7 @@ export const WorkLocationMaster: React.FC = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  const fetchWorkLocations = async (): Promise<WorkLocation[]> => {
+  const fetchWorkLocations = useCallback(async (): Promise<WorkLocation[]> => {
     setIsLoading(true);
     try {
       const response = await getWorkLocations(includeInactive);
@@ -82,11 +82,11 @@ export const WorkLocationMaster: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [includeInactive]);
 
   useEffect(() => {
     fetchWorkLocations();
-  }, [includeInactive]);
+  }, [fetchWorkLocations]);
 
   useEffect(() => {
     if (!editingId && !isLoading && !formData.name.trim()) {

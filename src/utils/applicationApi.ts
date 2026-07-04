@@ -5,7 +5,7 @@
 
 import { apiRequest } from '../config/apiConfig';
 import { error as logError } from './logger';
-import { extractApiError, translateApiError } from './apiErrorTranslator';
+import { extractApiError, translateApiError, ApiRequestError } from './apiErrorTranslator';
 
 /**
  * 統合申請を表すインターフェース（APIレスポンス用）
@@ -49,6 +49,27 @@ export interface ApplicationListResponse {
 }
 
 /**
+ * APIから返される変換前の統合申請データ。
+ * type: 'leave' | 'attendance'（UnifiedApplication.typeへ変換される前の値）
+ */
+interface RawApplicationItem {
+  requestId?: string;
+  id?: string;
+  type: 'leave' | 'attendance' | UnifiedApplication['type'];
+  employeeId: string;
+  employeeName: string;
+  status: UnifiedApplication['status'];
+  requestedAt: string;
+  startDate?: string;
+  endDate?: string;
+  days?: number;
+  leaveType?: NonNullable<UnifiedApplication['leaveData']>['leaveType'];
+  reason?: string;
+  isHalfDay?: boolean;
+  attendanceData?: UnifiedApplication['attendanceData'];
+}
+
+/**
  * 申請一覧取得
  * @param startYearMonth 開始年月（YYYY-MM形式、オプション）
  * @param endYearMonth 終了年月（YYYY-MM形式、オプション）
@@ -87,10 +108,7 @@ export const getApplicationList = async (
     if (!response.ok) {
       const apiError = await extractApiError(response);
       const errorMessage = translateApiError(apiError);
-      const error = new Error(errorMessage);
-      (error as any).status = apiError.statusCode;
-      (error as any).apiError = apiError;
-      throw error;
+      throw new ApiRequestError(errorMessage, { status: apiError.statusCode, apiError });
     }
 
     const data = await response.json();
@@ -98,12 +116,12 @@ export const getApplicationList = async (
     
     // APIレスポンスのrequestIdをidにマッピング、typeを変換、leaveData/attendanceDataを構造化
     if (responseData.requests && Array.isArray(responseData.requests)) {
-      responseData.requests = responseData.requests.map((req: any) => {
-        const mappedReq: any = {
+      responseData.requests = responseData.requests.map((req: RawApplicationItem) => {
+        const mappedReq: UnifiedApplication = {
           ...req,
-          id: req.requestId || req.id, // requestIdを優先的に使用、なければidを使用
+          id: req.requestId || req.id || '', // requestIdを優先的に使用、なければidを使用
           type: req.type === 'leave' ? 'leave_request' : req.type === 'attendance' ? 'attendance_correction_request' : req.type // APIの'leave'/'attendance'を'leave_request'/'attendance_correction_request'に変換
-        };
+        } as UnifiedApplication;
         
         // typeが'leave'の場合、leaveDataを構造化
         if (req.type === 'leave' && (req.startDate || req.endDate || req.leaveType)) {
@@ -114,7 +132,7 @@ export const getApplicationList = async (
             leaveType: req.leaveType,
             reason: req.reason,
             isHalfDay: req.isHalfDay || false
-          };
+          } as UnifiedApplication['leaveData'];
         }
         
         // typeが'attendance'の場合、attendanceDataを構造化（必要に応じて）
@@ -159,10 +177,7 @@ export const updateApplicationStatus = async (
     if (!response.ok) {
       const apiError = await extractApiError(response);
       const errorMessage = translateApiError(apiError);
-      const error = new Error(errorMessage);
-      (error as any).status = apiError.statusCode;
-      (error as any).apiError = apiError;
-      throw error;
+      throw new ApiRequestError(errorMessage, { status: apiError.statusCode, apiError });
     }
   } catch (error) {
     logError('Failed to update application status:', error);

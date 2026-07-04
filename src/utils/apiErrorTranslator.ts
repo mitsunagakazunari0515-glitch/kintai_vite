@@ -12,8 +12,36 @@ export interface ApiErrorResponse {
   error?: {
     code?: string;
     message?: string;
-    details?: any;
+    details?: Record<string, unknown>;
   };
+}
+
+/**
+ * APIリクエスト失敗時にスローされるエラー。
+ * HTTPステータスコードや元のAPIエラーレスポンスをプロパティとして保持します。
+ */
+export class ApiRequestError extends Error {
+  status?: number;
+  apiError?: ApiErrorResponse;
+  isUnauthorized?: boolean;
+  responseText?: string;
+
+  constructor(
+    message: string,
+    options?: {
+      status?: number;
+      apiError?: ApiErrorResponse;
+      isUnauthorized?: boolean;
+      responseText?: string;
+    }
+  ) {
+    super(message);
+    this.name = 'ApiRequestError';
+    this.status = options?.status;
+    this.apiError = options?.apiError;
+    this.isUnauthorized = options?.isUnauthorized;
+    this.responseText = options?.responseText;
+  }
 }
 
 /**
@@ -394,11 +422,11 @@ export const translateApiError = (error: unknown): string => {
         return 'アクセス権限がありません。';
       case 'NOT_FOUND':
         return 'リソースが見つかりませんでした。';
-      case 'VALIDATION_ERROR':
+      case 'VALIDATION_ERROR': {
         // バリデーションエラーの場合は詳細メッセージを返す
         // error.messageを優先的に使用
-        let errorMessage = apiError.error?.message || apiError.message || '';
-        
+        const errorMessage = apiError.error?.message || apiError.message || '';
+
         // 有給休暇残日数不足のエラーメッセージを日本語化
         if (errorMessage.includes('Insufficient paid leave balance')) {
           const match = errorMessage.match(/remaining: ([\d.]+) days, requested: ([\d.]+) days/);
@@ -409,7 +437,7 @@ export const translateApiError = (error: unknown): string => {
           }
           return '有給残日数が不足しています';
         }
-        
+
         // その他のエラーメッセージも日本語化
         if (errorMessage.includes('Invalid employee ID')) {
           return '従業員IDが正しくありません';
@@ -417,12 +445,12 @@ export const translateApiError = (error: unknown): string => {
         if (errorMessage.includes('Invalid application type')) {
           return '申請種別が正しくありません';
         }
-        
+
         // エラーメッセージがある場合は返す（英語のままでも可）
         if (errorMessage) {
           return errorMessage;
         }
-        
+
         if (apiError.error?.details) {
           const details = apiError.error.details;
           const firstError = Object.values(details)[0] as string[];
@@ -431,6 +459,7 @@ export const translateApiError = (error: unknown): string => {
           }
         }
         return '入力内容に誤りがあります。確認してください。';
+      }
       case 'CONFLICT':
         return 'データの競合が発生しました。既に存在する可能性があります。';
       case 'BAD_REQUEST':

@@ -14,7 +14,7 @@ export interface TableColumn<T> {
   /** ソート可能かどうか。デフォルトはtrue。 */
   sortable?: boolean;
   /** カスタムレンダリング関数。 */
-  render?: (value: any, row: T) => React.ReactNode;
+  render?: (value: unknown, row: T) => React.ReactNode;
   /** テキストの配置。デフォルトは'left'。 */
   align?: 'left' | 'center' | 'right';
   /** カラムの幅。 */
@@ -70,6 +70,7 @@ export interface TableProps<T> {
  * <Table data={employees} columns={columns} onSort={handleSort} />
  * ```
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- ジェネリック制約。unknownにするとインデックスシグネチャを持たない既存のインターフェース（Employee等）を型引数に渡せなくなるため any が必要
 export function Table<T extends Record<string, any>>({
   data,
   columns,

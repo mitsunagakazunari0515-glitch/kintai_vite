@@ -241,7 +241,7 @@ export const AttendanceList: React.FC = () => {
       const response = await getAttendanceList(undefined, start, end);
       
       // 従業員一覧を取得して、従業員IDから従業員名をマッピング
-      let employeeNameMap: Record<string, string> = {};
+      const employeeNameMap: Record<string, string> = {};
       try {
         const employees = await getEmployees();
         employees.forEach(emp => {

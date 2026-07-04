@@ -11,6 +11,14 @@ import { useGoogleMapsScript } from '../hooks/useGoogleMapsScript';
 import { fontSizes } from '../config/fontSizes';
 import { error as logError } from '../utils/logger';
 
+// @types/google.maps は google.maps.* を型としてのみ提供するため、
+// window.google 経由でランタイムの値として参照できるように拡張する
+declare global {
+  interface Window {
+    google: typeof google;
+  }
+}
+
 export interface LocationResult {
   latitude: number;
   longitude: number;
@@ -41,17 +49,18 @@ export const GoogleMapLocationPicker: React.FC<GoogleMapLocationPickerProps> = (
 }) => {
   const autocompleteContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<HTMLDivElement>(null);
-  const autocompleteRef = useRef<any>(null);
-  const mapInstanceRef = useRef<any>(null);
-  const markerRef = useRef<any>(null);
+  const autocompleteRef = useRef<google.maps.places.PlaceAutocompleteElement | null>(null);
+  const mapInstanceRef = useRef<google.maps.Map | null>(null);
+  const markerRef = useRef<google.maps.Marker | null>(null);
   const onLocationChangeRef = useRef(onLocationChange);
   onLocationChangeRef.current = onLocationChange;
   const { isLoaded, error } = useGoogleMapsScript();
 
   useEffect(() => {
-    if (!isLoaded || !autocompleteContainerRef.current || !mapRef.current || !(window as any).google) return;
+    const autocompleteContainer = autocompleteContainerRef.current;
+    if (!isLoaded || !autocompleteContainer || !mapRef.current || !window.google) return;
 
-    const google = (window as any).google;
+    const google = window.google;
     const hasInitialLocation = latitude !== 0 && longitude !== 0;
     const center = hasInitialLocation ? { lat: latitude, lng: longitude } : DEFAULT_CENTER;
 
@@ -102,17 +111,17 @@ export const GoogleMapLocationPicker: React.FC<GoogleMapLocationPickerProps> = (
     placeAutocomplete.style.borderRadius = '4px';
     placeAutocomplete.style.setProperty('--gmp-mat-color-surface', '#ffffff');
     placeAutocomplete.style.setProperty('--gmp-mat-color-on-surface', '#374151');
-    autocompleteContainerRef.current.innerHTML = '';
-    autocompleteContainerRef.current.appendChild(placeAutocomplete);
+    autocompleteContainer.innerHTML = '';
+    autocompleteContainer.appendChild(placeAutocomplete);
     autocompleteRef.current = placeAutocomplete;
 
-    const handleSelect = async (e: { placePrediction: { toPlace: () => Promise<any> } }) => {
+    const handleSelect = async (e: google.maps.places.PlacePredictionSelectEvent) => {
       try {
         const place = await e.placePrediction.toPlace();
         await place.fetchFields({ fields: ['formattedAddress', 'location'] });
         if (place.location) {
-          const lat = typeof place.location.lat === 'function' ? place.location.lat() : place.location.lat;
-          const lng = typeof place.location.lng === 'function' ? place.location.lng() : place.location.lng;
+          const lat = place.location.lat();
+          const lng = place.location.lng();
           notify({
             latitude: lat,
             longitude: lng,
@@ -128,11 +137,11 @@ export const GoogleMapLocationPicker: React.FC<GoogleMapLocationPickerProps> = (
       }
     };
 
-    placeAutocomplete.addEventListener('gmp-select', handleSelect);
+    placeAutocomplete.addEventListener('gmp-select', handleSelect as unknown as EventListener);
 
     return () => {
-      placeAutocomplete.removeEventListener('gmp-select', handleSelect);
-      if (autocompleteContainerRef.current?.contains(placeAutocomplete)) {
+      placeAutocomplete.removeEventListener('gmp-select', handleSelect as unknown as EventListener);
+      if (autocompleteContainer.contains(placeAutocomplete)) {
         placeAutocomplete.remove();
       }
       if (markerRef.current) {
@@ -142,6 +151,10 @@ export const GoogleMapLocationPicker: React.FC<GoogleMapLocationPickerProps> = (
       autocompleteRef.current = null;
       mapInstanceRef.current = null;
     };
+    // 地図・マーカー・検索欄の初期化は isLoaded/placeholder が変わった時のみ行う。
+    // latitude/longitudeの変更時にこの地図を作り直さないよう、意図的に依存配列から除外している
+    // （ピン位置の更新は下のuseEffectでmarker.setPosition()により行う）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoaded, placeholder]);
 
   useEffect(() => {

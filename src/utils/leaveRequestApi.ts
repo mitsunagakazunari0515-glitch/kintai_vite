@@ -4,7 +4,7 @@
 
 import { apiRequest } from '../config/apiConfig';
 import { error as logError } from './logger';
-import { extractApiError, translateApiError } from './apiErrorTranslator';
+import { extractApiError, translateApiError, ApiRequestError } from './apiErrorTranslator';
 
 /**
  * 休暇申請を表すインターフェース（APIレスポンス用）
@@ -87,10 +87,7 @@ export const getLeaveRequestList = async (
     if (!response.ok) {
       const apiError = await extractApiError(response);
       const errorMessage = translateApiError(apiError);
-      const error = new Error(errorMessage);
-      (error as any).status = apiError.statusCode;
-      (error as any).apiError = apiError;
-      throw error;
+      throw new ApiRequestError(errorMessage, { status: apiError.statusCode, apiError });
     }
 
     const data = await response.json();
@@ -115,10 +112,7 @@ export const getLeaveRequestDetail = async (requestId: string): Promise<LeaveReq
     if (!response.ok) {
       const apiError = await extractApiError(response);
       const errorMessage = translateApiError(apiError);
-      const error = new Error(errorMessage);
-      (error as any).status = apiError.statusCode;
-      (error as any).apiError = apiError;
-      throw error;
+      throw new ApiRequestError(errorMessage, { status: apiError.statusCode, apiError });
     }
 
     const data = await response.json();
@@ -146,10 +140,7 @@ export const createLeaveRequest = async (
     if (!response.ok) {
       const apiError = await extractApiError(response);
       const errorMessage = translateApiError(apiError);
-      const error = new Error(errorMessage);
-      (error as any).status = apiError.statusCode;
-      (error as any).apiError = apiError;
-      throw error;
+      throw new ApiRequestError(errorMessage, { status: apiError.statusCode, apiError });
     }
 
     const data = await response.json();
@@ -187,10 +178,7 @@ export const updateLeaveRequest = async (
     if (!response.ok) {
       const apiError = await extractApiError(response);
       const errorMessage = translateApiError(apiError);
-      const error = new Error(errorMessage);
-      (error as any).status = apiError.statusCode;
-      (error as any).apiError = apiError;
-      throw error;
+      throw new ApiRequestError(errorMessage, { status: apiError.statusCode, apiError });
     }
 
     // API仕様書によると、レスポンスは`{"statusCode": 200, "message": "success"}`のみ
@@ -223,10 +211,7 @@ export const deleteLeaveRequest = async (requestId: string): Promise<void> => {
     if (!response.ok) {
       const apiError = await extractApiError(response);
       const errorMessage = translateApiError(apiError);
-      const error = new Error(errorMessage);
-      (error as any).status = apiError.statusCode;
-      (error as any).apiError = apiError;
-      throw error;
+      throw new ApiRequestError(errorMessage, { status: apiError.statusCode, apiError });
     }
 
     // API仕様書によると、レスポンスは204 No Content
@@ -251,10 +236,7 @@ export const approveLeaveRequest = async (requestId: string): Promise<LeaveReque
     if (!response.ok) {
       const apiError = await extractApiError(response);
       const errorMessage = translateApiError(apiError);
-      const error = new Error(errorMessage);
-      (error as any).status = apiError.statusCode;
-      (error as any).apiError = apiError;
-      throw error;
+      throw new ApiRequestError(errorMessage, { status: apiError.statusCode, apiError });
     }
 
     const data = await response.json();
@@ -284,10 +266,7 @@ export const rejectLeaveRequest = async (
     if (!response.ok) {
       const apiError = await extractApiError(response);
       const errorMessage = translateApiError(apiError);
-      const error = new Error(errorMessage);
-      (error as any).status = apiError.statusCode;
-      (error as any).apiError = apiError;
-      throw error;
+      throw new ApiRequestError(errorMessage, { status: apiError.statusCode, apiError });
     }
 
     const data = await response.json();

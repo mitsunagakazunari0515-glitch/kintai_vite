@@ -10,7 +10,7 @@
  *   - 労働時間の自動計算
  */
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useGeolocation } from '../../hooks/useGeolocation';
@@ -240,13 +240,13 @@ export const Attendance: React.FC = () => {
   
   // 認可APIから取得したemployeeIdを使用（userIdはCognitoのユーザーIDで、APIが期待するemployeeIdとは異なる）
   // URLパラメータにemployeeIdが指定されている場合はそれを使用（管理者側から閲覧する場合）
-  const getEmployeeId = (): string | null => {
+  const getEmployeeId = useCallback((): string | null => {
     if (employeeIdParam) {
       return employeeIdParam;
     }
     const userInfo = getUserInfo();
     return userInfo.employeeId;
-  };
+  }, [employeeIdParam]);
 
   const [logs, setLogs] = useState<AttendanceLog[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false); // 初期表示時はAPIを呼ばないため、falseに変更
@@ -284,7 +284,7 @@ export const Attendance: React.FC = () => {
       }
     };
     fetchEmployee();
-  }, []);
+  }, [getEmployeeId]);
 
   // 有給残日数の設定（実際の実装ではバックエンドから取得）
   const totalPaidLeaveDays = 20; // 年間有給日数
@@ -379,7 +379,7 @@ export const Attendance: React.FC = () => {
     };
 
     fetchTodayAttendance();
-  }, [viewMode]); // viewModeが'stamp'の時に実行
+  }, [viewMode, getEmployeeId]); // viewModeが'stamp'の時に実行
 
   // 出勤簿タブ：検索年月で勤怠記録一覧取得APIを呼び出す
   useEffect(() => {
@@ -453,7 +453,7 @@ export const Attendance: React.FC = () => {
     };
 
     fetchMonthAttendance();
-  }, [viewMode, selectedYear, selectedMonth]); // viewModeが'list'の時、またはselectedYear/selectedMonthが変更された時に実行
+  }, [viewMode, selectedYear, selectedMonth, getEmployeeId]); // viewModeが'list'の時、またはselectedYear/selectedMonthが変更された時に実行
 
   useEffect(() => {
     const timer = setInterval(() => {

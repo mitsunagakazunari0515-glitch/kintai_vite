@@ -93,7 +93,7 @@ export const LeaveRequest: React.FC = () => {
         // APIから返される英語コード（paid, special, sick, absence, other）を日本語に変換
         // APIから返されるステータスコード（pending, approved, rejected, deleted）を日本語に変換
         const convertedRequests: LeaveRequest[] = response.requests.map(req => ({
-          id: req.id || (req as any).leaveRequestId || '', // idがundefinedの場合、leaveRequestIdをフォールバックとして使用
+          id: req.id || (req as unknown as { leaveRequestId?: string }).leaveRequestId || '', // idがundefinedの場合、leaveRequestIdをフォールバックとして使用
           employeeId: req.employeeId,
           startDate: req.startDate,
           endDate: req.endDate,

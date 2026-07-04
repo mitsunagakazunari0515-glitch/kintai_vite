@@ -162,7 +162,7 @@ export const EmployeeList: React.FC = () => {
               // 保存エラーは無視（ログは不要）
             }
           }
-        } catch (allowanceError: any) {
+        } catch (allowanceError) {
           // 手当マスタ取得エラーは警告として記録するが、従業員一覧の表示は続行する
           logError('Failed to fetch allowances:', allowanceError);
           // エラー時はダミーデータを使用する（既に初期値として設定済み）
@@ -174,10 +174,10 @@ export const EmployeeList: React.FC = () => {
           if (isMountedRef.current) {
             setWorkLocations(workLocationResponse.workLocations.map(w => ({ id: w.id, name: w.name })));
           }
-        } catch (workLocationError: any) {
+        } catch (workLocationError) {
           logError('Failed to fetch work locations:', workLocationError);
         }
-      } catch (error: any) {
+      } catch (error) {
         logError('Failed to fetch employees:', error);
         const errorMessage = translateApiError(error);
         
@@ -232,7 +232,6 @@ export const EmployeeList: React.FC = () => {
         logError('Unhandled error in fetchEmployees (cleanup):', error);
       });
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // 依存配列を空にして、マウント時のみ実行（React Strict Modeによる2回目の実行はhasFetchedRefで防ぐ）
   
   const [isSearchExpanded, setIsSearchExpanded] = useState<boolean>(false); // モバイル時の検索条件の展開状態

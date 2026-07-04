@@ -4,7 +4,7 @@
 
 import { apiRequest } from '../config/apiConfig';
 import { error as logError } from './logger';
-import { extractApiError, translateApiError } from './apiErrorTranslator';
+import { extractApiError, translateApiError, ApiRequestError } from './apiErrorTranslator';
 
 /**
  * 手当マスタを表すインターフェース
@@ -53,10 +53,7 @@ export const getAllowances = async (): Promise<AllowanceListResponse> => {
     if (!response.ok) {
       const apiError = await extractApiError(response);
       const errorMessage = translateApiError(apiError);
-      const error = new Error(errorMessage);
-      (error as any).status = apiError.statusCode;
-      (error as any).apiError = apiError;
-      throw error;
+      throw new ApiRequestError(errorMessage, { status: apiError.statusCode, apiError });
     }
 
     const data = await response.json();
@@ -81,10 +78,7 @@ export const getAllowance = async (allowanceId: string): Promise<Allowance> => {
     if (!response.ok) {
       const apiError = await extractApiError(response);
       const errorMessage = translateApiError(apiError);
-      const error = new Error(errorMessage);
-      (error as any).status = apiError.statusCode;
-      (error as any).apiError = apiError;
-      throw error;
+      throw new ApiRequestError(errorMessage, { status: apiError.statusCode, apiError });
     }
 
     const data = await response.json();
@@ -118,39 +112,14 @@ export const createAllowance = async (payload: CreateAllowanceRequest): Promise<
     });
 
     if (!response.ok) {
-      // extractApiErrorがresponseを読み取るため、先にcloneを作成
-      const clonedResponse = response.clone();
-      
-      try {
-        const apiError = await extractApiError(clonedResponse);
-        const errorMessage = translateApiError(apiError);
-        const error = new Error(errorMessage);
-        (error as any).status = apiError.statusCode;
-        (error as any).apiError = apiError;
-        throw error;
-      } catch (parseError: any) {
-        // extractApiErrorが失敗した場合（レスポンスがJSON形式でない場合など）
-        logError('createAllowance: Failed to parse error response:', parseError);
-        
-        // 元のレスポンスを読み取って詳細を確認
-        let responseText: string;
-        try {
-          responseText = await response.text();
-        } catch (textError) {
-          logError('createAllowance: Failed to read error response body:', textError);
-          responseText = '';
-        }
-        
-        const error = new Error(`手当マスタの登録に失敗しました (HTTP ${response.status})`);
-        (error as any).status = response.status;
-        (error as any).responseText = responseText;
-        throw error;
-      }
+      const apiError = await extractApiError(response);
+      const errorMessage = translateApiError(apiError);
+      throw new ApiRequestError(errorMessage, { status: apiError.statusCode, apiError });
     }
 
     const responseText = await response.text();
     
-    let data: any;
+    let data: Partial<Allowance> & { data?: Allowance };
     try {
       data = JSON.parse(responseText);
     } catch (parseError) {
@@ -163,7 +132,7 @@ export const createAllowance = async (payload: CreateAllowanceRequest): Promise<
       return data.data;
     } else if (data.id) {
       // 直接オブジェクトが返される場合（API仕様書通りの形式）
-      return data;
+      return data as Allowance;
     } else {
       logError('createAllowance: Unexpected response structure:', data);
       throw new Error('予期しないレスポンス形式です');
@@ -193,10 +162,7 @@ export const updateAllowance = async (
     if (!response.ok) {
       const apiError = await extractApiError(response);
       const errorMessage = translateApiError(apiError);
-      const error = new Error(errorMessage);
-      (error as any).status = apiError.statusCode;
-      (error as any).apiError = apiError;
-      throw error;
+      throw new ApiRequestError(errorMessage, { status: apiError.statusCode, apiError });
     }
 
     const data = await response.json();
@@ -220,10 +186,7 @@ export const deleteAllowance = async (allowanceId: string): Promise<void> => {
     if (!response.ok) {
       const apiError = await extractApiError(response);
       const errorMessage = translateApiError(apiError);
-      const error = new Error(errorMessage);
-      (error as any).status = apiError.statusCode;
-      (error as any).apiError = apiError;
-      throw error;
+      throw new ApiRequestError(errorMessage, { status: apiError.statusCode, apiError });
     }
   } catch (error) {
     logError('Failed to delete allowance:', error);

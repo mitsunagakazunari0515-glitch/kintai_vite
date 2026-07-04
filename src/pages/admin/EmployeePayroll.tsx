@@ -885,6 +885,9 @@ export const EmployeePayroll: React.FC = () => {
       netPay
     }));
     }
+    // formData全体を依存配列に含めると、このeffect自身が更新するtotalEarnings/totalDeductions/netPayの
+    // 変更でも再実行されてしまうため、計算に使用する項目のみを意図的に依存配列に指定している
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     recordType,
     formData?.baseSalary,
@@ -908,6 +911,9 @@ export const EmployeePayroll: React.FC = () => {
         netPay
       }));
     }
+    // bonusFormData全体を依存配列に含めると、このeffect自身が更新するtotalEarnings/totalDeductions/netPayの
+    // 変更でも再実行されてしまうため、計算に使用する項目のみを意図的に依存配列に指定している
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     recordType,
     bonusFormData?.bonus,
@@ -1583,7 +1589,7 @@ export const EmployeePayroll: React.FC = () => {
         
         // 一覧を再取得
         const records = await getPayrollList(employeeId, searchFiscalYear);
-        const employee = dummyEmployees.find(emp => emp.id === employeeId) as any;
+        const employee = dummyEmployees.find(emp => emp.id === employeeId);
         const mappedRecords: PayrollRecord[] = records.map(record => {
           const converted = convertPayrollListResponseToRecord(
             record,
@@ -1734,7 +1740,7 @@ export const EmployeePayroll: React.FC = () => {
         
         // 一覧を再取得
         const records = await getPayrollList(employeeId, searchFiscalYear);
-        const employee = dummyEmployees.find(emp => emp.id === employeeId) as any;
+        const employee = dummyEmployees.find(emp => emp.id === employeeId);
         const mappedRecords: PayrollRecord[] = records.map(record => {
           const converted = convertPayrollListResponseToRecord(
             record,
@@ -1967,37 +1973,34 @@ export const EmployeePayroll: React.FC = () => {
       return bValue - aValue;
     }
     
-    let aValue: any;
-    let bValue: any;
-    
     if (sortKey === 'period') {
-      aValue = getPeriodSortValue(a.period);
-      bValue = getPeriodSortValue(b.period);
+      const aValue = getPeriodSortValue(a.period);
+      const bValue = getPeriodSortValue(b.period);
       return sortOrder === 'asc' ? aValue - bValue : bValue - aValue;
     }
-    
+
     if (sortKey === 'totalEarnings') {
-      aValue = (a.type === 'bonus' ? a.bonusDetail?.totalEarnings : a.detail?.totalEarnings) || 0;
-      bValue = (b.type === 'bonus' ? b.bonusDetail?.totalEarnings : b.detail?.totalEarnings) || 0;
+      const aValue = (a.type === 'bonus' ? a.bonusDetail?.totalEarnings : a.detail?.totalEarnings) || 0;
+      const bValue = (b.type === 'bonus' ? b.bonusDetail?.totalEarnings : b.detail?.totalEarnings) || 0;
       return sortOrder === 'asc' ? aValue - bValue : bValue - aValue;
     }
-    
+
     if (sortKey === 'totalDeductions') {
-      aValue = (a.type === 'bonus' ? a.bonusDetail?.totalDeductions : a.detail?.totalDeductions) || 0;
-      bValue = (b.type === 'bonus' ? b.bonusDetail?.totalDeductions : b.detail?.totalDeductions) || 0;
+      const aValue = (a.type === 'bonus' ? a.bonusDetail?.totalDeductions : a.detail?.totalDeductions) || 0;
+      const bValue = (b.type === 'bonus' ? b.bonusDetail?.totalDeductions : b.detail?.totalDeductions) || 0;
       return sortOrder === 'asc' ? aValue - bValue : bValue - aValue;
     }
-    
+
     if (sortKey === 'netPay') {
-      aValue = (a.type === 'bonus' ? a.bonusDetail?.netPay : a.detail?.netPay) || 0;
-      bValue = (b.type === 'bonus' ? b.bonusDetail?.netPay : b.detail?.netPay) || 0;
+      const aValue = (a.type === 'bonus' ? a.bonusDetail?.netPay : a.detail?.netPay) || 0;
+      const bValue = (b.type === 'bonus' ? b.bonusDetail?.netPay : b.detail?.netPay) || 0;
       return sortOrder === 'asc' ? aValue - bValue : bValue - aValue;
     }
-    
+
     if (sortKey === 'updatedAt') {
-      aValue = a.updatedAt || '';
-      bValue = b.updatedAt || '';
-      return sortOrder === 'asc' 
+      const aValue = a.updatedAt || '';
+      const bValue = b.updatedAt || '';
+      return sortOrder === 'asc'
         ? aValue.localeCompare(bValue)
         : bValue.localeCompare(aValue);
     }

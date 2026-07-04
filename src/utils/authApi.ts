@@ -4,7 +4,7 @@
 
 import { apiRequest } from '../config/apiConfig';
 import { error as logError } from './logger';
-import { extractApiError, translateApiError } from './apiErrorTranslator';
+import { extractApiError, translateApiError, ApiRequestError } from './apiErrorTranslator';
 
 /**
  * 認可情報を表すインターフェース
@@ -34,12 +34,7 @@ export const getAuthorization = async (): Promise<AuthorizationResponse> => {
     if (!response.ok) {
       const apiError = await extractApiError(response);
       const errorMessage = translateApiError(apiError);
-      const error = new Error(errorMessage);
-      // エラー情報を保持
-      (error as any).status = apiError.statusCode;
-      (error as any).isUnauthorized = apiError.statusCode === 401;
-      (error as any).apiError = apiError;
-      throw error;
+      throw new ApiRequestError(errorMessage, { status: apiError.statusCode, isUnauthorized: apiError.statusCode === 401, apiError });
     }
 
     const data = await response.json();
@@ -63,11 +58,7 @@ export const refreshAuthorization = async (): Promise<AuthorizationResponse> => 
     if (!response.ok) {
       const apiError = await extractApiError(response);
       const errorMessage = translateApiError(apiError);
-      const error = new Error(errorMessage);
-      // エラー情報を保持
-      (error as any).status = apiError.statusCode;
-      (error as any).apiError = apiError;
-      throw error;
+      throw new ApiRequestError(errorMessage, { status: apiError.statusCode, apiError });
     }
 
     const data = await response.json();

@@ -19,6 +19,8 @@ import { error as logError, warn as logWarn } from './logger';
  */
 export const isIso88591Only = (str: string): boolean => {
   // Unicode範囲 0x0000-0x00FF（ISO-8859-1）のみかチェック
+  // ISO-8859-1は制御文字（0x00-0x1F等）も含む範囲のため、制御文字チェックを意図的に含む
+  // eslint-disable-next-line no-control-regex
   return !/[^\u0000-\u00FF]/.test(str);
 };
 

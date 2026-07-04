@@ -204,7 +204,7 @@ export const EmployeeRegistration: React.FC = () => {
         } catch (storageError) {
           // 保存エラーは無視（ログは不要）
         }
-      } catch (error: any) {
+      } catch (error) {
         logError('Failed to load allowances:', error);
         const errorMessage = translateApiError(error);
         setSnackbar({ message: `手当マスタの取得に失敗しました: ${errorMessage}`, type: 'error' });

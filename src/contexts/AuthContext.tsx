@@ -730,7 +730,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
         
         if (response.ok) {
-          let outputs = await response.json();
+          const outputs = await response.json();
           log('📋 Loaded Amplify outputs:', outputs);
           
           // 必要な設定が含まれているか確認

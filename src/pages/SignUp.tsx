@@ -72,7 +72,7 @@ export const SignUp: React.FC = () => {
     if (!/(?=.*[0-9])/.test(password)) {
       return 'パスワードには数字が含まれている必要があります';
     }
-    if (!/(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?])/.test(password)) {
+    if (!/(?=.*[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?])/.test(password)) {
       return 'パスワードには記号が含まれている必要があります';
     }
     return null;

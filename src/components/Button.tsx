@@ -236,7 +236,7 @@ export const Button: React.FC<ButtonProps> = ({
   const baseStyle = getBaseStyle();
   const variantStyle = getVariantStyle();
   // props.styleを最後に適用して、variantStyleの重要なプロパティを確実に保持
-  const { backgroundColor, border, color, ...restStyle } = baseStyle;
+  const { backgroundColor: _backgroundColor, border, color, ...restStyle } = baseStyle;
   const buttonStyle: React.CSSProperties = {
     ...restStyle,
     ...variantStyle,
@@ -569,7 +569,7 @@ export const ViewButton: React.FC<Omit<ButtonProps, 'variant'>> = ({ iconSize = 
  * @param {Omit<ButtonProps, 'variant'>} props - ボタンのプロパティ。
  * @returns {JSX.Element} 新規登録ボタンコンポーネント。
  */
-export const NewRegisterButton: React.FC<Omit<ButtonProps, 'variant'>> = ({ iconSize = 18, ...props }) => {
+export const NewRegisterButton: React.FC<Omit<ButtonProps, 'variant'>> = ({ iconSize: _iconSize = 18, ...props }) => {
   return (
     <Button 
       variant="primary" 
@@ -612,13 +612,13 @@ export const PdfExportButton: React.FC<Omit<ButtonProps, 'variant'>> = ({ iconSi
         e.currentTarget.style.backgroundColor = '#fee2e2';
         e.currentTarget.style.borderColor = '#b91c1c';
         e.currentTarget.style.color = '#b91c1c';
-        props.onMouseEnter?.(e as any);
+        props.onMouseEnter?.(e);
       }}
       onMouseLeave={(e) => {
         e.currentTarget.style.backgroundColor = 'white';
         e.currentTarget.style.borderColor = '#dc2626';
         e.currentTarget.style.color = '#dc2626';
-        props.onMouseLeave?.(e as any);
+        props.onMouseLeave?.(e);
       }}
     >
       <PdfIcon size={iconSize} color="#dc2626" />
@@ -781,11 +781,11 @@ export const RejectButton: React.FC<Omit<ButtonProps, 'variant'> & { isTableButt
       }}
       onMouseEnter={(e) => {
         e.currentTarget.style.backgroundColor = '#4b5563';
-        props.onMouseEnter?.(e as any);
+        props.onMouseEnter?.(e);
       }}
       onMouseLeave={(e) => {
         e.currentTarget.style.backgroundColor = '#6b7280';
-        props.onMouseLeave?.(e as any);
+        props.onMouseLeave?.(e);
       }}
     >
       却下

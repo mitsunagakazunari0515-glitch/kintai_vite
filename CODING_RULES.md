@@ -39,3 +39,23 @@
 export async function fetchUser(userId: string, includeHistory: boolean): Promise<User> {
     // ... implementation
 }
+```
+
+---
+
+## 3. テストコード（Vitest + Testing Library）
+
+2026-07-05よりVitestによる単体テスト環境を導入しています。仕様駆動開発の詳細フロー
+（仕様書更新→製造→単体テスト→結合テスト）は、統合ワークスペースリポジトリの
+`docs/DEVELOPMENT_WORKFLOW.md` を参照してください。ここではファイル配置・記述スタイルのルールのみ定めます。
+
+1. **配置**: テスト対象ファイルと同じディレクトリに `Foo.test.ts` / `Foo.test.tsx` として置く
+   （`__tests__/` ディレクトリに隔離しない）。
+2. **import**: `vite.config.ts` の `test.globals` は `false` にしているため、
+   `describe`/`it`/`expect`/`vi` 等は毎回 `import { ... } from 'vitest'` で明示的にimportする。
+3. **コンポーネントテスト**: `@testing-library/react` の `render`/`screen` と
+   `@testing-library/user-event` を使い、内部実装ではなく画面上の見た目・振る舞いを検証する。
+   `render()` は各テスト後に `src/test/setup.ts` の `afterEach(cleanup)` で自動アンマウントされる。
+4. **何をテストするか**: `attendance-workspace/docs/` の設計書に明記された振る舞い
+   （エラーメッセージ変換、ソート順、バリデーション等）を優先する。CSSの見た目はテスト対象外でよい。
+5. **実行**: `npm run test`（1回実行）/ `npm run test:watch` / `npm run test:coverage`

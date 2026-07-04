@@ -24,7 +24,7 @@ if (existsSync(devSourceFile)) {
     console.warn('⚠ Failed to copy amplify_outputs.json:', error.message);
   }
 } else {
-  console.warn('⚠ amplify_outputs.json not found. Run "npx ampx sandbox" to generate it.');
+  console.warn('⚠ amplify_outputs.json not found. Please place a valid Cognito config file at the project root.');
 }
 
 // 本番環境用: amplify_outputs.production.json（手動で作成する必要がある）

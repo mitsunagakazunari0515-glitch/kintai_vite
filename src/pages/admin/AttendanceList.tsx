@@ -606,7 +606,7 @@ export const AttendanceList: React.FC = () => {
             cursor: 'pointer'
           }}
         >
-          ＋ 勤怠を追加（打刻忘れの後入力）
+          ＋ 勤怠を追加
         </button>
       </div>
 

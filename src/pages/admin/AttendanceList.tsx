@@ -1450,9 +1450,6 @@ export const AttendanceList: React.FC = () => {
                       <option value="weekday">通常出勤（所定労働・残業をつけない）</option>
                       <option value="holiday">休日出勤（全労働時間を残業扱い）</option>
                     </select>
-                    <p style={{ marginTop: '0.25rem', fontSize: fontSizes.small, color: '#6b7280' }}>
-                      例: 通常営業になった土曜は「通常出勤」を選ぶと残業代がつきません。
-                    </p>
                   </div>
 
                   <div style={{ marginBottom: '1rem' }}>

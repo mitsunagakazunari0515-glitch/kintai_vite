@@ -29,7 +29,7 @@ import { getPayrollList, getPayrollDetailByPeriod, getPayrollDetailById, createP
 import { getStatementTypeLabel } from '../../utils/codeTranslator';
 import { getAllowances } from '../../utils/allowanceApi';
 import { getDeductions } from '../../utils/deductionApi';
-import { getAttendanceMyRecords, type AttendanceLog } from '../../utils/attendanceApi';
+import { getAttendanceMyRecords, isHolidayWorkLog, type AttendanceLog } from '../../utils/attendanceApi';
 import { getPayrollPeriodBounds, mergePayrollPeriodSummary } from '../../utils/payrollPeriod';
 import { getEmployee, EmployeeResponse } from '../../utils/employeeApi';
 
@@ -666,11 +666,9 @@ export const EmployeePayroll: React.FC = () => {
         const actualWorkHoursMinutes = mergedSummary.actualWorkHours;
         const actualOvertimeHours = combinedLogs.reduce((sum, log) => sum + (log.overtimeMinutes ?? 0), 0);
         const lateNightOvertime = combinedLogs.reduce((sum, log) => sum + (log.lateNightMinutes ?? 0), 0);
-        const holidayWorkDays = combinedLogs.filter(log => {
-          if (!log.clockIn || !log.clockOut) return false;
-          const day = new Date(log.workDate).getDay();
-          return day === 0 || day === 6; // 日曜=0, 土曜=6
-        }).length;
+        // 休日出勤日数はバックエンドが返す isHolidayWork（dayTypeOverride 反映済みの確定判定）を使う。
+        // フロント独自の曜日判定（二重計算）を排除し、土曜の通常出勤（weekday扱い）も正しく除外される。
+        const holidayWorkDays = combinedLogs.filter(isHolidayWorkLog).length;
 
         // 有給・有給残はAPIの当月サマリーを参照（期間別集計はバックエンド対応が望ましい）
         const summary = currentAttendanceResponse.summary;

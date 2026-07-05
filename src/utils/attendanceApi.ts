@@ -28,6 +28,14 @@ export interface BreakRequest {
  * 勤怠記録を表すインターフェース（APIレスポンス用）
  * statusはAPIから返される英語コード（not_started, working, on_break, completed）
  */
+/**
+ * 休日/平日扱いの上書き区分。
+ * - `'weekday'`: 所定労働扱い（土日でも残業をつけない。例: GW明けの通常営業土曜）
+ * - `'holiday'`: 休日出勤扱い（平日でも全労働時間を残業扱い）
+ * - `null`/未指定: 曜日で自動判定（従来動作。土日=休日出勤扱い）
+ */
+export type DayTypeOverride = 'weekday' | 'holiday';
+
 export interface AttendanceLog {
   attendanceId: string;
   employeeId: string;
@@ -40,6 +48,10 @@ export interface AttendanceLog {
   overtimeMinutes?: number;
   lateNightMinutes?: number;
   totalWorkMinutes?: number;
+  /** 休日/平日扱いの上書き区分。null=曜日で自動判定 */
+  dayTypeOverride?: DayTypeOverride | null;
+  /** その日を最終的に休日出勤扱いとするか（dayTypeOverride を反映した確定判定）。休日出勤日数の集計はこれを使う */
+  isHolidayWork?: boolean;
   memo?: string | null;
   updatedBy?: string;
   updatedAt: string;
@@ -119,6 +131,11 @@ export interface UpdateAttendanceRequest {
   clockIn?: string | null;
   clockOut?: string | null;
   breaks?: BreakRequest[];
+  /**
+   * 休日/平日扱いの上書き区分。'weekday'=土日でも残業をつけない, 'holiday'=平日でも休日出勤扱い,
+   * null=曜日で自動判定に戻す。省略時は変更しない。
+   */
+  dayTypeOverride?: DayTypeOverride | null;
 }
 
 /**
@@ -130,6 +147,26 @@ export interface UpdateAttendanceMemoRequest {
   workDate: string;
   memo?: string | null;
 }
+
+/**
+ * 勤怠ログ1件が「休日出勤扱い」かどうかを判定する。
+ *
+ * 休日出勤日数の集計を単一箇所に集約するためのヘルパー（フロント側の曜日判定の二重実装を解消）。
+ * 出退勤が揃っていない日はカウント対象外。バックエンドが返す `isHolidayWork`（`dayTypeOverride` 反映済みの
+ * 確定判定）を優先し、これにより土曜の通常出勤（`dayTypeOverride='weekday'`）も正しく休日出勤から除外される。
+ * 旧レスポンス互換で `isHolidayWork` が無い場合のみ、従来どおり曜日（土日）で判定する。
+ *
+ * @param {Pick<AttendanceLog, 'clockIn' | 'clockOut' | 'workDate' | 'isHolidayWork'>} log - 判定対象の勤怠ログ
+ * @returns {boolean} その日を休日出勤としてカウントするなら true
+ */
+export const isHolidayWorkLog = (
+  log: Pick<AttendanceLog, 'clockIn' | 'clockOut' | 'workDate' | 'isHolidayWork'>
+): boolean => {
+  if (!log.clockIn || !log.clockOut) return false;
+  if (typeof log.isHolidayWork === 'boolean') return log.isHolidayWork;
+  const day = new Date(log.workDate).getDay();
+  return day === 0 || day === 6; // 日曜=0, 土曜=6
+};
 
 /**
  * 勤怠記録一覧取得

@@ -17,7 +17,7 @@ import { Button, CancelButton, EditButton, SearchButton, ClearButton, SaveButton
 import { Snackbar } from '../../components/Snackbar';
 import { useSort } from '../../hooks/useSort';
 import { ChevronDownIcon, ChevronUpIcon } from '../../components/Icons';
-import { getAttendanceList, updateAttendance, updateAttendanceMemo, AttendanceLog as ApiAttendanceLog, Break as ApiBreak, BreakRequest } from '../../utils/attendanceApi';
+import { getAttendanceList, updateAttendance, updateAttendanceMemo, AttendanceLog as ApiAttendanceLog, Break as ApiBreak, BreakRequest, DayTypeOverride } from '../../utils/attendanceApi';
 import { getEmployees } from '../../utils/employeeApi';
 import { log, error as logError } from '../../utils/logger';
 import { translateApiError } from '../../utils/apiErrorTranslator';
@@ -66,6 +66,10 @@ interface AttendanceLog {
   overtimeMinutes?: number;
   /** 深夜時間（分、APIから取得）。 */
   lateNightMinutes?: number;
+  /** 休日/平日扱いの上書き区分（null/未設定=曜日で自動判定）。 */
+  dayTypeOverride?: DayTypeOverride | null;
+  /** 休日出勤扱いの確定判定（バックエンドが dayTypeOverride を反映して算出）。 */
+  isHolidayWork?: boolean;
   /** メモ。 */
   memo?: string | null;
   /** 更新者。 */
@@ -79,12 +83,15 @@ type AttendanceEditData = {
   clockIn: string | null;
   clockOut: string | null;
   breaks: Break[];
+  /** 休日/平日扱いの上書き区分（null=曜日で自動判定）。 */
+  dayTypeOverride: DayTypeOverride | null;
 };
 
 const cloneAttendanceEditData = (d: AttendanceEditData): AttendanceEditData => ({
   clockIn: d.clockIn,
   clockOut: d.clockOut,
-  breaks: d.breaks.map(b => ({ start: b.start, end: b.end }))
+  breaks: d.breaks.map(b => ({ start: b.start, end: b.end })),
+  dayTypeOverride: d.dayTypeOverride
 });
 
 const formatClockCompare = (v: string | null): string =>
@@ -180,6 +187,20 @@ export const AttendanceList: React.FC = () => {
   const [attendanceBeforeEdit, setAttendanceBeforeEdit] = useState<AttendanceEditData | null>(null);
   /** 編集フォームと保存確認の切り替え。 */
   const [editAttendanceStep, setEditAttendanceStep] = useState<'form' | 'confirm'>('form');
+  /** 従業員選択用リスト（勤怠の代理追加で使用）。 */
+  const [employees, setEmployees] = useState<Array<{ id: string; name: string }>>([]);
+  /** 勤怠の代理追加モーダルの表示状態（打刻忘れの後入力）。 */
+  const [showAddModal, setShowAddModal] = useState(false);
+  /** 勤怠の代理追加フォーム。 */
+  const [addForm, setAddForm] = useState<{ employeeId: string; date: string; clockIn: string; clockOut: string; dayTypeOverride: DayTypeOverride | null }>({
+    employeeId: '',
+    date: '',
+    clockIn: '',
+    clockOut: '',
+    dayTypeOverride: null
+  });
+  /** 代理追加の保存中フラグ（二重送信防止）。 */
+  const [isAdding, setIsAdding] = useState(false);
 
   useEffect(() => {
     const handleResize = () => {
@@ -227,6 +248,8 @@ export const AttendanceList: React.FC = () => {
       totalWorkMinutes: apiLog.totalWorkMinutes, // APIから取得した労働時間（分）
       overtimeMinutes: apiLog.overtimeMinutes, // APIから取得した残業時間（分）
       lateNightMinutes: apiLog.lateNightMinutes, // APIから取得した深夜時間（分）
+      dayTypeOverride: apiLog.dayTypeOverride ?? null, // 休日/平日扱いの上書き区分
+      isHolidayWork: apiLog.isHolidayWork, // 休日出勤扱いの確定判定
       memo: apiLog.memo || null,
       updatedBy: apiLog.updatedBy,
       updatedAt: apiLog.updatedAt
@@ -243,10 +266,12 @@ export const AttendanceList: React.FC = () => {
       // 従業員一覧を取得して、従業員IDから従業員名をマッピング
       const employeeNameMap: Record<string, string> = {};
       try {
-        const employees = await getEmployees();
-        employees.forEach(emp => {
+        const employeeList = await getEmployees();
+        employeeList.forEach(emp => {
           employeeNameMap[emp.id] = `${emp.firstName} ${emp.lastName}`;
         });
+        // 代理追加の従業員選択用にリストも保持する
+        setEmployees(employeeList.map(emp => ({ id: emp.id, name: `${emp.firstName} ${emp.lastName}` })));
       } catch (error) {
         logError('Failed to fetch employees for name mapping:', error);
         // 従業員名の取得に失敗しても、勤怠データは表示する
@@ -411,7 +436,8 @@ export const AttendanceList: React.FC = () => {
     const data: AttendanceEditData = {
       clockIn: log.clockIn,
       clockOut: log.clockOut,
-      breaks: log.breaks || []
+      breaks: log.breaks || [],
+      dayTypeOverride: log.dayTypeOverride ?? null
     };
     setEditingAttendanceLogId(log.id);
     setEditingAttendanceData(cloneAttendanceEditData(data));
@@ -463,7 +489,8 @@ export const AttendanceList: React.FC = () => {
         workDate: log.date,
         clockIn: apiClockIn,
         clockOut: apiClockOut,
-        breaks: apiBreaks
+        breaks: apiBreaks,
+        dayTypeOverride: editingAttendanceData.dayTypeOverride
       });
       
       // APIレスポンスをUI用の形式に変換してローカル状態を更新
@@ -486,6 +513,55 @@ export const AttendanceList: React.FC = () => {
       const errorMessage = translateApiError(error);
       setSnackbar({ message: errorMessage, type: 'error' });
       setTimeout(() => setSnackbar(null), 3000);
+    }
+  };
+
+  // 勤怠の代理追加モーダルを開く（打刻忘れの後入力）
+  const openAddAttendance = () => {
+    setAddForm({ employeeId: '', date: '', clockIn: '', clockOut: '', dayTypeOverride: null });
+    setShowAddModal(true);
+  };
+
+  // 勤怠を代理追加（打刻忘れ日の後入力）。管理者が従業員・日付・時刻を指定して upsert する。
+  const handleAddAttendance = async () => {
+    if (isAdding) return;
+    // 必須バリデーション（従業員・日付・出勤時刻）
+    if (!addForm.employeeId) {
+      setSnackbar({ message: '従業員を選択してください', type: 'error' });
+      setTimeout(() => setSnackbar(null), 3000);
+      return;
+    }
+    if (!addForm.date) {
+      setSnackbar({ message: '日付を入力してください', type: 'error' });
+      setTimeout(() => setSnackbar(null), 3000);
+      return;
+    }
+    if (!addForm.clockIn) {
+      setSnackbar({ message: '出勤時刻を入力してください', type: 'error' });
+      setTimeout(() => setSnackbar(null), 3000);
+      return;
+    }
+    setIsAdding(true);
+    try {
+      await updateAttendance({
+        employeeId: addForm.employeeId,
+        workDate: addForm.date,
+        clockIn: convertTimeToJST(addForm.clockIn, addForm.date),
+        clockOut: addForm.clockOut ? convertTimeToJST(addForm.clockOut, addForm.date) : null,
+        dayTypeOverride: addForm.dayTypeOverride
+      });
+      setShowAddModal(false);
+      setSnackbar({ message: '勤怠を追加しました', type: 'success' });
+      setTimeout(() => setSnackbar(null), 3000);
+      // 追加した日付が現在の検索範囲内なら一覧を再取得して反映する
+      await fetchAttendanceList(searchStartDate, searchEndDate);
+    } catch (error) {
+      logError('勤怠の追加に失敗しました', error);
+      const errorMessage = translateApiError(error);
+      setSnackbar({ message: errorMessage, type: 'error' });
+      setTimeout(() => setSnackbar(null), 3000);
+    } finally {
+      setIsAdding(false);
     }
   };
 
@@ -515,6 +591,24 @@ export const AttendanceList: React.FC = () => {
       }}>
         勤怠情報一覧
       </h2>
+
+      {/* 打刻忘れなどを後から代理入力するための「勤怠を追加」導線 */}
+      <div style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'flex-end' }}>
+        <button
+          onClick={openAddAttendance}
+          style={{
+            padding: '0.5rem 1rem',
+            backgroundColor: '#8b5a2b',
+            color: '#fff',
+            border: 'none',
+            borderRadius: '4px',
+            fontSize: fontSizes.button,
+            cursor: 'pointer'
+          }}
+        >
+          ＋ 勤怠を追加（打刻忘れの後入力）
+        </button>
+      </div>
 
       {/* 検索条件 */}
       <div style={{
@@ -1028,6 +1122,105 @@ export const AttendanceList: React.FC = () => {
         )}
       </div>
 
+      {/* 勤怠の代理追加モーダル（打刻忘れの後入力） */}
+      {showAddModal && (
+        <div
+          style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex',
+            alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem'
+          }}
+          onClick={() => !isAdding && setShowAddModal(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              backgroundColor: '#fff', borderRadius: '8px', padding: '1.5rem',
+              width: '100%', maxWidth: '480px', maxHeight: '90vh', overflowY: 'auto'
+            }}
+          >
+            <h3 style={{ marginTop: 0, marginBottom: '1rem', fontSize: fontSizes.large }}>勤怠を追加（打刻忘れの後入力）</h3>
+
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold', fontSize: fontSizes.label }}>従業員</label>
+              <select
+                value={addForm.employeeId}
+                onChange={(e) => setAddForm({ ...addForm, employeeId: e.target.value })}
+                style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '4px', fontSize: fontSizes.input, boxSizing: 'border-box' }}
+              >
+                <option value="">選択してください</option>
+                {employees.map(emp => (
+                  <option key={emp.id} value={emp.id}>{emp.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold', fontSize: fontSizes.label }}>日付</label>
+              <input
+                type="date"
+                value={addForm.date}
+                onChange={(e) => setAddForm({ ...addForm, date: e.target.value })}
+                style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '4px', fontSize: fontSizes.input, boxSizing: 'border-box' }}
+              />
+            </div>
+
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold', fontSize: fontSizes.label }}>出勤時刻</label>
+              <input
+                type="time"
+                value={addForm.clockIn}
+                onChange={(e) => setAddForm({ ...addForm, clockIn: e.target.value })}
+                style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '4px', fontSize: fontSizes.input, boxSizing: 'border-box' }}
+              />
+            </div>
+
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold', fontSize: fontSizes.label }}>退勤時刻（任意）</label>
+              <input
+                type="time"
+                value={addForm.clockOut}
+                onChange={(e) => setAddForm({ ...addForm, clockOut: e.target.value })}
+                style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '4px', fontSize: fontSizes.input, boxSizing: 'border-box' }}
+              />
+            </div>
+
+            <div style={{ marginBottom: '1.5rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold', fontSize: fontSizes.label }}>勤務区分（残業計算）</label>
+              <select
+                value={addForm.dayTypeOverride ?? 'auto'}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setAddForm({ ...addForm, dayTypeOverride: v === 'auto' ? null : (v as DayTypeOverride) });
+                }}
+                style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '4px', fontSize: fontSizes.input, boxSizing: 'border-box' }}
+              >
+                <option value="auto">自動（曜日で判定：土日は休日出勤）</option>
+                <option value="weekday">通常出勤（所定労働・残業をつけない）</option>
+                <option value="holiday">休日出勤（全労働時間を残業扱い）</option>
+              </select>
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setShowAddModal(false)}
+                disabled={isAdding}
+                style={{ padding: '0.5rem 1rem', backgroundColor: '#e5e7eb', color: '#374151', border: 'none', borderRadius: '4px', fontSize: fontSizes.button, cursor: isAdding ? 'not-allowed' : 'pointer' }}
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={handleAddAttendance}
+                disabled={isAdding}
+                style={{ padding: '0.5rem 1rem', backgroundColor: '#8b5a2b', color: '#fff', border: 'none', borderRadius: '4px', fontSize: fontSizes.button, cursor: isAdding ? 'not-allowed' : 'pointer' }}
+              >
+                {isAdding ? '追加中...' : '追加'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 勤務情報編集モーダル */}
       {showModal && editingAttendanceLogId && editingAttendanceData && attendanceBeforeEdit && (
         <div style={{
@@ -1229,7 +1422,39 @@ export const AttendanceList: React.FC = () => {
                 }}
               />
             </div>
-                  
+
+                  {/* 休日/平日扱いの区分（残業計算に影響）。GW明けの通常営業土曜などを「通常出勤」にして残業を付けない用途 */}
+                  <div style={{ marginBottom: '1rem' }}>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold', fontSize: fontSizes.label }}>
+                      勤務区分（残業計算）
+                    </label>
+                    <select
+                      value={after.dayTypeOverride ?? 'auto'}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setEditingAttendanceData({
+                          ...after,
+                          dayTypeOverride: v === 'auto' ? null : (v as DayTypeOverride)
+                        });
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '0.75rem',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '4px',
+                        fontSize: fontSizes.input,
+                        boxSizing: 'border-box'
+                      }}
+                    >
+                      <option value="auto">自動（曜日で判定：土日は休日出勤）</option>
+                      <option value="weekday">通常出勤（所定労働・残業をつけない）</option>
+                      <option value="holiday">休日出勤（全労働時間を残業扱い）</option>
+                    </select>
+                    <p style={{ marginTop: '0.25rem', fontSize: fontSizes.small, color: '#6b7280' }}>
+                      例: 通常営業になった土曜は「通常出勤」を選ぶと残業代がつきません。
+                    </p>
+                  </div>
+
                   <div style={{ marginBottom: '1rem' }}>
                     <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold', fontSize: fontSizes.label }}>
                       休憩時間

@@ -35,3 +35,6 @@ amplifyconfiguration*
 !.env.development
 !.env.production
 !.env.example
+
+# npm build cache (Amplify uses --cache .npm)
+.npm/

@@ -49,6 +49,7 @@ import { error as logError } from '../../utils/logger';
 import { translateApiError } from '../../utils/apiErrorTranslator';
 import { getUserInfo } from '../../config/apiConfig';
 import { getEmployee } from '../../utils/employeeApi';
+import { getWorkLocations } from '../../utils/workLocationApi';
 
 /**
  * 休憩時間を表すインターフェース。
@@ -268,22 +269,32 @@ export const Attendance: React.FC = () => {
   const [missingClockOutError, setMissingClockOutError] = useState<{ date: string; clockIn: string } | null>(null);
   const [snackbar, setSnackbar] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [workLocationId, setWorkLocationId] = useState<string | null | undefined>(undefined);
+  // 有効な勤務拠点が1つでも登録されているか。登録がある場合は全従業員で打刻時の位置情報が必須になる
+  // （バックエンドの位置チェックの発動条件と揃える）。
+  const [hasActiveWorkLocation, setHasActiveWorkLocation] = useState<boolean>(false);
 
   const { getLocation, isLoading: isGeolocationLoading } = useGeolocation();
 
-  // 従業員の勤務拠点を取得（workLocationIdが設定されている場合は位置情報必須）
+  // 従業員の勤務拠点と、勤務拠点マスタの登録有無を取得
   useEffect(() => {
     const employeeId = getEmployeeId();
     if (!employeeId) return;
-    const fetchEmployee = async () => {
+    const fetchEmployeeAndWorkLocations = async () => {
       try {
         const employee = await getEmployee(employeeId);
         setWorkLocationId(employee.workLocationId ?? null);
       } catch {
         setWorkLocationId(null);
       }
+      try {
+        // 有効な勤務拠点が1つでもあれば、位置制限を運用中とみなして位置情報を必須にする
+        const response = await getWorkLocations();
+        setHasActiveWorkLocation((response.workLocations?.length ?? 0) > 0);
+      } catch {
+        setHasActiveWorkLocation(false);
+      }
     };
-    fetchEmployee();
+    fetchEmployeeAndWorkLocations();
   }, [getEmployeeId]);
 
   // 有給残日数の設定（実際の実装ではバックエンドから取得）
@@ -659,7 +670,8 @@ export const Attendance: React.FC = () => {
       }
 
       // 勤務拠点が設定されている従業員は位置情報必須
-      const locationRequired = !!workLocationId;
+      // 有効な勤務拠点が登録されている、または自分に拠点が割り当てられている場合は位置情報必須
+      const locationRequired = hasActiveWorkLocation || !!workLocationId;
       let stampLocation: { latitude: number; longitude: number; accuracy: number } | undefined;
 
       if (locationRequired) {
@@ -716,7 +728,8 @@ export const Attendance: React.FC = () => {
       }
 
       // 勤務拠点が設定されている従業員は位置情報必須
-      const locationRequired = !!workLocationId;
+      // 有効な勤務拠点が登録されている、または自分に拠点が割り当てられている場合は位置情報必須
+      const locationRequired = hasActiveWorkLocation || !!workLocationId;
       let stampLocation: { latitude: number; longitude: number; accuracy: number } | undefined;
 
       if (locationRequired) {

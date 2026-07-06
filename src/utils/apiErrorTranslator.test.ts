@@ -75,6 +75,12 @@ describe('translateApiError', () => {
         translateApiError(buildApiError('CLOCK_IN_ALREADY_RECORDED', { statusCode: 409 }))
       ).toBe('この日付の出勤打刻は既に記録されています');
     });
+
+    it('ATTENDANCE_LOCATION_ACCURACY_TOO_LOW を日本語化する（位置精度不足）', () => {
+      expect(
+        translateApiError(buildApiError('ATTENDANCE_LOCATION_ACCURACY_TOO_LOW', { statusCode: 400 }))
+      ).toBe('位置情報の精度が低いため打刻できません。屋外や窓際などGPSの精度が高い場所で再度お試しください');
+    });
   });
 
   describe('未知のエラーコード（statusCodeへのフォールバック）', () => {

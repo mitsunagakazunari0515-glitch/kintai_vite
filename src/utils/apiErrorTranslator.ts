@@ -218,6 +218,8 @@ export const translateApiError = (error: unknown): string => {
         return '打刻には位置情報が必要です。位置情報を有効にしてください';
       case 'ATTENDANCE_LOCATION_OUT_OF_RANGE':
         return '勤務拠点の範囲外から打刻されています。オフィス周辺で再度お試しください';
+      case 'ATTENDANCE_LOCATION_ACCURACY_TOO_LOW':
+        return '位置情報の精度が低いため打刻できません。屋外や窓際などGPSの精度が高い場所で再度お試しください';
 
       // 勤務拠点API固有
       case 'WORK_LOCATION_NAME_EXISTS':

@@ -29,6 +29,7 @@ import { error as logError } from '../../utils/logger';
 import { translateApiError } from '../../utils/apiErrorTranslator';
 import { getLeaveTypeLabel, getLeaveRequestStatusLabel, getLeaveTypeCodeFromLabel } from '../../utils/codeTranslator';
 import { getUserInfo } from '../../config/apiConfig';
+import { getPaidLeaveBalance, PaidLeaveBalance } from '../../utils/paidLeaveApi';
 
 /**
  * 休暇申請を表すインターフェース。
@@ -75,6 +76,26 @@ export const LeaveRequest: React.FC = () => {
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [searchFiscalYear, setSearchFiscalYear] = useState<number>(getCurrentFiscalYear());
+  /** 有給残高（残日数・有効期限・繰越）。取得失敗時は null。 */
+  const [paidLeaveBalance, setPaidLeaveBalance] = useState<PaidLeaveBalance | null>(null);
+
+  // 有給残高（残日数・有効期限・繰越）を取得。取得時にサーバー側で自動付与が冪等同期される。
+  useEffect(() => {
+    const fetchPaidLeaveBalance = async () => {
+      const employeeId = getEmployeeId();
+      if (!employeeId) {
+        return;
+      }
+      try {
+        const balance = await getPaidLeaveBalance(employeeId);
+        setPaidLeaveBalance(balance);
+      } catch (error) {
+        // 残高表示は補助情報のため、失敗しても申請機能は継続する
+        logError('Failed to fetch paid leave balance:', error);
+      }
+    };
+    fetchPaidLeaveBalance();
+  }, []);
 
   // APIから休暇申請一覧を取得
   useEffect(() => {
@@ -402,6 +423,60 @@ export const LeaveRequest: React.FC = () => {
       <h2 style={{ marginBottom: isMobile ? '1rem' : '1.4rem', fontSize: isMobile ? '1.25rem' : '1.05rem' }}>
         休暇申請
       </h2>
+
+      {/* 有給残高（残日数・有効期限・繰越）パネル */}
+      {paidLeaveBalance && (
+        <div style={{
+          backgroundColor: '#ffffff',
+          border: '1px solid #e5e7eb',
+          borderRadius: '8px',
+          padding: isMobile ? '1rem' : '1.25rem',
+          marginBottom: isMobile ? '1rem' : '1.5rem',
+          boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+        }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.5rem', alignItems: 'baseline', marginBottom: paidLeaveBalance.grants.length > 0 ? '1rem' : 0 }}>
+            <div>
+              <span style={{ fontSize: fontSizes.medium, color: '#6b7280', marginRight: '0.5rem' }}>有給残日数</span>
+              <span style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#92400e' }}>{paidLeaveBalance.totalRemaining}</span>
+              <span style={{ fontSize: fontSizes.medium, color: '#6b7280', marginLeft: '0.25rem' }}>日</span>
+            </div>
+            <div>
+              <span style={{ fontSize: fontSizes.medium, color: '#6b7280', marginRight: '0.5rem' }}>次回失効</span>
+              <span style={{ fontSize: fontSizes.badge, fontWeight: 'bold', color: '#1f2937' }}>
+                {paidLeaveBalance.nextExpiration ? formatDate(paidLeaveBalance.nextExpiration) : '—'}
+              </span>
+            </div>
+          </div>
+
+          {/* 付与ごとの残（繰越）内訳 */}
+          {paidLeaveBalance.grants.filter(g => g.remainingDays > 0).length > 0 && (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: fontSizes.medium }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid #e5e7eb', textAlign: 'left', color: '#6b7280' }}>
+                    <th style={{ padding: '0.5rem 0.75rem', whiteSpace: 'nowrap' }}>付与日</th>
+                    <th style={{ padding: '0.5rem 0.75rem', whiteSpace: 'nowrap', textAlign: 'right' }}>付与日数</th>
+                    <th style={{ padding: '0.5rem 0.75rem', whiteSpace: 'nowrap', textAlign: 'right' }}>残（繰越）</th>
+                    <th style={{ padding: '0.5rem 0.75rem', whiteSpace: 'nowrap' }}>有効期限</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paidLeaveBalance.grants
+                    .filter(g => g.remainingDays > 0)
+                    .map(g => (
+                      <tr key={g.grantLedgerId} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                        <td style={{ padding: '0.5rem 0.75rem', whiteSpace: 'nowrap' }}>{formatDate(g.grantDate)}</td>
+                        <td style={{ padding: '0.5rem 0.75rem', whiteSpace: 'nowrap', textAlign: 'right' }}>{g.grantDays}日</td>
+                        <td style={{ padding: '0.5rem 0.75rem', whiteSpace: 'nowrap', textAlign: 'right', fontWeight: 'bold' }}>{g.remainingDays}日</td>
+                        <td style={{ padding: '0.5rem 0.75rem', whiteSpace: 'nowrap' }}>{g.expirationDate ? formatDate(g.expirationDate) : '—'}</td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* タブナビゲーション */}
       <div style={{

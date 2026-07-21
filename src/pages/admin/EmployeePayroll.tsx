@@ -3105,6 +3105,12 @@ export const EmployeePayroll: React.FC = () => {
                       {currentRecord.detail.paidLeaveRemaining}
                     </div>
                   </div>
+                  <div>
+                    <div style={{ fontSize: fontSizes.medium, color: '#6b7280', marginBottom: '0.25rem' }}>有給有効期限</div>
+                    <div style={{ fontSize: '1.125rem', fontWeight: 'bold' }}>
+                      {currentRecord.detail.paidLeaveRemainingDate || '—'}
+                    </div>
+                  </div>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem', padding: '0 1rem 1rem 1rem' }}>
                   <div>

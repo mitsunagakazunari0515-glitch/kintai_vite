@@ -350,8 +350,10 @@ export const EmployeeList: React.FC = () => {
         isAdmin: formData.isAdmin,
         baseSalary: formData.baseSalary,
         defaultBreakTime: formData.defaultBreakTime,
-        workLocationId: formData.workLocationId ?? null
-        // 有給は自動付与のため、登録/更新では有給情報を送信しない（送信すると既存付与が置き換えられるため）
+        workLocationId: formData.workLocationId ?? null,
+        // 新規登録では有給入力欄が無いため paidLeaves は空。編集時のみ手動付与(EMP-)を送信する。
+        // バックエンドの更新処理は EMP- のみ置換し、自動付与(AUTO-)は保持する。
+        paidLeaves: formData.paidLeaves
       };
 
       if (editingEmployee) {
@@ -1243,12 +1245,141 @@ export const EmployeeList: React.FC = () => {
                 )}
               </div>
 
-              {/* 有給情報の登録項目は削除（有給は労基法準拠で自動付与）。閲覧時のみ現状の付与・残高を表示。 */}
-              {editingEmployee && !isEditingMode && (
+              {/* 有給情報: 新規登録では非表示。編集時は手動付与(EMP-)を編集可、閲覧時は現状の付与と有給残高を表示。 */}
+              {editingEmployee && (
                 <div style={{ marginBottom: '1.5rem' }}>
                   <label style={{ fontWeight: 'bold' }}>
-                    有給情報
+                    有給情報{isEditingMode ? '（手動付与）' : ''}
                   </label>
+                  {isEditingMode ? (
+                  <div style={{
+                    padding: '1rem',
+                    backgroundColor: 'white',
+                    borderRadius: '4px',
+                    border: '1px solid #d1d5db',
+                    marginTop: '0.5rem'
+                  }}>
+                    {formData.paidLeaves.length === 0 ? (
+                      <p style={{ color: '#6b7280', fontSize: fontSizes.medium, margin: 0 }}>
+                        有給情報が登録されていません
+                      </p>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                        {formData.paidLeaves.map((paidLeave, index) => (
+                          <div key={index} style={{
+                            display: 'grid',
+                            gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr auto',
+                            gap: '0.75rem',
+                            alignItems: 'end',
+                            padding: '0.75rem',
+                            backgroundColor: '#f9fafb',
+                            borderRadius: '4px',
+                            border: '1px solid #e5e7eb'
+                          }}>
+                            <div>
+                              <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: fontSizes.medium, color: '#6b7280' }}>
+                                有給付与日
+                              </label>
+                              <input
+                                type="date"
+                                value={paidLeave.grantDate}
+                                onChange={(e) => {
+                                  const newPaidLeaves = [...formData.paidLeaves];
+                                  newPaidLeaves[index] = { ...paidLeave, grantDate: e.target.value };
+                                  setFormData({ ...formData, paidLeaves: newPaidLeaves });
+                                }}
+                                style={{
+                                  width: '100%',
+                                  padding: '0.75rem',
+                                  border: '1px solid #d1d5db',
+                                  borderRadius: '4px',
+                                  fontSize: fontSizes.input,
+                                  boxSizing: 'border-box'
+                                }}
+                                required
+                              />
+                            </div>
+                            <div>
+                              <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: fontSizes.medium, color: '#6b7280' }}>
+                                有給数
+                              </label>
+                              <input
+                                type="number"
+                                value={paidLeave.days}
+                                onChange={(e) => {
+                                  const newPaidLeaves = [...formData.paidLeaves];
+                                  newPaidLeaves[index] = { ...paidLeave, days: Number(e.target.value) };
+                                  setFormData({ ...formData, paidLeaves: newPaidLeaves });
+                                }}
+                                min="0"
+                                step="0.5"
+                                style={{
+                                  width: '100%',
+                                  padding: '0.75rem',
+                                  border: '1px solid #d1d5db',
+                                  borderRadius: '4px',
+                                  fontSize: fontSizes.input,
+                                  boxSizing: 'border-box'
+                                }}
+                                required
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newPaidLeaves = formData.paidLeaves.filter((_, i) => i !== index);
+                                setFormData({ ...formData, paidLeaves: newPaidLeaves });
+                              }}
+                              style={{
+                                padding: '0.75rem 1rem',
+                                backgroundColor: '#ef4444',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '4px',
+                                fontSize: fontSizes.button,
+                                cursor: 'pointer',
+                                whiteSpace: 'nowrap',
+                                boxShadow: 'none',
+                                minHeight: 'auto',
+                                minWidth: 'auto'
+                              }}
+                            >
+                              削除
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFormData({
+                          ...formData,
+                          paidLeaves: [...formData.paidLeaves, { grantDate: '', days: 0 }]
+                        });
+                      }}
+                      style={{
+                        marginTop: '0.75rem',
+                        padding: '0.5rem 1rem',
+                        backgroundColor: '#10b981',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        fontSize: fontSizes.button,
+                        cursor: 'pointer',
+                        width: '100%',
+                        boxShadow: 'none',
+                        minHeight: 'auto',
+                        minWidth: 'auto'
+                      }}
+                    >
+                      + 有給情報を追加
+                    </button>
+                    <div style={{ marginTop: '0.5rem', fontSize: fontSizes.medium, color: '#6b7280' }}>
+                      合計: {formData.paidLeaves.reduce((sum, pl) => sum + pl.days, 0)}日（※手動付与のみ。自動付与は下部の残高で確認）
+                    </div>
+                  </div>
+                  ) : (
                   <div style={{
                     padding: '0.75rem',
                     backgroundColor: '#f9fafb',
@@ -1316,6 +1447,7 @@ export const EmployeeList: React.FC = () => {
                       </div>
                     )}
                   </div>
+                  )}
                 </div>
               )}
 

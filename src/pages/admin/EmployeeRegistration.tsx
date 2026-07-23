@@ -267,8 +267,10 @@ export const EmployeeRegistration: React.FC = () => {
         isAdmin: formData.isAdmin,
         baseSalary: formData.baseSalary,
         defaultBreakTime: formData.defaultBreakTime,
-        workLocationId: formData.workLocationId || null
-        // 有給は自動付与のため、登録/更新では有給情報を送信しない（送信すると既存付与が置き換えられるため）
+        workLocationId: formData.workLocationId || null,
+        // 新規登録では有給入力欄が無いため paidLeaves は空。編集時のみ手動付与(EMP-)を送信する。
+        // バックエンドの更新処理は EMP- のみ置換し、自動付与(AUTO-)は保持する。
+        paidLeaves: formData.paidLeaves
       };
 
       if (isEditing && id) {
@@ -297,6 +299,35 @@ export const EmployeeRegistration: React.FC = () => {
       allowances: prev.allowances.includes(allowanceId)
         ? prev.allowances.filter(id => id !== allowanceId)
         : [...prev.allowances, allowanceId]
+    }));
+  };
+
+  // 有給情報の追加（編集時のみ使用。新規登録では有給入力欄は表示しない）
+  const handleAddPaidLeave = () => {
+    setFormData(prev => ({
+      ...prev,
+      paidLeaves: [
+        ...prev.paidLeaves,
+        { grantDate: new Date().toISOString().split('T')[0], days: 0 } // デフォルトで今日の日付を設定
+      ]
+    }));
+  };
+
+  // 有給情報の更新
+  const handleUpdatePaidLeave = (index: number, field: 'grantDate' | 'days', value: string | number) => {
+    setFormData(prev => ({
+      ...prev,
+      paidLeaves: prev.paidLeaves.map((paidLeave, i) =>
+        i === index ? { ...paidLeave, [field]: value } : paidLeave
+      )
+    }));
+  };
+
+  // 有給情報の削除
+  const handleRemovePaidLeave = (index: number) => {
+    setFormData(prev => ({
+      ...prev,
+      paidLeaves: prev.paidLeaves.filter((_, i) => i !== index)
     }));
   };
 
@@ -678,7 +709,117 @@ export const EmployeeRegistration: React.FC = () => {
             </label>
           </div>
 
-          {/* 有給情報の登録項目は削除（有給は労基法準拠で自動付与されるため、手動登録は行わない）。 */}
+          {/* 有給情報の入力欄は「編集時のみ」表示（新規登録では非表示。有給は労基法準拠で自動付与されるため）。
+              編集で扱うのは手動付与（EMP-）のみ。自動付与（AUTO-）は対象外で保持される。 */}
+          {isEditing && (
+          <div style={{ marginBottom: '1.5rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+              <label style={{ fontWeight: 'bold' }}>
+                有給情報（手動付与）
+              </label>
+              <Button
+                variant="primary"
+                type="button"
+                onClick={handleAddPaidLeave}
+                style={{
+                  padding: '0.5rem 1rem',
+                  fontSize: fontSizes.button,
+                  boxShadow: 'none',
+                  minHeight: 'auto',
+                  minWidth: 'auto'
+                }}
+              >
+                + 追加
+              </Button>
+            </div>
+            <div style={{
+              padding: '1rem',
+              backgroundColor: 'white',
+              borderRadius: '4px',
+              border: '1px solid #d1d5db',
+              minHeight: '80px'
+            }}>
+              {formData.paidLeaves.length === 0 ? (
+                <p style={{ color: '#6b7280', fontSize: fontSizes.medium, textAlign: 'center', padding: '1rem' }}>
+                  有給情報がありません。「+ 追加」ボタンで追加してください。
+                </p>
+              ) : (
+                formData.paidLeaves.map((paidLeave, index) => (
+                  <div
+                    key={index}
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr auto',
+                      gap: '0.75rem',
+                      padding: '0.75rem',
+                      marginBottom: index < formData.paidLeaves.length - 1 ? '0.75rem' : 0,
+                      borderBottom: index < formData.paidLeaves.length - 1 ? '1px solid #e5e7eb' : 'none',
+                      alignItems: 'end'
+                    }}
+                  >
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: fontSizes.medium, color: '#6b7280' }}>
+                        付与日
+                      </label>
+                      <input
+                        type="date"
+                        value={paidLeave.grantDate}
+                        onChange={(e) => handleUpdatePaidLeave(index, 'grantDate', e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '0.75rem',
+                          border: '1px solid #d1d5db',
+                          borderRadius: '4px',
+                          fontSize: fontSizes.input,
+                          boxSizing: 'border-box'
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: fontSizes.medium, color: '#6b7280' }}>
+                        日数
+                      </label>
+                      <input
+                        type="number"
+                        value={paidLeave.days !== undefined && paidLeave.days !== null ? paidLeave.days : ''}
+                        onChange={(e) => {
+                          const inputValue = e.target.value;
+                          // 空文字の場合は0に設定
+                          const numValue = inputValue === '' ? 0 : Number(inputValue);
+                          handleUpdatePaidLeave(index, 'days', numValue);
+                        }}
+                        min="0"
+                        step="1"
+                        style={{
+                          width: '100%',
+                          padding: '0.75rem',
+                          border: '1px solid #d1d5db',
+                          borderRadius: '4px',
+                          fontSize: fontSizes.input,
+                          boxSizing: 'border-box'
+                        }}
+                        placeholder="例: 10"
+                      />
+                    </div>
+                    <div>
+                      <Button
+                        variant="icon-delete"
+                        type="button"
+                        onClick={() => handleRemovePaidLeave(index)}
+                        title="削除"
+                        style={{
+                          boxShadow: 'none',
+                          minHeight: 'auto',
+                          minWidth: 'auto'
+                        }}
+                      />
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+          )}
 
           <div style={{ marginBottom: '1rem' }}>
             <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>

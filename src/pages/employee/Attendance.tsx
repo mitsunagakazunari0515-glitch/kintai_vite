@@ -48,6 +48,7 @@ import { sumAttendanceTableColumnTotals } from '../../utils/attendanceTableTotal
 import { error as logError } from '../../utils/logger';
 import { translateApiError } from '../../utils/apiErrorTranslator';
 import { getUserInfo } from '../../config/apiConfig';
+import { getPaidLeaveBalance, PaidLeaveBalance } from '../../utils/paidLeaveApi';
 import { getEmployee } from '../../utils/employeeApi';
 import { getWorkLocations } from '../../utils/workLocationApi';
 
@@ -264,6 +265,8 @@ export const Attendance: React.FC = () => {
   const [selectedYear, setSelectedYear] = useState<number>(initialClosingYm.year);
   const [selectedMonth, setSelectedMonth] = useState<number>(initialClosingYm.month);
   const [summary, setSummary] = useState<AttendanceSummary | null>(null);
+  /** 有給残高（残日数・次回失効・繰越）。管理者用出勤簿と同じ表示に揃える。 */
+  const [paidLeaveBalance, setPaidLeaveBalance] = useState<PaidLeaveBalance | null>(null);
   const [dailyLaborByDate, setDailyLaborByDate] = useState<Record<string, DailyLaborRow>>({});
   const [showSummary, setShowSummary] = useState<boolean>(false);
   const [missingClockOutError, setMissingClockOutError] = useState<{ date: string; clockIn: string } | null>(null);
@@ -297,10 +300,30 @@ export const Attendance: React.FC = () => {
     fetchEmployeeAndWorkLocations();
   }, [getEmployeeId]);
 
+  // 有給残高（残日数・次回失効・付与ごとの繰越と有効期限）を取得。取得時にサーバー側で自動付与が冪等同期される。
+  useEffect(() => {
+    const employeeId = getEmployeeId();
+    if (!employeeId) {
+      setPaidLeaveBalance(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const balance = await getPaidLeaveBalance(employeeId);
+        if (!cancelled) setPaidLeaveBalance(balance);
+      } catch (error) {
+        // 残高表示は補助情報のため、失敗しても出勤簿は表示する
+        if (!cancelled) setPaidLeaveBalance(null);
+        logError('Failed to fetch paid leave balance:', error);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [getEmployeeId]);
+
   // 有給残日数の設定（実際の実装ではバックエンドから取得）
   const totalPaidLeaveDays = 20; // 年間有給日数
-  const paidLeaveExpiryDate = '2025-12-31'; // 有給期限
-  
+
   // ダミーの休暇申請データ（実際の実装ではバックエンドから取得）
   const leaveRequests = [
     {
@@ -1978,31 +2001,40 @@ export const Attendance: React.FC = () => {
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: fontSizes.medium, color: '#6b7280' }}>残有給日数:</span>
-                  <span style={{ 
-                    fontSize: fontSizes.badge, 
-                    fontWeight: 'bold', 
+                  <span style={{
+                    fontSize: fontSizes.badge,
+                    fontWeight: 'bold',
                     color: '#000000'
                   }}>
-                    {summary?.remainingPaidLeaveDays ?? remainingPaidLeaveDays}日
+                    {(paidLeaveBalance?.totalRemaining ?? summary?.remainingPaidLeaveDays ?? remainingPaidLeaveDays)}日
                   </span>
                 </div>
-                <div style={{
-                  marginTop: '0.5rem',
-                  padding: '0.75rem',
-                  backgroundColor: '#dbeafe',
-                  borderRadius: '4px',
-                  border: '1px solid #93c5fd'
-                }}>
-                  <div style={{ fontSize: fontSizes.medium, fontWeight: 'bold', color: '#1e40af', marginBottom: '0.25rem' }}>
-                    有給期限
-                  </div>
-                  <div style={{ fontSize: fontSizes.medium, color: '#1e40af' }}>
-                    {formatDate(summary?.paidLeaveExpirationDate ?? paidLeaveExpiryDate)}
-                  </div>
-                  <div style={{ fontSize: fontSizes.medium, color: '#1e3a8a', marginTop: '0.25rem' }}>
-                    上記日付までに消化日付分(残り{summary?.remainingPaidLeaveDays ?? remainingPaidLeaveDays}日)の有給を取得してください
-                  </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: fontSizes.medium, color: '#6b7280' }}>次回失効:</span>
+                  <span style={{ fontSize: fontSizes.medium, fontWeight: 'bold', color: '#000000' }}>
+                    {paidLeaveBalance?.nextExpiration
+                      ? formatDate(paidLeaveBalance.nextExpiration)
+                      : (summary?.paidLeaveExpirationDate ? formatDate(summary.paidLeaveExpirationDate) : '-')}
+                  </span>
                 </div>
+
+                {/* 付与ごとの繰越（残あり）と有効期限 */}
+                {paidLeaveBalance && paidLeaveBalance.grants.filter(g => g.remainingDays > 0).length > 0 && (
+                  <div style={{ marginTop: '0.25rem', paddingTop: '0.5rem', borderTop: '1px solid #e5e7eb' }}>
+                    <div style={{ fontSize: fontSizes.medium, color: '#6b7280', marginBottom: '0.35rem' }}>繰越（付与ごとの残・有効期限）</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                      {paidLeaveBalance.grants.filter(g => g.remainingDays > 0).map(g => (
+                        <div key={g.grantLedgerId} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: fontSizes.medium }}>
+                          <span style={{ color: '#6b7280' }}>付与 {formatDate(g.grantDate)}</span>
+                          <span style={{ color: '#111827' }}>
+                            残<span style={{ fontWeight: 'bold' }}>{g.remainingDays}</span>日
+                            {'　'}期限 {g.expirationDate ? formatDate(g.expirationDate) : '—'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>

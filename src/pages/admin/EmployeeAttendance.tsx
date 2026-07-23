@@ -877,12 +877,18 @@ export const EmployeeAttendance: React.FC = () => {
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: fontSizes.medium, color: '#6b7280' }}>残有給日数:</span>
-                  <span style={{ 
-                    fontSize: fontSizes.badge, 
-                    fontWeight: 'bold', 
+                  <span style={{
+                    fontSize: fontSizes.badge,
+                    fontWeight: 'bold',
                     color: '#000000'
                   }}>
                     {summary?.remainingPaidLeaveDays ?? '-'}日
+                  </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: fontSizes.medium, color: '#6b7280' }}>有給有効期限:</span>
+                  <span style={{ fontSize: fontSizes.medium, fontWeight: 'bold', color: '#000000' }}>
+                    {summary?.paidLeaveExpirationDate ? formatDate(summary.paidLeaveExpirationDate) : '-'}
                   </span>
                 </div>
               </div>

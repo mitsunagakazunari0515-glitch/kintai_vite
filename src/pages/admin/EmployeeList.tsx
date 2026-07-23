@@ -27,6 +27,7 @@ import { getAllowances } from '../../utils/allowanceApi';
 import { getWorkLocations } from '../../utils/workLocationApi';
 import { error as logError } from '../../utils/logger';
 import { translateApiError } from '../../utils/apiErrorTranslator';
+import { getPaidLeaveBalance, PaidLeaveBalance } from '../../utils/paidLeaveApi';
 
 /**
  * 手当を表すインターフェース。
@@ -101,6 +102,8 @@ export const EmployeeList: React.FC = () => {
   const [showModal, setShowModal] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
   const [isEditingMode, setIsEditingMode] = useState<boolean>(false);
+  /** 詳細表示中の従業員の有給残高（有効期限表示用）。 */
+  const [paidLeaveBalance, setPaidLeaveBalance] = useState<PaidLeaveBalance | null>(null);
   const hasFetchedRef = useRef<boolean>(false); // 既にAPI呼び出しを行ったかどうかのフラグ
   const isMountedRef = useRef<boolean>(true); // コンポーネントがマウントされているかどうかのフラグ
   const cleanupCalledRef = useRef<boolean>(false); // クリーンアップ関数が呼ばれたかどうかのフラグ
@@ -303,6 +306,27 @@ export const EmployeeList: React.FC = () => {
     setIsEditingMode(false); // 編集時は最初はラベル表示
     setShowModal(true);
   };
+
+  // 詳細表示中の従業員の有給残高（有効期限・繰越）を取得。取得時にサーバー側で自動付与が冪等同期される。
+  useEffect(() => {
+    const empId = editingEmployee?.id;
+    if (!showModal || !empId) {
+      setPaidLeaveBalance(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const balance = await getPaidLeaveBalance(empId);
+        if (!cancelled) setPaidLeaveBalance(balance);
+      } catch (error) {
+        // 有効期限表示は補助情報のため、失敗しても従業員詳細は表示する
+        if (!cancelled) setPaidLeaveBalance(null);
+        logError('Failed to fetch paid leave balance:', error);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [showModal, editingEmployee?.id]);
 
   const handleStartEdit = () => {
     setIsEditingMode(true);
@@ -1392,6 +1416,30 @@ export const EmployeeList: React.FC = () => {
                         >
                           合計: {formData.paidLeaves.reduce((sum, pl) => sum + pl.days, 0)}日
                         </div>
+                      </div>
+                    )}
+                    {/* 有給残高・有効期限（自動付与を含む最新値。有給残高APIから取得） */}
+                    {paidLeaveBalance && (
+                      <div style={{
+                        marginTop: '0.5rem',
+                        paddingTop: '0.5rem',
+                        borderTop: '1px solid #e5e7eb',
+                        fontWeight: 'normal',
+                        color: '#374151'
+                      }}>
+                        <div style={{ fontSize: fontSizes.medium, marginBottom: '0.25rem' }}>
+                          有給残日数: <span style={{ fontWeight: 'bold' }}>{paidLeaveBalance.totalRemaining}日</span>
+                          {'　'}次回失効: <span style={{ fontWeight: 'bold' }}>{paidLeaveBalance.nextExpiration ? formatDate(paidLeaveBalance.nextExpiration) : '—'}</span>
+                        </div>
+                        {paidLeaveBalance.grants.filter(g => g.remainingDays > 0).length > 0 && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem', fontSize: fontSizes.medium, color: '#6b7280' }}>
+                            {paidLeaveBalance.grants.filter(g => g.remainingDays > 0).map(g => (
+                              <div key={g.grantLedgerId}>
+                                付与 {formatDate(g.grantDate)}{'　'}残{g.remainingDays}日{'　'}有効期限 {g.expirationDate ? formatDate(g.expirationDate) : '—'}
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

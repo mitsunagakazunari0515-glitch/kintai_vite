@@ -3395,6 +3395,22 @@ export const EmployeePayroll: React.FC = () => {
                       }}
                     />
                   </div>
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: fontSizes.label }}>有給有効期限</label>
+                    <input
+                      type="date"
+                      value={formData.paidLeaveRemainingDate || ''}
+                      onChange={(e) => setFormData({ ...formData, paidLeaveRemainingDate: e.target.value })}
+                      style={{
+                        width: '100%',
+                        padding: '0.5rem',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '4px',
+                        fontSize: fontSizes.input,
+                        boxSizing: 'border-box'
+                      }}
+                    />
+                  </div>
                 </div>
                 <div style={{ 
                   display: 'grid', 

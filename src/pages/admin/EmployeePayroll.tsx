@@ -3105,12 +3105,6 @@ export const EmployeePayroll: React.FC = () => {
                       {currentRecord.detail.paidLeaveRemaining}
                     </div>
                   </div>
-                  <div>
-                    <div style={{ fontSize: fontSizes.medium, color: '#6b7280', marginBottom: '0.25rem' }}>有給有効期限</div>
-                    <div style={{ fontSize: '1.125rem', fontWeight: 'bold' }}>
-                      {currentRecord.detail.paidLeaveRemainingDate || '—'}
-                    </div>
-                  </div>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem', padding: '0 1rem 1rem 1rem' }}>
                   <div>
@@ -3395,26 +3389,10 @@ export const EmployeePayroll: React.FC = () => {
                       }}
                     />
                   </div>
-                  <div>
-                    <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: fontSizes.label }}>有給有効期限</label>
-                    <input
-                      type="date"
-                      value={formData.paidLeaveRemainingDate || ''}
-                      onChange={(e) => setFormData({ ...formData, paidLeaveRemainingDate: e.target.value })}
-                      style={{
-                        width: '100%',
-                        padding: '0.5rem',
-                        border: '1px solid #d1d5db',
-                        borderRadius: '4px',
-                        fontSize: fontSizes.input,
-                        boxSizing: 'border-box'
-                      }}
-                    />
-                  </div>
                 </div>
-                <div style={{ 
-                  display: 'grid', 
-                  gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', 
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr',
                   gap: '1rem'
                 }}>
                   <div>

@@ -109,10 +109,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const displayName = `${authInfo.firstName} ${authInfo.lastName}`;
       
       // ローカルストレージに認可情報を保存
+      // roles（システム別ロール）も併せて保持する（後方互換のため role は維持）。
+      // ProtectedRoute のシステム＋ロール判定への利用は今後のタスク（M2-D）で対応する。
       const userInfo = {
         employeeId: authInfo.employeeId,
         requestedBy: displayName, // 姓・名の順序で結合した表示名
         role: authInfo.role,
+        roles: authInfo.roles,
         email: authInfo.email
       };
       localStorage.setItem('userInfo', JSON.stringify(userInfo));

@@ -7,6 +7,15 @@ import { error as logError } from './logger';
 import { extractApiError, translateApiError, ApiRequestError } from './apiErrorTranslator';
 
 /**
+ * システム別ロール（m_system_role 由来）。
+ * 新システムを追加する際はここにキーを増やす。バックエンドの `SystemRoles` と一致させること。
+ */
+export interface SystemRoles {
+  attendance: 'admin' | 'employee'; // 勤怠システムのロール
+  inventory: 'manager' | 'staff';   // 在庫システムのロール（行なし=staff）
+}
+
+/**
  * 認可情報を表すインターフェース
  * API仕様に基づき、firstName（苗字/姓）とlastName（名前/名）が別々のフィールドで返されます
  */
@@ -15,7 +24,8 @@ export interface AuthorizationResponse {
   firstName: string;  // 苗字（姓）（必須）
   lastName: string;   // 名前（名）（必須）
   email: string;
-  role: 'admin' | 'employee';
+  role: 'admin' | 'employee'; // 後方互換（= roles.attendance）
+  roles: SystemRoles;         // システム別ロール（2026-07 追加）
   isActive: boolean;
   joinDate: string;
   leaveDate: string | null;

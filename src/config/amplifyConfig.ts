@@ -90,6 +90,13 @@ export const getApiPrefix = (): string => {
  * 優先順位: amplify_outputs.json > VITE_API_ENDPOINT
  */
 export const getApiEndpoint = (): string => {
+  // 同一オリジン配信（CloudFront・案A）用の相対ベース。設定時はこれを最優先で使う。
+  // 例: VITE_API_SAME_ORIGIN_BASE=/attendance → 実URLは /attendance/api/v1/...（同一オリジン相対）。
+  // 未設定時は従来どおり amplify_outputs.json / VITE_API_ENDPOINT の絶対URLを使う（既存動作を維持）。
+  const sameOriginBase = import.meta.env.VITE_API_SAME_ORIGIN_BASE;
+  if (sameOriginBase && sameOriginBase.trim() !== '') {
+    return sameOriginBase.trim().replace(/\/+$/, ''); // 末尾スラッシュ除去
+  }
   // まず、amplify_outputs.jsonから取得を試みる
   const amplifyEndpoint = getAmplifyApiEndpoint();
   if (amplifyEndpoint) {

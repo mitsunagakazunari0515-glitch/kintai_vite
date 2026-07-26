@@ -479,7 +479,9 @@ const AppRoutes = () => {
 function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
+      {/* サブパス配信時（VITE_BASE_PATH=/attendance/）はルーティングの basename も追従させる。
+          既定は '/'（従来動作）。import.meta.env.BASE_URL は vite の base を反映する。 */}
+      <BrowserRouter basename={import.meta.env.BASE_URL}>
         <AppRoutes />
       </BrowserRouter>
     </AuthProvider>

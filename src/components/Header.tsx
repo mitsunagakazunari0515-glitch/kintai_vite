@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { isPortalMode } from './RedirectToLogin';
 import { fontSizes } from '../config/fontSizes';
 import { MenuIcon, CloseIcon } from './Icons';
 
@@ -31,10 +32,15 @@ export const Header: React.FC<HeaderProps> = ({ isMobile = false, userRole: prop
   const userRole = propUserRole || contextUserRole || 'employee';
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     setIsMenuOpen(false);
-    logout();
-    navigate('/login');
+    await logout();
+    if (isPortalMode()) {
+      // 共通ポータルへ戻す（ログアウト後はポータルのログイン画面）。
+      window.location.href = '/';
+    } else {
+      navigate('/login');
+    }
   };
 
   const toggleMenu = () => {

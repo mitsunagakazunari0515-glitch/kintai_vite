@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from
 import { useEffect, useRef } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
+import { RedirectToLogin, isPortalMode } from './components/RedirectToLogin';
 import { Layout } from './components/Layout';
 import { ProgressBar } from './components/ProgressBar';
 import { Login } from './pages/Login';
@@ -440,14 +441,16 @@ const AppRoutes = () => {
 
   return (
     <Routes>
+      {/* 認証(ログイン/新規登録/再設定)は portalモードでは共通ポータルへ集約（勤怠側は撤去）。
+          非portalモード（単独の勤怠アプリ）では従来どおり勤怠内の画面を表示。 */}
       {/* 末尾スラッシュなしのパス */}
-      <Route path="/login" element={<Login />} />
-      <Route path="/signup" element={<SignUp />} />
-      <Route path="/password-reset" element={<PasswordReset />} />
+      <Route path="/login" element={isPortalMode() ? <RedirectToLogin /> : <Login />} />
+      <Route path="/signup" element={isPortalMode() ? <RedirectToLogin /> : <SignUp />} />
+      <Route path="/password-reset" element={isPortalMode() ? <RedirectToLogin /> : <PasswordReset />} />
       {/* 末尾スラッシュ付きのパスにも直接対応（404エラーを防ぐため） */}
-      <Route path="/login/" element={<Login />} />
-      <Route path="/signup/" element={<SignUp />} />
-      <Route path="/password-reset/" element={<PasswordReset />} />
+      <Route path="/login/" element={isPortalMode() ? <RedirectToLogin /> : <Login />} />
+      <Route path="/signup/" element={isPortalMode() ? <RedirectToLogin /> : <SignUp />} />
+      <Route path="/password-reset/" element={isPortalMode() ? <RedirectToLogin /> : <PasswordReset />} />
       <Route
         path="/admin/*"
         element={
@@ -464,8 +467,8 @@ const AppRoutes = () => {
           </ProtectedRoute>
         }
       />
-      <Route path="/" element={<Navigate to="/login" replace />} />
-      <Route path="*" element={<Navigate to="/login" replace />} />
+      <Route path="/" element={isPortalMode() ? <RedirectToLogin /> : <Navigate to="/login" replace />} />
+      <Route path="*" element={isPortalMode() ? <RedirectToLogin /> : <Navigate to="/login" replace />} />
     </Routes>
   );
 };

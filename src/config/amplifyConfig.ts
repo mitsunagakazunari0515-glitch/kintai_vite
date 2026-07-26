@@ -36,10 +36,12 @@ export const getAmplifyEnvironment = (): AmplifyEnvironment => {
  */
 export const getAmplifyConfigPath = (): string => {
   const env = getAmplifyEnvironment();
-  if (env === 'production') {
-    return '/amplify_outputs.production.json';
-  }
-  return '/amplify_outputs.json';
+  // サブパス配信（CloudFront で base=/attendance/ 等）に追従。
+  // import.meta.env.BASE_URL は vite の base（末尾スラッシュ付き, 既定 '/'）。
+  // 未設定時は '/xxx.json'（従来動作）、base=/attendance/ 時は '/attendance/xxx.json'。
+  const base = import.meta.env.BASE_URL || '/';
+  const file = env === 'production' ? 'amplify_outputs.production.json' : 'amplify_outputs.json';
+  return `${base}${file}`;
 };
 
 /**

@@ -78,6 +78,13 @@ export const setAmplifyApiEndpoint = (endpoint: string): void => {
  * @returns {string} APIプレフィックス（設定されていない場合は空文字列）
  */
 export const getApiPrefix = (): string => {
+  // 同一オリジン配信（CloudFront・案A）では、ステージ(/dev)は CloudFront の origin_path が付与する。
+  // そのため FE 側ではプレフィックスを付けない（付けると /attendance/dev/api/... となり
+  // /attendance/api/* ビヘイビアに外れて FE origin が index.html を返してしまう）。
+  const sameOriginBase = import.meta.env.VITE_API_SAME_ORIGIN_BASE;
+  if (sameOriginBase && sameOriginBase.trim() !== '') {
+    return '';
+  }
   const prefix = import.meta.env.VITE_API_PREFIX;
   if (prefix) {
     // プレフィックスが設定されている場合、先頭のスラッシュを削除して正規化

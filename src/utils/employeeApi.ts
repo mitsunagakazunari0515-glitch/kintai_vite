@@ -6,6 +6,7 @@
 import { apiRequest } from '../config/apiConfig';
 import { error as logError, warn } from './logger';
 import { extractApiError, translateApiError, ApiRequestError } from './apiErrorTranslator';
+import type { SystemRoles } from './authApi';
 
 /**
  * 従業員データのレスポンス型
@@ -21,7 +22,8 @@ export interface EmployeeResponse {
   joinDate: string;
   leaveDate: string | null;
   allowances: string[];
-  isAdmin: boolean;
+  isAdmin: boolean; // 後方互換（= roles.attendance === 'admin'）
+  roles?: SystemRoles; // システム別ロール（m_system_role 由来）
   baseSalary: number;
   defaultBreakTime: number;
   prescribedWorkHours?: number;
@@ -46,7 +48,11 @@ export interface CreateEmployeeRequest {
   joinDate: string;
   leaveDate?: string | null;
   allowances?: string[];
-  isAdmin?: boolean;
+  isAdmin?: boolean; // 後方互換。roles 未指定時のフォールバックに使用
+  roles?: {
+    attendance?: 'admin' | 'employee';
+    inventory?: 'manager' | 'staff';
+  }; // システム別ロール割当（新UI）
   baseSalary: number;
   defaultBreakTime: number;
   prescribedWorkHours?: number;

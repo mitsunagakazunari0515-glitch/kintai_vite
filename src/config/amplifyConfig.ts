@@ -36,10 +36,12 @@ export const getAmplifyEnvironment = (): AmplifyEnvironment => {
  */
 export const getAmplifyConfigPath = (): string => {
   const env = getAmplifyEnvironment();
-  if (env === 'production') {
-    return '/amplify_outputs.production.json';
-  }
-  return '/amplify_outputs.json';
+  // サブパス配信（CloudFront で base=/attendance/ 等）に追従。
+  // import.meta.env.BASE_URL は vite の base（末尾スラッシュ付き, 既定 '/'）。
+  // 未設定時は '/xxx.json'（従来動作）、base=/attendance/ 時は '/attendance/xxx.json'。
+  const base = import.meta.env.BASE_URL || '/';
+  const file = env === 'production' ? 'amplify_outputs.production.json' : 'amplify_outputs.json';
+  return `${base}${file}`;
 };
 
 /**
@@ -76,6 +78,13 @@ export const setAmplifyApiEndpoint = (endpoint: string): void => {
  * @returns {string} APIプレフィックス（設定されていない場合は空文字列）
  */
 export const getApiPrefix = (): string => {
+  // 同一オリジン配信（CloudFront・案A）では、ステージ(/dev)は CloudFront の origin_path が付与する。
+  // そのため FE 側ではプレフィックスを付けない（付けると /attendance/dev/api/... となり
+  // /attendance/api/* ビヘイビアに外れて FE origin が index.html を返してしまう）。
+  const sameOriginBase = import.meta.env.VITE_API_SAME_ORIGIN_BASE;
+  if (sameOriginBase && sameOriginBase.trim() !== '') {
+    return '';
+  }
   const prefix = import.meta.env.VITE_API_PREFIX;
   if (prefix) {
     // プレフィックスが設定されている場合、先頭のスラッシュを削除して正規化
@@ -90,6 +99,13 @@ export const getApiPrefix = (): string => {
  * 優先順位: amplify_outputs.json > VITE_API_ENDPOINT
  */
 export const getApiEndpoint = (): string => {
+  // 同一オリジン配信（CloudFront・案A）用の相対ベース。設定時はこれを最優先で使う。
+  // 例: VITE_API_SAME_ORIGIN_BASE=/attendance → 実URLは /attendance/api/v1/...（同一オリジン相対）。
+  // 未設定時は従来どおり amplify_outputs.json / VITE_API_ENDPOINT の絶対URLを使う（既存動作を維持）。
+  const sameOriginBase = import.meta.env.VITE_API_SAME_ORIGIN_BASE;
+  if (sameOriginBase && sameOriginBase.trim() !== '') {
+    return sameOriginBase.trim().replace(/\/+$/, ''); // 末尾スラッシュ除去
+  }
   // まず、amplify_outputs.jsonから取得を試みる
   const amplifyEndpoint = getAmplifyApiEndpoint();
   if (amplifyEndpoint) {

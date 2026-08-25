@@ -12,7 +12,9 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "type-check": "tsc --noEmit",
+    "verify": "npm run lint && npm run type-check && npm run test"
   },
   "dependencies": {
     "@aws-amplify/ui-react": "^6.5.5",

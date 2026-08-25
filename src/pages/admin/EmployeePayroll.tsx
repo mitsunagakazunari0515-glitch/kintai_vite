@@ -676,7 +676,7 @@ export const EmployeePayroll: React.FC = () => {
         // 既存の給与明細（GET /api/v1/payroll/detail … source===snapshot のときのみ上書き用）
         let existingPayrollDetail: PayrollDetail | null = null;
         // 未登録月(computed)でも、APIが前月から引き継いだ控除は初期値として使う。
-        let carriedDeductions: { [key: string]: number } = {};
+        const carriedDeductions: { [key: string]: number } = {};
         let carriedFrom: string | null = null;
         try {
           const detailByPeriod = await getPayrollDetailByPeriod(employeeId, newPeriod.year, newPeriod.month);

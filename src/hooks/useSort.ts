@@ -49,7 +49,7 @@ export interface UseSortReturn<T> {
  * const { sortedData, handleSort, getSortIcon } = useSort(employees, 'name', 'asc');
  * ```
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- ジェネリック制約。unknownにするとインデックスシグネチャを持たない既存のインターフェース（Employee等）を型引数に渡せなくなるため any が必要
+// ジェネリック制約。unknownにするとインデックスシグネチャを持たない既存のインターフェース（Employee等）を型引数に渡せなくなるため any が必要
 export function useSort<T extends Record<string, any>>(
   data: T[],
   initialSortKey: keyof T | null = null,

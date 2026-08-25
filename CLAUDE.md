@@ -15,7 +15,7 @@
 
 ## ルール
 
-- 検証: `npm run lint`（--max-warnings 0）/ `npm test`（Vitest）をグリーンに。型は `npm run build` 内の tsc で確認
+- 検証: `npm run verify`（lint + type-check + vitest）をグリーンに
 - コミットは Conventional Commits・日本語
 - **main へ直 push しない**（PR 経由。Amplify がブランチ連動でビルドする）
 - BE（kintai_node）の型変更を取り込むときは `docs/api/ENDPOINTS.md` と突き合わせる

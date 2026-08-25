@@ -13,6 +13,8 @@
 import { useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
 
+// ポータル同居判定は本コンポーネントと不可分なためここで公開する
+// eslint-disable-next-line react-refresh/only-export-components
 export const isPortalMode = (): boolean => !!import.meta.env.VITE_API_SAME_ORIGIN_BASE;
 
 interface RedirectToLoginProps {

@@ -13,7 +13,14 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
+      # npm ci ではなく npm install を使う（amplify.yml と同じ理由）。
+      # aws-amplify 由来の @emnapi 等プラットフォーム依存の optional 依存が
+      # macOS 生成の lock と Linux ランナーで食い違い「npm ci EUSAGE(lock 不整合)」になるため、
+      # npm install で CI 環境上で解決し直して整合させる。
+      # @a1int/ui(GitHub Packages) の解決には NODE_AUTH_TOKEN(read:packages の PAT)が必要（.npmrc 経由）。
       - name: Install
-        run: npm ci
+        run: npm install
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NODE_AUTH_TOKEN }}
       - name: Verify (lint + type-check + test)
         run: npm run verify

@@ -62,8 +62,10 @@ interface Employee {
   baseSalary: number;
   /** 基本休憩時間（分）。 */
   defaultBreakTime: number;
-  /** 管理者フラグ。 */
+  /** 管理者フラグ（勤怠ロール: true=admin / false=employee）。 */
   isAdmin: boolean;
+  /** 在庫システムのロール（staff / manager）。 */
+  inventoryRole: 'manager' | 'staff';
   /** 勤務拠点ID。nullの場合は未設定。 */
   workLocationId: string | null;
   /** 有給情報の配列。 */
@@ -103,6 +105,7 @@ export const EmployeeRegistration: React.FC = () => {
     baseSalary: 0,
     defaultBreakTime: 60,
     isAdmin: false,
+    inventoryRole: 'staff',
     workLocationId: null,
     paidLeaves: []
   });
@@ -150,7 +153,8 @@ export const EmployeeRegistration: React.FC = () => {
             joinDate: employee.joinDate,
             leaveDate: employee.leaveDate,
             allowances: employee.allowances,
-            isAdmin: employee.isAdmin,
+            isAdmin: employee.roles ? employee.roles.attendance === 'admin' : employee.isAdmin,
+            inventoryRole: employee.roles?.inventory ?? 'staff',
             baseSalary: employee.baseSalary,
             defaultBreakTime: employee.defaultBreakTime,
             workLocationId: employee.workLocationId ?? null,
@@ -264,7 +268,13 @@ export const EmployeeRegistration: React.FC = () => {
         joinDate: formData.joinDate,
         leaveDate: formData.leaveDate || null,
         allowances: formData.allowances,
+        // システム別ロール割当（勤怠: admin/employee、在庫: staff/manager）。
+        // isAdmin も後方互換のため送信（バックエンドは roles を優先）。
         isAdmin: formData.isAdmin,
+        roles: {
+          attendance: formData.isAdmin ? 'admin' : 'employee',
+          inventory: formData.inventoryRole,
+        },
         baseSalary: formData.baseSalary,
         defaultBreakTime: formData.defaultBreakTime,
         workLocationId: formData.workLocationId || null,
@@ -687,11 +697,14 @@ export const EmployeeRegistration: React.FC = () => {
 
           <div style={{ marginBottom: '1.5rem' }}>
             <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
-              管理者
+              システム権限
             </label>
-            <label style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
+
+            {/* 勤怠システムのロール（管理者チェック = admin / 未チェック = employee） */}
+            <div style={{ marginBottom: '0.75rem', fontSize: fontSizes.medium, color: '#6b7280' }}>勤怠システム</div>
+            <label style={{
+              display: 'flex',
+              alignItems: 'center',
               cursor: 'pointer',
               padding: '0.75rem',
               borderRadius: '4px',
@@ -705,8 +718,26 @@ export const EmployeeRegistration: React.FC = () => {
                 onChange={(e) => setFormData({ ...formData, isAdmin: e.target.checked })}
                 style={{ marginRight: '0.5rem' }}
               />
-              管理者権限を付与する
+              管理者権限を付与する（管理者=admin / 未付与=employee）
             </label>
+
+            {/* 在庫システムのロール（staff / manager） */}
+            <div style={{ marginTop: '1rem', marginBottom: '0.5rem', fontSize: fontSizes.medium, color: '#6b7280' }}>在庫管理システム</div>
+            <select
+              value={formData.inventoryRole}
+              onChange={(e) => setFormData({ ...formData, inventoryRole: e.target.value as 'manager' | 'staff' })}
+              style={{
+                padding: '0.75rem',
+                borderRadius: '4px',
+                border: '2px solid #d1d5db',
+                fontSize: fontSizes.medium,
+                width: 'fit-content',
+                minWidth: '220px',
+              }}
+            >
+              <option value="staff">担当者（staff）— 消費入力・入荷検品・在庫参照</option>
+              <option value="manager">管理者（manager）— 発注・マスタ・棚卸・ダッシュボード</option>
+            </select>
           </div>
 
           {/* 有給情報の入力欄は「編集時のみ」表示（新規登録では非表示。有給は労基法準拠で自動付与されるため）。

@@ -1,8 +1,11 @@
 import React, { useState } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { isPortalMode } from './RedirectToLogin';
 import { fontSizes } from '../config/fontSizes';
 import { MenuIcon, CloseIcon } from './Icons';
+// 上部カラーバー（クロム）は共通化。ナビ／ドロワー／認証・ルーティングは従来どおり本コンポーネントが保持。
+import { AppHeaderBar } from '@a1int/ui';
 
 /**
  * ヘッダーコンポーネントのプロパティを表すインターフェース。
@@ -31,10 +34,15 @@ export const Header: React.FC<HeaderProps> = ({ isMobile = false, userRole: prop
   const userRole = propUserRole || contextUserRole || 'employee';
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     setIsMenuOpen(false);
-    logout();
-    navigate('/login');
+    await logout();
+    if (isPortalMode()) {
+      // 共通ポータルへ戻す（ログアウト後はポータルのログイン画面）。
+      window.location.href = '/';
+    } else {
+      navigate('/login');
+    }
   };
 
   const toggleMenu = () => {
@@ -47,132 +55,15 @@ export const Header: React.FC<HeaderProps> = ({ isMobile = false, userRole: prop
 
   return (
     <>
-      <header
-        style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          background: 'linear-gradient(135deg, #5b3b1f 0%, #8b5a2b 60%, #c47c3f 100%)',
-          color: 'white',
-          padding: isMobile ? '0.75rem 1rem' : '1rem 2rem',
-          display: 'flex',
-          flexDirection: 'row',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          gap: '0',
-          zIndex: 1000,
-          boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)'
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          {isMobile && (
-            <button
-              onClick={toggleMenu}
-              style={{
-                background: 'none',
-                border: 'none',
-                padding: '0.25rem',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}
-            >
-              {isMenuOpen ? <CloseIcon size={24} color="#ffffff" /> : <MenuIcon size={24} color="#ffffff" />}
-            </button>
-          )}
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem' }}>
-            <h1 style={{ margin: 0, fontSize: isMobile ? '1.125rem' : '1.5rem' }}>
-              A・1勤怠管理システム
-            </h1>
-              <span
-                style={{
-                  fontSize: '1rem',
-                  opacity: 0.9
-                }}
-              >
-                （{userRole === 'admin' ? '管理者' : '従業員'}）
-              </span>
-          </div>
-        </div>
-        {!isMobile && (
-          <div
-            style={{
-              display: 'flex',
-              gap: '0.75rem',
-              alignItems: 'center',
-              color: '#ffffff'
-            }}
-          >
-            <span style={{ fontSize: '1rem' }}>
-              従業員名：{userName || userId || 'ゲスト'}
-            </span>
-            <button
-              onClick={handleLogout}
-              style={{
-                background: 'none',
-                border: 'none',
-                padding: 0,
-                margin: 0,
-                color: '#ffffff',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.25rem',
-                cursor: 'pointer',
-                fontSize: fontSizes.navLink.desktop,
-                whiteSpace: 'nowrap',
-                boxShadow: 'none',
-                borderRadius: 0,
-                minHeight: 'auto',
-                minWidth: 'auto'
-              }}
-            >
-              <svg
-                width={26}
-                height={26}
-                viewBox="0 0 24 24"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-                style={{ display: 'block' }}
-              >
-                <path
-                  d="M4 3H13C13.5523 3 14 3.44772 14 4V7"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                />
-                <path
-                  d="M4 21H13C13.5523 21 14 20.5523 14 20V17"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                />
-                <path
-                  d="M4 3V21"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                />
-                <path
-                  d="M11 12H20"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                />
-                <path
-                  d="M16 9L20 12L16 15"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-              <span>ログアウト</span>
-            </button>
-          </div>
-        )}
-      </header>
+      <AppHeaderBar
+        title="A・1勤怠管理システム"
+        roleLabel={userRole === 'admin' ? '管理者' : '従業員'}
+        userName={userName || userId || 'ゲスト'}
+        onLogout={handleLogout}
+        isMobile={isMobile}
+        menuOpen={isMenuOpen}
+        onMenuToggle={toggleMenu}
+      />
       {/* モバイル用バーガーメニュー */}
       {isMobile && isMenuOpen && (
         <div

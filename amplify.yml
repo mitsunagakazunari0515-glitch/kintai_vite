@@ -10,7 +10,10 @@ frontend:
   phases:
     preBuild:
       commands:
-        - npm ci --cache .npm --prefer-offline
+        # npm ci ではなく npm install を使う。aws-amplify 由来の @emnapi など
+        # プラットフォーム依存の optional 依存が macOS 生成の lock と Linux ビルダで食い違い
+        # 「npm ci EUSAGE(lock 不整合)」が再発するため（inventory-front / platform-portal-front と同方針）。
+        - npm install --cache .npm
     build:
       commands:
         - npm run build

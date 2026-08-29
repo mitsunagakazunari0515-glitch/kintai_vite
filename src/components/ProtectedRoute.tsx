@@ -1,5 +1,6 @@
-import { Navigate, useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { RedirectToLogin } from './RedirectToLogin';
 import { log } from '../utils/logger';
 
 /**
@@ -31,7 +32,8 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requir
   // 認証されていない、またはuserRoleがnullの場合はログイン画面にリダイレクト
   // 認証が成功するまで（APIから200レスポンスが返ってくるまで）ログイン画面に留まる
   if (!isAuthenticated || !userRole) {
-    return <Navigate to="/login" replace />;
+    // portalモードは共通ポータルへ（ログイン後に元の画面へ復帰）。非portalは /login。
+    return <RedirectToLogin withReturn />;
   }
 
   // ロールチェック
@@ -50,9 +52,8 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requir
       // Googleログインのフラグは、App.tsxでリダイレクト処理が完了するまで削除しない
       // 注意: loginUserTypeとgoogleLoginInProgressは、App.tsxでリダイレクト処理が完了するまで保持する必要がある
     } else if (userRole === 'employee' && requiredRole !== 'employee') {
-      // 従業員が管理者画面にアクセスしようとした場合
-      // ログイン画面にリダイレクト
-      return <Navigate to="/login" replace />;
+      // 従業員が管理者画面にアクセスしようとした場合はログイン導線へ（権限不足なので復帰指定なし）
+      return <RedirectToLogin />;
     }
     // 従業員が従業員画面にアクセスする場合は、そのまま許可
   }

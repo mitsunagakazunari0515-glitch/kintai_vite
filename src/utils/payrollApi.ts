@@ -75,6 +75,11 @@ export interface PayrollDetailByPeriodResponse {
   year: number;
   month: number;
   statementType: 'salary' | 'bonus';
+  /**
+   * 控除を引き継いだ元の年月（'YYYY-MM'）。未登録月(computed)で直前の給与明細から
+   * 控除を初期表示したときに入る。引き継ぎが無ければ null。
+   */
+  carriedOverFrom?: string | null;
   detail: PayrollDetailResponse;
   updatedBy?: string | null;
   updatedAt?: string | null;

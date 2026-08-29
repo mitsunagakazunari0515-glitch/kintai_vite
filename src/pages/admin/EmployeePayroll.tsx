@@ -675,8 +675,21 @@ export const EmployeePayroll: React.FC = () => {
         
         // 既存の給与明細（GET /api/v1/payroll/detail … source===snapshot のときのみ上書き用）
         let existingPayrollDetail: PayrollDetail | null = null;
+        // 未登録月(computed)でも、APIが前月から引き継いだ控除は初期値として使う。
+        const carriedDeductions: { [key: string]: number } = {};
+        let carriedFrom: string | null = null;
         try {
           const detailByPeriod = await getPayrollDetailByPeriod(employeeId, newPeriod.year, newPeriod.month);
+          if (detailByPeriod.source === 'computed' && detailByPeriod.detail) {
+            carriedFrom = detailByPeriod.carriedOverFrom ?? null;
+            const list = detailByPeriod.detail.deductions;
+            if (Array.isArray(list)) {
+              list.forEach(item => {
+                const master = deductions.find(ded => ded.name === item.name);
+                if (master) carriedDeductions[master.id] = item.amount;
+              });
+            }
+          }
           if (detailByPeriod.source === 'snapshot' && detailByPeriod.detail) {
             const d = detailByPeriod.detail;
             const timeFields = payrollDetailTimeFieldsFromApi(d);
@@ -786,13 +799,16 @@ export const EmployeePayroll: React.FC = () => {
           employmentInsurance: existingPayrollDetail?.employmentInsurance ?? 0,
           municipalTax: existingPayrollDetail?.municipalTax ?? 0,
           incomeTax: existingPayrollDetail?.incomeTax ?? 0,
-          // 控除マスタから動的に生成される項目に0を自動セット
+          // 控除マスタから動的に生成される項目をセット。
+          // 登録済み(snapshot)ならその値、未登録なら「前月から引き継いだ値」を初期値にする
+          // （雇用保険は総支給額×0.005で自動計算済み。いずれも画面上で手修正できる）。
           deductions: (() => {
             const existingDeductions = existingPayrollDetail?.deductions ?? {};
             const newDeductions: { [key: string]: number } = {};
             deductions.forEach(deduction => {
               // APIからは名称をキーとして返ってくる場合とIDをキーとして返ってくる場合の両方に対応
-              const amount = existingDeductions[deduction.name] || existingDeductions[deduction.id] || 0;
+              const amount = existingDeductions[deduction.name] || existingDeductions[deduction.id]
+                || carriedDeductions[deduction.id] || 0;
               newDeductions[deduction.id] = amount;
             });
             return newDeductions;
@@ -800,6 +816,13 @@ export const EmployeePayroll: React.FC = () => {
           totalDeductions: existingPayrollDetail?.totalDeductions ?? 0,
           netPay: existingPayrollDetail?.netPay ?? 0
         });
+
+        // 前月から控除を引き継いだことを担当者に明示する（そのまま保存も、直して保存もできる）。
+        if (carriedFrom && Object.keys(carriedDeductions).length > 0) {
+          const [cy, cm] = carriedFrom.split('-');
+          setSnackbar({ message: `${Number(cy)}年${Number(cm)}月分の控除を引き継ぎました（金額は編集できます）`, type: 'success' });
+          setTimeout(() => setSnackbar(null), 4000);
+        }
       } catch (error) {
         logError('Failed to fetch data for period:', error);
         setSnackbar({ message: '勤務情報の取得に失敗しました', type: 'error' });
@@ -868,11 +891,14 @@ export const EmployeePayroll: React.FC = () => {
     // 給与明細の場合のみ自動計算
     if (recordType === 'payroll' && formData) {
       const allowanceTotal = Object.values(formData.allowances || {}).reduce((sum, amount) => sum + amount, 0);
-    const totalEarnings = formData.baseSalary + 
-      formData.overtimeAllowance + 
-      formData.lateNightAllowance + 
+    // 通勤手当・住宅手当は固定の支給項目なので、動的な手当マスタ分とは別に加算する。
+    const totalEarnings = formData.baseSalary +
+      formData.overtimeAllowance +
+      formData.lateNightAllowance +
+      (formData.commutingAllowance || 0) +
+      (formData.housingAllowance || 0) +
       allowanceTotal;
-    
+
       const deductionTotal = Object.values(formData.deductions || {}).reduce((sum, amount) => sum + amount, 0);
     const netPay = totalEarnings - deductionTotal;
 
@@ -891,6 +917,8 @@ export const EmployeePayroll: React.FC = () => {
     formData?.baseSalary,
     formData?.overtimeAllowance,
     formData?.lateNightAllowance,
+    formData?.commutingAllowance,
+    formData?.housingAllowance,
     formData?.allowances,
     formData?.deductions
   ]);
@@ -3146,6 +3174,16 @@ export const EmployeePayroll: React.FC = () => {
                       <div>深夜手当</div>
                       <div style={{ fontWeight: 'bold' }}>{formatCurrency(currentRecord.detail.lateNightAllowance)}</div>
                     </div>
+                    {/* 通勤手当・住宅手当は固定の支給項目（手当マスタの動的リストではない）。
+                        金額が0でも欄として常に表示する（基本給と同じ扱い）。 */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid #e5e7eb' }}>
+                      <div>通勤手当</div>
+                      <div style={{ fontWeight: 'bold' }}>{formatCurrency(currentRecord.detail.commutingAllowance)}</div>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid #e5e7eb' }}>
+                      <div>住宅手当</div>
+                      <div style={{ fontWeight: 'bold' }}>{formatCurrency(currentRecord.detail.housingAllowance)}</div>
+                    </div>
                     {/* 手当マスタから動的に表示 */}
                     {allowances.map(allowance => {
                       // APIからは名称をキーとして返ってくるため、名称で検索
@@ -3674,6 +3712,56 @@ export const EmployeePayroll: React.FC = () => {
                           const num = handleNumberInput(e.target.value);
                           if (!isNaN(num)) {
                             setFormData({ ...formData, lateNightAllowance: num });
+                          }
+                        }}
+                        style={{
+                          width: '100%',
+                          padding: '0.5rem',
+                          border: '1px solid #d1d5db',
+                          borderRadius: '4px',
+                          fontSize: fontSizes.input,
+                          boxSizing: 'border-box'
+                        }}
+                      />
+                    </div>
+                    {/* 通勤手当・住宅手当は固定の支給項目（手当マスタの動的リストではない）。
+                        基本給と同じく常に入力欄として表示する。 */}
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: fontSizes.label }}>
+                        通勤手当
+                      </label>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={formData.commutingAllowance === 0 ? '0' : (formData.commutingAllowance || '')}
+                        onChange={(e) => {
+                          const num = handleNumberInput(e.target.value);
+                          if (!isNaN(num)) {
+                            setFormData({ ...formData, commutingAllowance: num });
+                          }
+                        }}
+                        style={{
+                          width: '100%',
+                          padding: '0.5rem',
+                          border: '1px solid #d1d5db',
+                          borderRadius: '4px',
+                          fontSize: fontSizes.input,
+                          boxSizing: 'border-box'
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: fontSizes.label }}>
+                        住宅手当
+                      </label>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={formData.housingAllowance === 0 ? '0' : (formData.housingAllowance || '')}
+                        onChange={(e) => {
+                          const num = handleNumberInput(e.target.value);
+                          if (!isNaN(num)) {
+                            setFormData({ ...formData, housingAllowance: num });
                           }
                         }}
                         style={{

@@ -1,7 +1,17 @@
 /**
  * APIエラーコードから日本語メッセージを生成する共通ユーティリティ
- * 全APIで共通のルールに基づいてエラーメッセージを返す
+ * 全APIで共通のルールに基づいてエラーメッセージを返す。
+ * 共通コード（認証/認可/404/409/400/500 等）の文言は全社共通辞書
+ * （@a1int/ui の COMMON_ERROR_MESSAGES）へ委譲して統一する。
+ * 勤怠固有コード・動的整形（IDや値の埋め込み）は本ファイルの switch で従来どおり処理する。
  */
+import { COMMON_ERROR_MESSAGES } from '@a1int/ui';
+
+/**
+ * 共通辞書へ委譲せず、必ず本ファイルの動的整形を優先するコード。
+ * （共通辞書にも同名キーが存在するが、勤怠は値の埋め込みを行うため）
+ */
+const LOCAL_DYNAMIC_CODES = new Set(['VALIDATION_ERROR']);
 
 /**
  * APIエラーレスポンスの型定義
@@ -98,7 +108,13 @@ export const translateApiError = (error: unknown): string => {
     // エラーコードからメッセージを生成
     const errorCode = apiError.error?.code || '';
     const statusCode = apiError.statusCode || 0;
-    
+
+    // 共通コードは全社共通辞書（@a1int/ui）へ委譲して文言を統一する。
+    // ただし勤怠固有の動的整形を行うコードは下の switch を優先。
+    if (errorCode && !LOCAL_DYNAMIC_CODES.has(errorCode) && COMMON_ERROR_MESSAGES[errorCode]) {
+      return COMMON_ERROR_MESSAGES[errorCode];
+    }
+
     // エラーコード別のメッセージ（ERROR_LIST.mdに基づく）
     switch (errorCode) {
       // 400 Bad Request - 共通エラー

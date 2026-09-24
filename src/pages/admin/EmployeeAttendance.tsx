@@ -41,6 +41,7 @@ import {
   prescribedWorkingMinutesFromScheduledWeekdays
 } from '../../utils/payrollPeriod';
 import { sumAttendanceTableColumnTotals } from '../../utils/attendanceTableTotals';
+import { type BreakInput, validateBreaks, toBreakRequests, filledBreaks } from '../../utils/attendanceEntryForm';
 
 /**
  * 休憩時間を表すインターフェース。
@@ -84,6 +85,8 @@ interface AttendanceLog {
   lateNightMinutes?: number;
   /** 勤怠メモ（管理者向け出勤簿のみ表示。APIの memo）。 */
   memo?: string | null;
+  /** 休日/平日扱いの上書き区分（null=曜日で自動判定）。「勤怠の編集」の初期値に使う。 */
+  dayTypeOverride: DayTypeOverride | null;
 }
 
 /**
@@ -126,7 +129,8 @@ const convertApiLogToUiLog = (apiLog: ApiAttendanceLog): AttendanceLog => {
     totalWorkMinutes: apiLog.totalWorkMinutes,
     overtimeMinutes: apiLog.overtimeMinutes,
     lateNightMinutes: apiLog.lateNightMinutes,
-    memo: apiLog.memo ?? null
+    memo: apiLog.memo ?? null,
+    dayTypeOverride: apiLog.dayTypeOverride ?? null
   };
 };
 
@@ -191,13 +195,16 @@ export const EmployeeAttendance: React.FC = () => {
   const pdfContentRef = useRef<HTMLDivElement>(null);
   /** 勤怠の代理追加モーダルの表示状態（打刻忘れの後入力）。従業員はこの画面の employeeId に固定。 */
   const [showAddModal, setShowAddModal] = useState(false);
-  /** 勤怠の代理追加フォーム（従業員は固定のため含めない）。 */
-  const [addForm, setAddForm] = useState<{ date: string; clockIn: string; clockOut: string; dayTypeOverride: DayTypeOverride | null }>({
+  /** 勤怠の代理追加・編集フォーム（従業員は固定のため含めない）。 */
+  const [addForm, setAddForm] = useState<{ date: string; clockIn: string; clockOut: string; dayTypeOverride: DayTypeOverride | null; breaks: BreakInput[] }>({
     date: '',
     clockIn: '',
     clockOut: '',
-    dayTypeOverride: null
+    dayTypeOverride: null,
+    breaks: []
   });
+  /** モーダルの用途。add=打刻忘れの後入力 / edit=打刻済みの勤怠を編集（同じフォームを共用）。 */
+  const [entryMode, setEntryMode] = useState<'add' | 'edit'>('add');
   /** 代理追加の保存中フラグ（二重送信防止）。 */
   const [isAdding, setIsAdding] = useState(false);
   /** 追加成功後に出勤簿を再取得するためのトリガー。 */
@@ -339,6 +346,14 @@ export const EmployeeAttendance: React.FC = () => {
       setTimeout(() => setSnackbar(null), 3000);
       return;
     }
+    const breakError = validateBreaks(addForm.breaks);
+    if (breakError) {
+      setSnackbar({ message: breakError, type: 'error' });
+      setTimeout(() => setSnackbar(null), 3000);
+      return;
+    }
+    // 編集は休憩を全件置換（削除も反映）。追加は休憩を入力したときだけ送り、未入力なら既存の休憩を変更しない。
+    const sendBreaks = entryMode === 'edit' || filledBreaks(addForm.breaks).length > 0;
     setIsAdding(true);
     try {
       await updateAttendance({
@@ -346,15 +361,16 @@ export const EmployeeAttendance: React.FC = () => {
         workDate: addForm.date,
         clockIn: convertTimeToJST(addForm.clockIn, addForm.date),
         clockOut: addForm.clockOut ? convertTimeToJST(addForm.clockOut, addForm.date) : null,
-        dayTypeOverride: addForm.dayTypeOverride
+        dayTypeOverride: addForm.dayTypeOverride,
+        ...(sendBreaks ? { breaks: toBreakRequests(addForm.breaks, addForm.date) } : {})
       });
       setShowAddModal(false);
-      setSnackbar({ message: '勤怠を追加しました', type: 'success' });
+      setSnackbar({ message: entryMode === 'edit' ? '勤怠を更新しました' : '勤怠を追加しました', type: 'success' });
       setTimeout(() => setSnackbar(null), 3000);
       // 出勤簿を再取得して反映する
       setReloadFlag(prev => prev + 1);
     } catch (error) {
-      logError('勤怠の追加に失敗しました', error);
+      logError(entryMode === 'edit' ? '勤怠の更新に失敗しました' : '勤怠の追加に失敗しました', error);
       const errorMessage = translateApiError(error);
       setSnackbar({ message: errorMessage, type: 'error' });
       setTimeout(() => setSnackbar(null), 3000);
@@ -365,9 +381,38 @@ export const EmployeeAttendance: React.FC = () => {
 
   // 勤怠の代理追加モーダルを開く（打刻忘れの後入力）。
   const openAddAttendance = () => {
-    setAddForm({ date: '', clockIn: '', clockOut: '', dayTypeOverride: null });
+    setEntryMode('add');
+    setAddForm({ date: '', clockIn: '', clockOut: '', dayTypeOverride: null, breaks: [] });
     setShowAddModal(true);
   };
+
+  /** 「勤怠の編集」で選べる日（表示中の給与期間で出勤打刻がある日）。 */
+  const editableLogs = useMemo(
+    () => logs.filter(l => l.clockIn).sort((a, b) => a.date.localeCompare(b.date)),
+    [logs]
+  );
+
+  // 編集対象の日を選んだら、その日の打刻済みの値をフォームに入れる。
+  const selectEditDate = (date: string) => {
+    const log = editableLogs.find(l => l.date === date);
+    setAddForm({
+      date,
+      clockIn: log?.clockIn ?? '',
+      clockOut: log?.clockOut ?? '',
+      dayTypeOverride: log?.dayTypeOverride ?? null,
+      breaks: (log?.breaks ?? []).map(b => ({ start: b.start, end: b.end ?? '' }))
+    });
+  };
+
+  // 打刻済みの勤怠を編集するモーダルを開く（振替出勤→通常出勤への変更などに使う）。
+  const openEditAttendance = () => {
+    setEntryMode('edit');
+    setAddForm({ date: '', clockIn: '', clockOut: '', dayTypeOverride: null, breaks: [] });
+    setShowAddModal(true);
+  };
+
+  const setBreakRow = (index: number, patch: Partial<BreakInput>) =>
+    setAddForm(f => ({ ...f, breaks: f.breaks.map((b, i) => (i === index ? { ...b, ...patch } : b)) }));
 
   /** 給与期間（前月26〜当月25）の全日を表形式用に列挙 */
   const getCalendarDays = () =>
@@ -498,7 +543,9 @@ export const EmployeeAttendance: React.FC = () => {
               width: '100%', maxWidth: '480px', maxHeight: '90vh', overflowY: 'auto'
             }}
           >
-            <h3 style={{ marginTop: 0, marginBottom: '1rem', fontSize: fontSizes.large }}>勤怠を追加（打刻忘れの後入力）</h3>
+            <h3 style={{ marginTop: 0, marginBottom: '1rem', fontSize: fontSizes.large }}>
+              {entryMode === 'edit' ? '勤怠の編集' : '勤怠を追加（打刻忘れの後入力）'}
+            </h3>
             {employeeName && (
               <p style={{ marginTop: 0, marginBottom: '1rem', fontSize: fontSizes.medium, color: '#4b5563' }}>
                 対象従業員: {employeeName}
@@ -507,12 +554,34 @@ export const EmployeeAttendance: React.FC = () => {
 
             <div style={{ marginBottom: '1rem' }}>
               <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold', fontSize: fontSizes.label }}>日付</label>
-              <input
-                type="date"
-                value={addForm.date}
-                onChange={(e) => setAddForm({ ...addForm, date: e.target.value })}
-                style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '4px', fontSize: fontSizes.input, boxSizing: 'border-box' }}
-              />
+              {entryMode === 'edit' ? (
+                <>
+                  <select
+                    value={addForm.date}
+                    onChange={(e) => selectEditDate(e.target.value)}
+                    style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '4px', fontSize: fontSizes.input, boxSizing: 'border-box' }}
+                  >
+                    <option value="">編集する日を選択してください</option>
+                    {editableLogs.map(l => (
+                      <option key={l.date} value={l.date}>
+                        {formatDate(l.date)}（{l.clockIn}〜{l.clockOut ?? ''}）
+                      </option>
+                    ))}
+                  </select>
+                  {editableLogs.length === 0 && (
+                    <p style={{ margin: '0.5rem 0 0', fontSize: fontSizes.small, color: '#6b7280' }}>
+                      表示中の期間に打刻済みの勤怠がありません。年月を切り替えてください。
+                    </p>
+                  )}
+                </>
+              ) : (
+                <input
+                  type="date"
+                  value={addForm.date}
+                  onChange={(e) => setAddForm({ ...addForm, date: e.target.value })}
+                  style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '4px', fontSize: fontSizes.input, boxSizing: 'border-box' }}
+                />
+              )}
             </div>
 
             <div style={{ marginBottom: '1rem' }}>
@@ -551,6 +620,44 @@ export const EmployeeAttendance: React.FC = () => {
               </select>
             </div>
 
+            {/* 休憩時間（複数回に対応）。開始・終了とも空の行は保存時に無視する */}
+            <div style={{ marginBottom: '1.5rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold', fontSize: fontSizes.label }}>休憩時間（任意）</label>
+              {addForm.breaks.map((b, index) => (
+                <div key={index} style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', alignItems: 'center' }}>
+                  <input
+                    type="time"
+                    aria-label={`休憩${index + 1}の開始時刻`}
+                    value={b.start}
+                    onChange={(e) => setBreakRow(index, { start: e.target.value })}
+                    style={{ flex: 1, minWidth: 0, padding: '0.5rem', border: '1px solid #d1d5db', borderRadius: '4px', fontSize: fontSizes.input, boxSizing: 'border-box' }}
+                  />
+                  <span style={{ fontSize: fontSizes.medium }}>〜</span>
+                  <input
+                    type="time"
+                    aria-label={`休憩${index + 1}の終了時刻`}
+                    value={b.end}
+                    onChange={(e) => setBreakRow(index, { end: e.target.value })}
+                    style={{ flex: 1, minWidth: 0, padding: '0.5rem', border: '1px solid #d1d5db', borderRadius: '4px', fontSize: fontSizes.input, boxSizing: 'border-box' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setAddForm(f => ({ ...f, breaks: f.breaks.filter((_, i) => i !== index) }))}
+                    style={{ padding: '0.5rem 0.75rem', backgroundColor: '#ef4444', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: fontSizes.button, whiteSpace: 'nowrap' }}
+                  >
+                    削除
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={() => setAddForm(f => ({ ...f, breaks: [...f.breaks, { start: '', end: '' }] }))}
+                style={{ padding: '0.5rem 1rem', backgroundColor: '#fff', color: '#8b5a2b', border: '1px solid #8b5a2b', borderRadius: '4px', cursor: 'pointer', fontSize: fontSizes.button }}
+              >
+                ＋ 休憩を追加
+              </button>
+            </div>
+
             <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
               <button
                 onClick={() => setShowAddModal(false)}
@@ -564,7 +671,7 @@ export const EmployeeAttendance: React.FC = () => {
                 disabled={isAdding}
                 style={{ padding: '0.5rem 1rem', backgroundColor: '#8b5a2b', color: '#fff', border: 'none', borderRadius: '4px', fontSize: fontSizes.button, cursor: isAdding ? 'not-allowed' : 'pointer' }}
               >
-                {isAdding ? '追加中...' : '追加'}
+                {entryMode === 'edit' ? (isAdding ? '更新中...' : '更新') : (isAdding ? '追加中...' : '追加')}
               </button>
             </div>
           </div>
@@ -710,6 +817,21 @@ export const EmployeeAttendance: React.FC = () => {
               }}
             >
               ＋ 勤怠を追加
+            </button>
+            {/* 打刻済みの勤怠を編集（振替出勤→通常出勤の変更など）。フォームは「勤怠を追加」と共用 */}
+            <button
+              onClick={openEditAttendance}
+              style={{
+                padding: '0.5rem 1rem',
+                backgroundColor: '#fff',
+                color: '#8b5a2b',
+                border: '1px solid #8b5a2b',
+                borderRadius: '4px',
+                fontSize: fontSizes.button,
+                cursor: 'pointer'
+              }}
+            >
+              勤怠の編集
             </button>
             <PdfExportButton
               onClick={handleExportPDF}

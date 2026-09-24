@@ -15,7 +15,8 @@ import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { Snackbar } from '../../components/Snackbar';
 import { ProgressBar } from '../../components/ProgressBar';
-import { PdfExportButton } from '../../components/Button';
+import { PdfExportButton, EditButton, DeleteButton } from '../../components/Button';
+import { PlusIcon } from '../../components/Icons';
 import { formatDate, parseJSTDateTime, extractTimeFromJST, formatJSTDateTime } from '../../utils/formatters';
 import { fontSizes } from '../../config/fontSizes';
 import {
@@ -640,21 +641,22 @@ export const EmployeeAttendance: React.FC = () => {
                     onChange={(e) => setBreakRow(index, { end: e.target.value })}
                     style={{ flex: 1, minWidth: 0, padding: '0.5rem', border: '1px solid #d1d5db', borderRadius: '4px', fontSize: fontSizes.input, boxSizing: 'border-box' }}
                   />
-                  <button
+                  <DeleteButton
                     type="button"
+                    size="small"
+                    aria-label={`休憩${index + 1}を削除`}
                     onClick={() => setAddForm(f => ({ ...f, breaks: f.breaks.filter((_, i) => i !== index) }))}
-                    style={{ padding: '0.5rem 0.75rem', backgroundColor: '#ef4444', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: fontSizes.button, whiteSpace: 'nowrap' }}
-                  >
-                    削除
-                  </button>
+                    style={{ minWidth: 'auto', whiteSpace: 'nowrap' }}
+                  />
                 </div>
               ))}
               <button
                 type="button"
                 onClick={() => setAddForm(f => ({ ...f, breaks: [...f.breaks, { start: '', end: '' }] }))}
-                style={{ padding: '0.5rem 1rem', backgroundColor: '#fff', color: '#8b5a2b', border: '1px solid #8b5a2b', borderRadius: '4px', cursor: 'pointer', fontSize: fontSizes.button }}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', padding: '0.5rem 1rem', backgroundColor: '#fff', color: '#8b5a2b', border: '1px solid #8b5a2b', borderRadius: '4px', cursor: 'pointer', fontSize: fontSizes.button }}
               >
-                ＋ 休憩を追加
+                <PlusIcon size={16} color="#8b5a2b" />
+                休憩を追加
               </button>
             </div>
 
@@ -807,6 +809,9 @@ export const EmployeeAttendance: React.FC = () => {
             <button
               onClick={openAddAttendance}
               style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.25rem',
                 padding: '0.5rem 1rem',
                 backgroundColor: '#8b5a2b',
                 color: '#fff',
@@ -816,23 +821,11 @@ export const EmployeeAttendance: React.FC = () => {
                 cursor: 'pointer'
               }}
             >
-              ＋ 勤怠を追加
+              <PlusIcon size={16} color="#fff" />
+              勤怠を追加
             </button>
             {/* 打刻済みの勤怠を編集（振替出勤→通常出勤の変更など）。フォームは「勤怠を追加」と共用 */}
-            <button
-              onClick={openEditAttendance}
-              style={{
-                padding: '0.5rem 1rem',
-                backgroundColor: '#fff',
-                color: '#8b5a2b',
-                border: '1px solid #8b5a2b',
-                borderRadius: '4px',
-                fontSize: fontSizes.button,
-                cursor: 'pointer'
-              }}
-            >
-              勤怠の編集
-            </button>
+            <EditButton label="勤怠の編集" size="small" onClick={openEditAttendance} style={{ padding: '0.5rem 1rem' }} />
             <PdfExportButton
               onClick={handleExportPDF}
               disabled={isLoading}

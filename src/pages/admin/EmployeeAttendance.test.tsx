@@ -86,7 +86,7 @@ describe('EmployeeAttendance: 勤怠を追加・勤怠の編集', () => {
   it('勤怠を追加: 入力した休憩が breaks として送られる（#1）', async () => {
     const user = userEvent.setup();
     renderPage();
-    await user.click(await screen.findByRole('button', { name: '＋ 勤怠を追加' }));
+    await user.click(await screen.findByRole('button', { name: '勤怠を追加' }));
     const dialog = screen.getByRole('heading', { name: '勤怠を追加（打刻忘れの後入力）' }).parentElement!;
 
     const dateInput = dialog.querySelector('input[type="date"]') as HTMLInputElement;
@@ -94,7 +94,7 @@ describe('EmployeeAttendance: 勤怠を追加・勤怠の編集', () => {
     const [clockIn, clockOut] = dialog.querySelectorAll('input[type="time"]');
     await setTime(clockIn as HTMLElement, '08:00');
     await setTime(clockOut as HTMLElement, '17:00');
-    await user.click(within(dialog).getByRole('button', { name: '＋ 休憩を追加' }));
+    await user.click(within(dialog).getByRole('button', { name: '休憩を追加' }));
     await setTime(within(dialog).getByLabelText('休憩1の開始時刻'), '12:00');
     await setTime(within(dialog).getByLabelText('休憩1の終了時刻'), '13:00');
     await user.click(within(dialog).getByRole('button', { name: '追加' }));
@@ -111,7 +111,7 @@ describe('EmployeeAttendance: 勤怠を追加・勤怠の編集', () => {
   it('勤怠を追加: 休憩未入力なら breaks を送らない（既存の休憩を消さない）', async () => {
     const user = userEvent.setup();
     renderPage();
-    await user.click(await screen.findByRole('button', { name: '＋ 勤怠を追加' }));
+    await user.click(await screen.findByRole('button', { name: '勤怠を追加' }));
     const dialog = screen.getByRole('heading', { name: '勤怠を追加（打刻忘れの後入力）' }).parentElement!;
     await user.type(dialog.querySelector('input[type="date"]') as HTMLInputElement, '2026-09-10');
     await setTime(dialog.querySelectorAll('input[type="time"]')[0] as HTMLElement, '08:00');
@@ -124,11 +124,11 @@ describe('EmployeeAttendance: 勤怠を追加・勤怠の編集', () => {
   it('勤怠を追加: 終了が開始より前の休憩は保存しない', async () => {
     const user = userEvent.setup();
     renderPage();
-    await user.click(await screen.findByRole('button', { name: '＋ 勤怠を追加' }));
+    await user.click(await screen.findByRole('button', { name: '勤怠を追加' }));
     const dialog = screen.getByRole('heading', { name: '勤怠を追加（打刻忘れの後入力）' }).parentElement!;
     await user.type(dialog.querySelector('input[type="date"]') as HTMLInputElement, '2026-09-10');
     await setTime(dialog.querySelectorAll('input[type="time"]')[0] as HTMLElement, '08:00');
-    await user.click(within(dialog).getByRole('button', { name: '＋ 休憩を追加' }));
+    await user.click(within(dialog).getByRole('button', { name: '休憩を追加' }));
     await setTime(within(dialog).getByLabelText('休憩1の開始時刻'), '13:00');
     await setTime(within(dialog).getByLabelText('休憩1の終了時刻'), '12:00');
     await user.click(within(dialog).getByRole('button', { name: '追加' }));
@@ -169,7 +169,7 @@ describe('EmployeeAttendance: 勤怠を追加・勤怠の編集', () => {
     await user.click(await screen.findByRole('button', { name: '勤怠の編集' }));
     const dialog = screen.getByRole('heading', { name: '勤怠の編集' }).parentElement!;
     await user.selectOptions(within(dialog).getAllByRole('combobox')[0], workDate);
-    await user.click(within(dialog).getByRole('button', { name: '削除' }));
+    await user.click(within(dialog).getByRole('button', { name: '休憩1を削除' }));
     await user.click(within(dialog).getByRole('button', { name: '更新' }));
 
     expect(updateAttendance).toHaveBeenCalledWith(expect.objectContaining({ breaks: [] }));

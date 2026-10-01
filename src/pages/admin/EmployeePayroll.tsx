@@ -677,6 +677,10 @@ export const EmployeePayroll: React.FC = () => {
         let existingPayrollDetail: PayrollDetail | null = null;
         // 未登録月(computed)でも、APIが前月から引き継いだ控除は初期値として使う。
         const carriedDeductions: { [key: string]: number } = {};
+        // 手当も前月から引き継ぐ（通勤・住宅・家族・通信料。LINE 要望 #5）
+        const carriedAllowances: { [key: string]: number } = {};
+        let carriedCommuting = 0;
+        let carriedHousing = 0;
         let carriedFrom: string | null = null;
         try {
           const detailByPeriod = await getPayrollDetailByPeriod(employeeId, newPeriod.year, newPeriod.month);
@@ -687,6 +691,15 @@ export const EmployeePayroll: React.FC = () => {
               list.forEach(item => {
                 const master = deductions.find(ded => ded.name === item.name);
                 if (master) carriedDeductions[master.id] = item.amount;
+              });
+            }
+            carriedCommuting = detailByPeriod.detail.commutingAllowance ?? 0;
+            carriedHousing = detailByPeriod.detail.housingAllowance ?? 0;
+            const pays = detailByPeriod.detail.allowances;
+            if (Array.isArray(pays)) {
+              pays.forEach(item => {
+                const master = allowances.find(a => a.name === item.name);
+                if (master) carriedAllowances[master.id] = item.amount;
               });
             }
           }
@@ -752,7 +765,9 @@ export const EmployeePayroll: React.FC = () => {
           const newAllowances: { [key: string]: number } = {};
           allowances.forEach(allowance => {
             // APIからは名称をキーとして返ってくる場合とIDをキーとして返ってくる場合の両方に対応
-            const amount = existingAllowances[allowance.name] || existingAllowances[allowance.id] || 0;
+            // 登録済み(snapshot)ならその値、未登録なら前月から引き継いだ値（家族手当・通信料など）
+            const amount = existingAllowances[allowance.name] || existingAllowances[allowance.id]
+              || carriedAllowances[allowance.id] || 0;
             newAllowances[allowance.id] = amount;
           });
           return newAllowances;
@@ -790,8 +805,8 @@ export const EmployeePayroll: React.FC = () => {
           overtimeAllowance: payrollCalculation.overtimeAllowance,
           lateNightAllowance: payrollCalculation.lateNightAllowance,
           mealAllowance: existingPayrollDetail?.mealAllowance ?? 0,
-          commutingAllowance: existingPayrollDetail?.commutingAllowance ?? 0,
-          housingAllowance: existingPayrollDetail?.housingAllowance ?? 0,
+          commutingAllowance: existingPayrollDetail?.commutingAllowance ?? carriedCommuting,
+          housingAllowance: existingPayrollDetail?.housingAllowance ?? carriedHousing,
           allowances: currentAllowances,
           totalEarnings: existingPayrollDetail?.totalEarnings ?? 0,
           socialInsurance: existingPayrollDetail?.socialInsurance ?? 0,
@@ -818,9 +833,12 @@ export const EmployeePayroll: React.FC = () => {
         });
 
         // 前月から控除を引き継いだことを担当者に明示する（そのまま保存も、直して保存もできる）。
-        if (carriedFrom && Object.keys(carriedDeductions).length > 0) {
+        const carriedAnyAllowance =
+          carriedCommuting > 0 || carriedHousing > 0 || Object.keys(carriedAllowances).length > 0;
+        if (carriedFrom && (Object.keys(carriedDeductions).length > 0 || carriedAnyAllowance)) {
           const [cy, cm] = carriedFrom.split('-');
-          setSnackbar({ message: `${Number(cy)}年${Number(cm)}月分の控除を引き継ぎました（金額は編集できます）`, type: 'success' });
+          const what = carriedAnyAllowance ? '手当と控除' : '控除';
+          setSnackbar({ message: `${Number(cy)}年${Number(cm)}月分の${what}を引き継ぎました（金額は編集できます）`, type: 'success' });
           setTimeout(() => setSnackbar(null), 4000);
         }
       } catch (error) {

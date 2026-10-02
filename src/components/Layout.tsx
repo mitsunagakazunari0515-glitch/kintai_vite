@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Header } from './Header';
 import { Navigation } from './Navigation';
+import { PAGE_PADDING } from '@a1int/ui';
 
 /**
  * レイアウトコンポーネントのプロパティを表すインターフェース。
@@ -90,7 +91,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
       )}
       <main style={{ 
         flex: 1, 
-        padding: isMobile ? '1rem' : '1rem',
+        padding: PAGE_PADDING, // 本文の余白は全システム共通（UI ルール §5。勤怠が基準）
         width: '100%',
         maxWidth: '100%',
         overflowX: 'hidden',

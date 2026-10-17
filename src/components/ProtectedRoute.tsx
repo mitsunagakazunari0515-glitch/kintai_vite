@@ -1,3 +1,4 @@
+// a1-design-ok: 画面を持たないルート制御
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { RedirectToLogin } from './RedirectToLogin';

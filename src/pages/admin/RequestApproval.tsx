@@ -10,7 +10,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Snackbar } from '../../components/Snackbar';
-import { ConfirmModal } from '../../components/ConfirmModal';
+import { ConfirmModal } from '@a1int/ui';
 import { formatDate } from '../../utils/formatters';
 import { fontSizes } from '../../config/fontSizes';
 import { getRequestStatuses, getRequestTypes, getRequestStatusStyle, getLeaveTypes } from '../../config/masterData';

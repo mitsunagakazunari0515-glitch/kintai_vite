@@ -9,7 +9,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Snackbar } from '../../components/Snackbar';
-import { ConfirmModal } from '../../components/ConfirmModal';
+import { ConfirmModal } from '@a1int/ui';
 import { RegisterButton, UpdateButton, CancelButton, EditButton, DeleteButton } from '../../components/Button';
 import { GoogleMapLocationPicker } from '../../components/GoogleMapLocationPicker';
 import { fontSizes } from '../../config/fontSizes';

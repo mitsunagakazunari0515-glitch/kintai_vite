@@ -1,7 +1,6 @@
 /**
- * 勤怠のパーツ: 勤務地の住所検索・地図での位置選択（勤務地マスタ）。
- * platform-ui の Storybook（パーツカタログ）に「入力/位置の選択（地図）」・タグ「勤怠」で出る。
- * 地図の表示には VITE_GOOGLE_MAPS_API_KEY が必要（無い場合は読み込みエラーの表示を確認できる）。
+ * パーツカタログ「入力/位置の選択（地図）」。住所検索・地図での位置選択。
+ * 名前・見出しは汎用の言葉で書く（システム名を出さない・UI ルール §7）。
  */
 import { useState } from 'react';
 import { GoogleMapLocationPicker, type LocationResult } from './GoogleMapLocationPicker';
@@ -23,8 +22,7 @@ const Demo = ({ isMobile }: { isMobile?: boolean }) => {
   );
 };
 
-export default { title: '入力/位置の選択（地図）',
-  tags: ['勤怠'], component: GoogleMapLocationPicker, globals: { system: 'kintai' } };
+export default { title: '入力/位置の選択（地図）', component: GoogleMapLocationPicker };
 
 export const PC = { render: () => <Demo /> };
 export const スマホ = { render: () => <Demo isMobile /> };

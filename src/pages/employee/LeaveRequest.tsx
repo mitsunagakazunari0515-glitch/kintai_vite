@@ -18,7 +18,7 @@ import { getCurrentFiscalYear, isInFiscalYear } from '../../utils/fiscalYear';
 import { fontSizes } from '../../config/fontSizes';
 import { getLeaveTypes, getRequestStatusStyle } from '../../config/masterData';
 import { formatDate } from '../../utils/formatters';
-import { ConfirmModal } from '../../components/ConfirmModal';
+import { ConfirmModal } from '@a1int/ui';
 import { 
   getLeaveRequestList, 
   createLeaveRequest, 

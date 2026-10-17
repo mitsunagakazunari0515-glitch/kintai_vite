@@ -1,0 +1,114 @@
+{
+  "src/App.tsx": {
+    "color": 1
+  },
+  "src/components/Button.tsx": {
+    "local-component": 1
+  },
+  "src/components/GoogleMapLocationPicker.tsx": {
+    "color": 11,
+    "radius": 3,
+    "spacing": 5
+  },
+  "src/components/Icons.tsx": {
+    "local-component": 1
+  },
+  "src/config/masterData.ts": {
+    "color": 4
+  },
+  "src/pages/Login.tsx": {
+    "color": 49,
+    "radius": 8,
+    "raw-button": 4,
+    "spacing": 24
+  },
+  "src/pages/PasswordReset.tsx": {
+    "color": 39,
+    "font-size": 1,
+    "radius": 15,
+    "raw-button": 3,
+    "spacing": 39
+  },
+  "src/pages/SignUp.tsx": {
+    "color": 35,
+    "font-size": 1,
+    "radius": 14,
+    "raw-button": 3,
+    "spacing": 34
+  },
+  "src/pages/admin/AllowanceMaster.tsx": {
+    "color": 31,
+    "font-size": 1,
+    "radius": 13,
+    "raw-button": 1,
+    "spacing": 29
+  },
+  "src/pages/admin/AttendanceList.tsx": {
+    "color": 74,
+    "font-size": 4,
+    "radius": 20,
+    "raw-button": 3,
+    "spacing": 101
+  },
+  "src/pages/admin/DeductionMaster.tsx": {
+    "color": 5,
+    "radius": 4,
+    "spacing": 10
+  },
+  "src/pages/admin/EmployeeAttendance.tsx": {
+    "color": 164,
+    "font-size": 3,
+    "radius": 27,
+    "raw-button": 6,
+    "spacing": 146
+  },
+  "src/pages/admin/EmployeeList.tsx": {
+    "color": 103,
+    "font-size": 2,
+    "radius": 39,
+    "raw-button": 4,
+    "spacing": 155
+  },
+  "src/pages/admin/EmployeePayroll.tsx": {
+    "color": 144,
+    "font-size": 25,
+    "radius": 55,
+    "raw-button": 7,
+    "spacing": 194
+  },
+  "src/pages/admin/EmployeeRegistration.tsx": {
+    "color": 46,
+    "radius": 20,
+    "raw-button": 1,
+    "spacing": 70
+  },
+  "src/pages/admin/RequestApproval.tsx": {
+    "color": 63,
+    "radius": 22,
+    "raw-button": 1,
+    "spacing": 93
+  },
+  "src/pages/admin/WorkLocationMaster.tsx": {
+    "color": 17,
+    "font-size": 5,
+    "radius": 8,
+    "spacing": 28
+  },
+  "src/pages/employee/Attendance.tsx": {
+    "color": 200,
+    "font-size": 7,
+    "radius": 33,
+    "raw-button": 9,
+    "spacing": 119
+  },
+  "src/pages/employee/LeaveRequest.tsx": {
+    "color": 52,
+    "font-size": 1,
+    "radius": 15,
+    "raw-button": 2,
+    "spacing": 52
+  },
+  "src/utils/codeTranslator.ts": {
+    "color": 20
+  }
+}

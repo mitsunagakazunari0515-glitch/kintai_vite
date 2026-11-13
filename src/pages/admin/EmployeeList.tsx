@@ -17,6 +17,7 @@ import { ProgressBar } from '../../components/ProgressBar';
 import { Button, NewRegisterButton, CancelButton, RegisterButton, UpdateButton, EditButton } from '../../components/Button';
 import { ViewIcon } from '../../components/Icons';
 import { formatDate, formatCurrency } from '../../utils/formatters';
+import { AVERAGE_MONTHLY_WORKING_DAYS, STANDARD_WORK_HOURS_PER_DAY, calculateDailySalary, calculateHourlySalary } from '../../utils/salaryCalculation';
 import { fontSizes } from '../../config/fontSizes';
 import { getEmploymentTypes, getEmploymentTypeLabel } from '../../config/masterData';
 import { dummyAllowances } from '../../data/dummyData';
@@ -1153,19 +1154,19 @@ export const EmployeeList: React.FC = () => {
                           <div style={{ marginBottom: '0.5rem' }}>
                             <span style={{ fontSize: fontSizes.medium, color: '#6b7280' }}>日給: </span>
                             <span style={{ fontWeight: 'bold' }}>
-                              {formatCurrency(Math.round(formData.baseSalary / 20.5))}円
+                              {formatCurrency(calculateDailySalary(formData.baseSalary))}円
                             </span>
                             <span style={{ fontSize: fontSizes.medium, color: '#6b7280', marginLeft: '0.5rem' }}>
-                              （基本給 ÷ 20.5）
+                              （基本給 ÷ {AVERAGE_MONTHLY_WORKING_DAYS}）
                             </span>
                           </div>
                           <div>
                             <span style={{ fontSize: fontSizes.medium, color: '#6b7280' }}>時給: </span>
                             <span style={{ fontWeight: 'bold' }}>
-                              {formatCurrency(Math.round((formData.baseSalary / 20.5) / 7.5))}円
+                              {formatCurrency(calculateHourlySalary(formData.baseSalary))}円
                             </span>
                             <span style={{ fontSize: fontSizes.medium, color: '#6b7280', marginLeft: '0.5rem' }}>
-                              （日給 ÷ 7.5）
+                              （日給 ÷ {STANDARD_WORK_HOURS_PER_DAY}）
                             </span>
                           </div>
                         </div>

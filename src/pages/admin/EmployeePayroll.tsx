@@ -21,6 +21,7 @@ import { error as logError, log } from '../../utils/logger';
 import { PdfExportButton, RegisterButton, UpdateButton, Button, EditButton, BackButton } from '../../components/Button';
 import { ProgressBar } from '../../components/ProgressBar';
 import { formatCurrency, formatMinutesToHHHMM } from '../../utils/formatters';
+import { AVERAGE_MONTHLY_WORKING_DAYS, STANDARD_WORK_HOURS_PER_DAY, calculateOvertimeHourlyRate } from '../../utils/salaryCalculation';
 import { fontSizes } from '../../config/fontSizes';
 import { getCurrentFiscalYear } from '../../utils/fiscalYear';
 import { dummyEmployees } from '../../data/dummyData';
@@ -313,10 +314,8 @@ export const EmployeePayroll: React.FC = () => {
         return sum + amount;
       }, 0);
 
-    // 残業単価（時給単価） = (基本給 + 残業代に含む手当の金額合計) ÷ 20.5 ÷ 7.5
-    const overtimeRateHourly = (baseSalary + allowancesForOvertime) / 20.5 / 7.5;
-    // 端数処理: 切り上げ（1円単位）
-    const overtimeRateHourlyRounded = Math.ceil(overtimeRateHourly);
+    // 残業単価（時給単価） = (基本給 + 残業代に含む手当の金額合計) ÷ 21.3 ÷ 7.5（切り上げ・1円単位）
+    const overtimeRateHourlyRounded = calculateOvertimeHourlyRate(baseSalary, allowancesForOvertime);
     // 残業単価（分単価）= 残業単価（時給単価）÷ 60
     const overtimeRatePerMinute = overtimeRateHourlyRounded / 60;
 
@@ -376,10 +375,8 @@ export const EmployeePayroll: React.FC = () => {
         return sum + amount;
       }, 0);
 
-    // 残業単価 = (基本給 + 残業代に含む手当の金額合計) ÷ 20.5 ÷ 7.5
-    const overtimeRate = (baseSalary + allowancesForOvertime) / 20.5 / 7.5;
-    // 端数処理: 切り上げ（1円単位）
-    return Math.ceil(overtimeRate);
+    // 残業単価 = (基本給 + 残業代に含む手当の金額合計) ÷ 21.3 ÷ 7.5（切り上げ・1円単位）
+    return calculateOvertimeHourlyRate(baseSalary, allowancesForOvertime);
   };
 
   /**
@@ -3691,7 +3688,7 @@ export const EmployeePayroll: React.FC = () => {
                     <div>
                       <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', fontSize: fontSizes.label }}>
                         時間外手当
-                        <Tooltip content={`【算出ロジック】\n残業単価（時給単価） = (基本給 + 残業代に含む手当（*マーク付き）の金額合計) ÷ 20.5 ÷ 7.5\n残業単価（分単価） = 残業単価（時給単価） ÷ 60\n時間外手当 = 残業単価（分単価） × 1.25倍 × 普通残業時間（分）\n\n※端数処理: 切り上げ（1円単位）\n※簡易版として平均単価率1.25倍を使用（時間帯別・曜日別の単価率は未実装）`}>
+                        <Tooltip content={`【算出ロジック】\n残業単価（時給単価） = (基本給 + 残業代に含む手当（*マーク付き）の金額合計) ÷ ${AVERAGE_MONTHLY_WORKING_DAYS} ÷ ${STANDARD_WORK_HOURS_PER_DAY}\n残業単価（分単価） = 残業単価（時給単価） ÷ 60\n時間外手当 = 残業単価（分単価） × 1.25倍 × 普通残業時間（分）\n\n※端数処理: 切り上げ（1円単位）\n※簡易版として平均単価率1.25倍を使用（時間帯別・曜日別の単価率は未実装）`}>
                           <InfoIcon size={16} color="#3b82f6" />
                         </Tooltip>
                       </label>
@@ -3718,7 +3715,7 @@ export const EmployeePayroll: React.FC = () => {
                     <div>
                       <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', fontSize: fontSizes.label }}>
                         深夜手当
-                        <Tooltip content={`【算出ロジック】\n残業単価（時給単価） = (基本給 + 残業代に含む手当（*マーク付き）の金額合計) ÷ 20.5 ÷ 7.5\n残業単価（分単価） = 残業単価（時給単価） ÷ 60\n深夜手当 = 残業単価（分単価） × 1.50倍 × 深夜残業時間（分）\n\n※端数処理: 切り上げ（1円単位）\n※深夜時間帯: 22:00-04:59`}>
+                        <Tooltip content={`【算出ロジック】\n残業単価（時給単価） = (基本給 + 残業代に含む手当（*マーク付き）の金額合計) ÷ ${AVERAGE_MONTHLY_WORKING_DAYS} ÷ ${STANDARD_WORK_HOURS_PER_DAY}\n残業単価（分単価） = 残業単価（時給単価） ÷ 60\n深夜手当 = 残業単価（分単価） × 1.50倍 × 深夜残業時間（分）\n\n※端数処理: 切り上げ（1円単位）\n※深夜時間帯: 22:00-04:59`}>
                           <InfoIcon size={16} color="#3b82f6" />
                         </Tooltip>
                       </label>

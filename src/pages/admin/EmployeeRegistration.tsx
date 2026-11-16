@@ -18,6 +18,7 @@ import { Button, CancelButton } from '../../components/Button';
 import { fontSizes } from '../../config/fontSizes';
 import { getEmploymentTypes } from '../../config/masterData';
 import { formatCurrency } from '../../utils/formatters';
+import { AVERAGE_MONTHLY_WORKING_DAYS, STANDARD_WORK_HOURS_PER_DAY, calculateDailySalary, calculateHourlySalary } from '../../utils/salaryCalculation';
 import { createEmployee, updateEmployee, getEmployee, CreateEmployeeRequest } from '../../utils/employeeApi';
 import { getAllowances } from '../../utils/allowanceApi';
 import { getWorkLocations } from '../../utils/workLocationApi';
@@ -234,19 +235,6 @@ export const EmployeeRegistration: React.FC = () => {
     };
     loadWorkLocations();
   }, []);
-
-  // 給与計算（正社員の場合）
-  const calculateDailySalary = (baseSalary: number): number => {
-    return Math.round(baseSalary / 20.5);
-  };
-
-  const calculateHourlySalary = (baseSalary: number, employmentType: 'FULL_TIME' | 'PART_TIME'): number => {
-    if (employmentType === 'FULL_TIME') {
-      const dailySalary = calculateDailySalary(baseSalary);
-      return Math.round(dailySalary / 7.5);
-    }
-    return baseSalary; // パートの場合は時給がbaseSalary
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -500,16 +488,16 @@ export const EmployeeRegistration: React.FC = () => {
                       {formatCurrency(calculateDailySalary(formData.baseSalary))}円
                     </span>
                     <span style={{ fontSize: fontSizes.medium, color: '#6b7280', marginLeft: '0.5rem' }}>
-                      （基本給 ÷ 20.5）
+                      （基本給 ÷ {AVERAGE_MONTHLY_WORKING_DAYS}）
                     </span>
                   </div>
                   <div>
                     <span style={{ fontSize: fontSizes.medium, color: '#6b7280' }}>時給: </span>
                     <span style={{ fontWeight: 'bold' }}>
-                      {formatCurrency(calculateHourlySalary(formData.baseSalary, 'FULL_TIME'))}円
+                      {formatCurrency(calculateHourlySalary(formData.baseSalary))}円
                     </span>
                     <span style={{ fontSize: fontSizes.medium, color: '#6b7280', marginLeft: '0.5rem' }}>
-                      （日給 ÷ 7.5）
+                      （日給 ÷ {STANDARD_WORK_HOURS_PER_DAY}）
                     </span>
                   </div>
                 </div>
